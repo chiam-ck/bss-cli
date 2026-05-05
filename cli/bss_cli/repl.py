@@ -112,6 +112,7 @@ from rich.text import Text
 from bss_cockpit.postprocess import strip_channel_markup, strip_reasoning_leakage
 from bss_cockpit.renderers import (
     RENDERER_DISPATCH,
+    render_customer_360,
     render_tool_result,
 )
 
