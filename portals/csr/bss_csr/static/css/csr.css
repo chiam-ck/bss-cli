@@ -830,3 +830,110 @@ body { margin: 0; }
 .settings-diagnostics dl > div { display: flex; gap: 12px; }
 .settings-diagnostics dt { color: var(--fg-muted); width: 140px; flex: 0 0 140px; }
 .settings-diagnostics dd { margin: 0; color: var(--fg); }
+
+
+/* ============================================================
+   v0.20.2 — Mobile responsiveness for the cockpit
+   ============================================================
+   The cockpit was desktop-only by design through v0.13–v0.20:
+   ``<meta name="viewport" content="width=1280">`` told phone
+   browsers to render the page as if the viewport were 1280px,
+   then the OS scaled the result down to fit the device. That
+   produced unreadably small text and tap targets that landed on
+   the wrong control. v0.20.2 switches the viewport to
+   ``width=device-width, initial-scale=1`` and adds the rules
+   below so a phone-sized viewport actually flows.
+
+   Two breakpoints:
+     ≤ 900px : tablet — top nav wraps, hide model name pill,
+               page padding tightens.
+     ≤ 600px : phone  — header collapses to a two-row stack,
+               nav links shrink, compose textarea grows tappable,
+               bubble padding tightens.
+*/
+
+@media (max-width: 900px) {
+  .cockpit-header {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 16px;
+  }
+  /* The model-name pill on the right is operator confirmation
+     of the active LLM — useful, but redundant on small screens
+     (it's also visible in /settings). Hide to reclaim width. */
+  .cockpit-header-right { display: none; }
+  .cockpit-header-nav {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .cockpit-page { padding: 16px 12px; }
+  .thread-page { padding: 12px 14px 16px; }
+
+  .chat-bubble { max-width: 96%; padding: 9px 12px; }
+}
+
+@media (max-width: 600px) {
+  /* Stack the header: brand on row 1, nav on row 2. Brand-tag
+     ("operator cockpit · v0.20.2") becomes redundant noise on
+     a phone — the brand mark + name carry the identity. */
+  .cockpit-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .cockpit-brand-tag { display: none; }
+  .cockpit-header-nav {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cockpit-nav-link { padding: 6px 10px; font-size: 12px; }
+  .cockpit-nav-cta {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Thread header: stack title row + actions row; compress the
+     focus-form input width so it doesn't push other controls off
+     screen. */
+  .thread-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 0 12px;
+  }
+  .thread-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .thread-focus-form input { width: 110px; }
+
+  /* Compose box: stack textarea above send button so the button
+     is full-width and easy to thumb-tap. */
+  .thread-compose {
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0 0;
+  }
+  .thread-compose textarea {
+    font-size: 16px;     /* iOS Safari zooms-in below 16px on focus. */
+    min-height: 72px;
+  }
+  .thread-send-btn {
+    width: 100%;
+    padding: 12px 0;
+    align-self: stretch;
+  }
+
+  .chat-bubble { max-width: 100%; font-size: 13px; }
+
+  /* Tool-row body: tighten padding + cap height so a long ASCII
+     block doesn't dominate the phone viewport. Horizontal scroll
+     remains for over-wide rows; doctrine (white-space: pre) holds. */
+  .tool-row-body {
+    padding: 8px 10px;
+    font-size: 11.5px;
+    max-height: 320px;
+  }
+}
