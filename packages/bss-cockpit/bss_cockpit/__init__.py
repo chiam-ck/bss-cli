@@ -44,7 +44,11 @@ from .conversation import (
     PendingDestructive,
     configure_store,
 )
-from .postprocess import knowledge_called, strip_channel_markup
+from .postprocess import (
+    knowledge_called,
+    strip_channel_markup,
+    strip_reasoning_leakage,
+)
 from .prompts import build_cockpit_prompt
 
 __all__ = [
@@ -62,6 +66,7 @@ __all__ = [
     "knowledge_called",
     "reset_cache",
     "strip_channel_markup",
+    "strip_reasoning_leakage",
     "write_operator_md",
     "write_settings_toml",
 ]

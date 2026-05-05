@@ -14,7 +14,11 @@ Two helpers, both surface-agnostic:
 
 from __future__ import annotations
 
-from bss_cockpit.postprocess import knowledge_called, strip_channel_markup
+from bss_cockpit.postprocess import (
+    knowledge_called,
+    strip_channel_markup,
+    strip_reasoning_leakage,
+)
 
 
 # ── strip_channel_markup ────────────────────────────────────────────
@@ -146,3 +150,80 @@ def test_knowledge_called_ignores_malformed_entries() -> None:
         {"name": "knowledge.search"},
     ]
     assert knowledge_called(calls) is True
+
+
+# ── strip_reasoning_leakage ─────────────────────────────────────────
+
+
+def test_strip_think_xml_block() -> None:
+    """``<think>...</think>`` block style — strip the whole block."""
+    out = strip_reasoning_leakage(
+        "<think>weighing options...</think>\nThe answer is 42."
+    )
+    assert "weighing" not in out
+    assert "The answer is 42." in out
+
+
+def test_strip_thinking_xml_block_long_form() -> None:
+    """``<thinking>...</thinking>`` long-form variant."""
+    out = strip_reasoning_leakage(
+        "<thinking>step 1, step 2</thinking>\nDone."
+    )
+    assert "step" not in out
+    assert "Done." in out
+
+
+def test_strip_leading_thought_header_with_blank_line() -> None:
+    """Bare ``thought\\n\\nAnswer.`` shape — the header sits on its
+    own line, separated from the answer by a blank line."""
+    out = strip_reasoning_leakage("thought\n\nThe answer is 42.")
+    assert out == "The answer is 42."
+
+
+def test_strip_inline_thought_prefix_v0_20_1() -> None:
+    """v0.20.1 — gemma also leaks the prefix on the SAME line as the
+    answer: ``thought Searched for ... but found nothing.`` The prior
+    regex only caught the line-break shape; this same-line shape was
+    flowing through to the REPL Panel and the operator saw it as part
+    of the reply."""
+    out = strip_reasoning_leakage(
+        "thought Searched for 'msisdn pool' in the handbook but found no matches."
+    )
+    assert not out.lower().startswith("thought")
+    assert out.startswith("Searched for")
+
+
+def test_strip_inline_thinking_prefix_long_form() -> None:
+    """Same as above but with the long-form ``thinking`` token."""
+    out = strip_reasoning_leakage("thinking The answer is 42.")
+    assert not out.lower().startswith("thinking")
+    assert out.startswith("The answer is 42.")
+
+
+def test_strip_does_not_eat_words_starting_with_thought() -> None:
+    """The same-line strip MUST require a space after ``thought``,
+    or it'd eat ``thoughtful``, ``thoughts``, etc. when those happen
+    to start a reply."""
+    out = strip_reasoning_leakage("Thoughtful answer follows.")
+    assert out == "Thoughtful answer follows."
+    out2 = strip_reasoning_leakage("Thoughts on the design:")
+    assert out2 == "Thoughts on the design:"
+
+
+def test_strip_does_not_touch_normal_text() -> None:
+    """Plain prose is untouched."""
+    out = strip_reasoning_leakage("Plain reply with no leakage.")
+    assert out == "Plain reply with no leakage."
+
+
+def test_strip_reasoning_leakage_empty_input() -> None:
+    """Empty input returns unchanged so callers don't have to special
+    case it."""
+    assert strip_reasoning_leakage("") == ""
+
+
+def test_strip_reasoning_leakage_idempotent() -> None:
+    """Running twice is a no-op once the leakage is gone."""
+    once = strip_reasoning_leakage("<think>x</think>\nHi")
+    twice = strip_reasoning_leakage(once)
+    assert once == twice == "Hi"

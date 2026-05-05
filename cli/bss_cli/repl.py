@@ -109,7 +109,7 @@ from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
 
-from bss_cockpit.postprocess import strip_channel_markup
+from bss_cockpit.postprocess import strip_channel_markup, strip_reasoning_leakage
 from bss_cockpit.renderers import (
     RENDERER_DISPATCH,
     render_tool_result,
@@ -648,10 +648,16 @@ async def _drive_turn(
                     rprint(card)
                     cards_shown += 1
             elif isinstance(event, AgentEventFinalMessage):
-                # v0.20.1 — strip Harmony / channel-format leakage at
-                # the boundary so neither display nor persistence
-                # carries `<channel|>` / `assistantfinal` artefacts.
-                final_text = strip_channel_markup(event.text or "")
+                # v0.20.1 — strip Harmony / channel-format leakage AND
+                # gemma reasoning-channel leakage (``<think>...</think>``
+                # blocks, leading ``thought\n``, same-line ``thought ...``
+                # prefix) at the boundary so neither display nor
+                # persistence carries the artefacts. Browser surface
+                # already chains these via ``bss_portal_ui.chat_html``;
+                # REPL needed the same chain.
+                final_text = strip_reasoning_leakage(
+                    strip_channel_markup(event.text or "")
+                )
             elif isinstance(event, AgentEventError):
                 error = event.message
                 break

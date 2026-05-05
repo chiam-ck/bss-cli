@@ -39,7 +39,10 @@ from __future__ import annotations
 import html as _html
 import re as _re
 
-from bss_cockpit.postprocess import strip_channel_markup as _strip_channel_markup
+from bss_cockpit.postprocess import (
+    strip_channel_markup as _strip_channel_markup,
+    strip_reasoning_leakage as _shared_strip_reasoning_leakage,
+)
 
 __all__ = [
     "render_assistant_bubble",
@@ -52,16 +55,9 @@ __all__ = [
 # ── Inline patterns ─────────────────────────────────────────────────
 
 
-# v0.13.1 — gemma occasionally leaks reasoning-step tokens into the
-# regular content channel ("thought\n\n<answer>" or "<think>...</think>").
-# Strip them at the renderer layer so the customer sees the answer
-# only. Either show a real thinking ribbon or don't show one.
-_RE_THINK_BLOCK = _re.compile(
-    r"<think(?:ing)?>.*?</think(?:ing)?>", _re.IGNORECASE | _re.DOTALL
-)
-_RE_LEADING_THOUGHT = _re.compile(
-    r"^\s*(?:thought|thinking)\s*[:\-]?\s*\n+", _re.IGNORECASE
-)
+# v0.20.1 — reasoning-leakage regexes moved to ``bss_cockpit.postprocess``
+# so the REPL can use the same helper without depending on this portal-
+# side module. Imported above as ``_shared_strip_reasoning_leakage``.
 
 
 def strip_reasoning_leakage(text: str) -> str:
@@ -72,22 +68,14 @@ def strip_reasoning_leakage(text: str) -> str:
 
 
 def _strip_reasoning_leakage(text: str) -> str:
-    """Remove gemma-style reasoning leakage from the start of a reply.
-
-    Three shapes seen in the wild:
-    - ``<think>...</think>\\nAnswer.`` — XML-style block.
-    - ``thought\\n\\nAnswer.`` — bare "thought" header with a newline.
-    - ``<channel|>...`` / ``assistantfinal\\n...`` — Harmony channel
-      markup leaking into the final-message stream (v0.20.1).
-
-    All three are stripped; the rest of the reply renders normally.
+    """Remove gemma-style reasoning leakage AND Harmony channel
+    markup from the start of a reply. v0.20.1 — single source of
+    truth lives in ``bss_cockpit.postprocess``; this wrapper chains
+    both helpers so the chat_html caller's contract is unchanged.
     """
     if not text:
         return text
-    cleaned = _RE_THINK_BLOCK.sub("", text)
-    cleaned = _RE_LEADING_THOUGHT.sub("", cleaned, count=1)
-    cleaned = _strip_channel_markup(cleaned)
-    return cleaned.lstrip()
+    return _shared_strip_reasoning_leakage(_strip_channel_markup(text))
 
 
 _RE_BOLD = _re.compile(r"\*\*(?P<inner>[^*\n]+)\*\*")

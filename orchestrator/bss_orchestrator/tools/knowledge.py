@@ -96,7 +96,7 @@ def _maybe_register(name: str):
 @_maybe_register("knowledge.search")
 async def knowledge_search(
     query: str,
-    k: int = 3,
+    k: int = 5,
     kinds: list[str] | None = None,
 ) -> dict[str, Any]:
     """Search the BSS-CLI documentation corpus (handbook, doctrine, runbooks,
@@ -124,13 +124,28 @@ async def knowledge_search(
     Args:
         query: Natural-language search query, e.g. "rotate cockpit token",
             "prebaked KYC env flag", "how does roaming exhaustion work".
-        k: How many top hits to return. Default 3.
-        kinds: Optional list of doc kinds to scope the search. Useful for
-            "is this allowed?" questions (set ``kinds=["doctrine"]``) or
-            "how do I..." questions (set ``kinds=["handbook", "runbook"]``).
+        k: How many top hits to return. Default 5.
+        kinds: Optional list of doc kinds to scope the search.
+
+            **STRONG DEFAULT: leave this UNSET (omit / pass ``None``) and
+            let cross-corpus FTS ranking decide.** A "how do I manage
+            MSISDN pool" question lands in ``architecture`` (topology)
+            + ``runbook`` (port-in / port-out) + ``tool_surface``
+            (inventory tools) + ``doctrine`` (domain coverage), NOT in
+            ``handbook``. Restricting to ``kinds=["handbook"]`` silently
+            zeroes out hits and the operator sees a "found nothing"
+            reply that's just a filter mistake.
+
+            Only pass ``kinds`` when the operator's question is
+            EXPLICITLY scoped to a doc family — e.g. they ask "what
+            does the **handbook** say about X" → ``kinds=["handbook"]``,
+            or "what's the **doctrine** on Y" → ``kinds=["doctrine"]``.
+            Implicit phrasing ("how do I", "what env var", "explain X")
+            stays cross-corpus.
+
             Valid kinds: ``handbook``, ``doctrine``, ``runbook``,
             ``architecture``, ``decisions``, ``tool_surface``, ``roadmap``,
-            ``contributing``. Omit for cross-corpus search.
+            ``contributing``.
 
     Returns:
         ``{"hits": [{"anchor", "source_path", "heading_path", "kind",

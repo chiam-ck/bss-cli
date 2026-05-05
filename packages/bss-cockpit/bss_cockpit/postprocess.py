@@ -32,6 +32,7 @@ from typing import Iterable, Mapping, Sequence
 __all__ = [
     "knowledge_called",
     "strip_channel_markup",
+    "strip_reasoning_leakage",
 ]
 
 
@@ -61,6 +62,48 @@ def strip_channel_markup(text: str) -> str:
     if not text:
         return text
     cleaned = _RE_CHANNEL_MARKUP.sub("", text)
+    return cleaned.lstrip()
+
+
+# v0.13.1 — gemma occasionally leaks reasoning-step tokens into the
+# regular content channel. Three shapes seen in the wild:
+#
+#   ``<think>...</think>\nAnswer.``         — XML-style block
+#   ``thought\n\nAnswer.``                   — bare "thought" header
+#   ``thought Answer.``                      — bare "thought" prefix on
+#                                              the same line (v0.20.1)
+#
+# All three are stripped at the boundary so neither display nor
+# persistence carries the leakage. v0.20.1 lifted the helper out of
+# ``bss_portal_ui.chat_html`` into this shared module so the REPL can
+# use it without a portal-side import.
+_RE_THINK_BLOCK = re.compile(
+    r"<think(?:ing)?>.*?</think(?:ing)?>", re.IGNORECASE | re.DOTALL
+)
+_RE_LEADING_THOUGHT = re.compile(
+    r"^\s*(?:thought|thinking)\s*[:\-]?\s*\n+", re.IGNORECASE
+)
+# Same-line prefix variant: ``thought Searched for ...``. The trailing
+# whitespace is required so the regex doesn't eat valid words like
+# "thoughtful". Only fires at start-of-text.
+_RE_INLINE_THOUGHT_PREFIX = re.compile(
+    r"^\s*(?:thought|thinking)\s+(?=\S)", re.IGNORECASE
+)
+
+
+def strip_reasoning_leakage(text: str) -> str:
+    """Remove gemma-style reasoning leakage that surfaces in the
+    regular content channel.
+
+    Three shapes seen in the wild — ``<think>...</think>`` blocks,
+    leading ``thought\\n\\n``, and same-line ``thought ...`` prefixes.
+    Idempotent; safe to chain with ``strip_channel_markup``.
+    """
+    if not text:
+        return text
+    cleaned = _RE_THINK_BLOCK.sub("", text)
+    cleaned = _RE_LEADING_THOUGHT.sub("", cleaned, count=1)
+    cleaned = _RE_INLINE_THOUGHT_PREFIX.sub("", cleaned, count=1)
     return cleaned.lstrip()
 
 
