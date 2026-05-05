@@ -594,7 +594,18 @@ async def _drive_turn(
     """
     cfg = cockpit_config_current()
 
-    # Append the user turn first so transcript_text() includes it.
+    # v0.20.2 — pull the prior transcript BEFORE appending the new user
+    # turn so the LLM sees [prior history] + [new HumanMessage(line)]
+    # instead of [prior history + new user turn] + [new HumanMessage(line)].
+    # The browser cockpit always did the equivalent (it slices the new
+    # turn off after the fact via ``blocks[:last_user_index]``); the
+    # REPL was passing a transcript that already ended in the new user
+    # message, which ``astream_once`` then re-wrapped as a HumanMessage
+    # — producing two back-to-back identical user turns with no
+    # assistant turn between them. Gemma reads that as "this question
+    # has been asked and gone unanswered → I should deflect" and the
+    # RAG hit rate on the REPL was visibly worse than the browser.
+    prior_transcript = await conv.transcript_text()
     user_msg_id = await conv.append_user_turn(line)
 
     # If a /confirm landed on the previous turn, consume the pending
@@ -605,7 +616,6 @@ async def _drive_turn(
         allow_destructive_default or pending is not None
     )
 
-    transcript = await conv.transcript_text()
     system_prompt = build_cockpit_prompt(
         operator_md=cfg.operator_md,
         customer_focus=conv.customer_focus,
@@ -631,7 +641,7 @@ async def _drive_turn(
             service_identity="operator_cockpit",
             tool_filter="operator_cockpit",
             system_prompt=system_prompt,
-            transcript=transcript,
+            transcript=prior_transcript,
         ):
             if isinstance(event, AgentEventToolCallStarted):
                 captured_tool_calls.append(
