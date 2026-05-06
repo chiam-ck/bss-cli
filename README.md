@@ -2,11 +2,11 @@
 
 > The entire BSS, in a terminal. SID-aligned. TMF-compliant. LLM-native. eSIM-first.
 
-A complete reference Business Support System for a small mobile prepaid MVNO that runs from a single terminal command. Ten TMF-compliant service containers (Catalog, CRM with Cases/Tickets/Port-requests, Payment, COM, SOM, Subscription, Mediation, Rating, Provisioning-sim) plus two web portals (self-serve customer + operator cockpit). Every operation is a tool the LLM can call; the primary UI is the `bss` CLI plus ASCII visualizations and a scoped chat surface in the customer portal.
+A complete reference Business Support System for a small mobile prepaid MVNO that runs from a single terminal command. Nine TMF-compliant service containers (Catalog, CRM with Cases/Tickets/Port-requests, Payment, COM, SOM, Subscription, Mediation, Rating, Provisioning-sim) plus two web portals (self-serve customer + operator cockpit). Every operation is a tool the LLM can call; the primary UI is the `bss` CLI plus ASCII visualizations and a scoped chat surface in the customer portal.
 
 For engineers learning telco BSS/OSS, for a small MVNO that wants a deployable MVP, and as a substrate for agentic experiments against realistic telco operations. **eSIM-only, bundled-prepaid, block-on-exhaust, card-on-file mandatory.** eKYC, real-customer UI, network elements, batch CDR, and OCS protocols are intentionally out of scope (channel-layer concerns).
 
-**Status (v0.20 baseline, soaking toward v1.0):** all three real-provider integrations are live (Resend email, Didit KYC, Stripe Checkout). Telco hygiene gaps are closed (MNP port-in/port-out, MSISDN replenishment, roaming as a product). Renewals fire automatically on their period boundary via an in-process worker; customers get a reminder email ~24h before. The operator cockpit runs single-operator-by-design behind a secure perimeter — REPL canonical, browser veneer over the same Postgres-backed `Conversation` store. v0.20 adds an indexed-corpus knowledge tool so the cockpit can answer how-to questions from `docs/HANDBOOK.md` + runbooks + CLAUDE.md with cited anchors (Postgres FTS by default, optional pgvector hybrid). The only mocked surface left for v1.0 is SM-DP+ (real eSIM provisioning is NDA-gated).
+**Status (v1.0 — General Availability):** the wrap of the v0.x arc. All three real-provider integrations are live (Resend email, Didit KYC, Stripe Checkout). Telco hygiene gaps are closed (MNP port-in/port-out, MSISDN replenishment, roaming as a product). Renewals fire automatically on their period boundary via an in-process worker; customers get a reminder email ~24h before. The operator cockpit runs single-operator-by-design behind a secure perimeter — REPL canonical, browser veneer over the same Postgres-backed `Conversation` store. The cockpit knowledge tool (v0.20) answers how-to questions from `docs/HANDBOOK.md` + runbooks + CLAUDE.md with cited anchors (Postgres FTS by default, optional pgvector hybrid). The only mocked surface left for production is SM-DP+ (real eSIM provisioning is NDA-gated).
 
 ## Screenshots
 
@@ -14,7 +14,7 @@ For engineers learning telco BSS/OSS, for a small MVNO that wants a deployable M
 
 The `bss` REPL is the cockpit. Type natural language; the agent calls tools; results render as ASCII cards. Slash commands (`/ports`, `/360`, `/focus`, `/confirm`) cover deterministic operator flows.
 
-![bss REPL banner](docs/screenshots/bss_repl_v0_19.jpg)
+![bss REPL banner](docs/screenshots/bss_repl_v1.jpg)
 
 ### Operator cockpit — browser veneer
 
@@ -22,21 +22,21 @@ Same `Conversation` store as the REPL; exit `bss`, open `localhost:9002`, see th
 
 - **Sessions index** — `localhost:9002/`. Recent conversations + customer search + new-conversation CTA.
 
-  ![cockpit sessions index](docs/screenshots/portal_csr_cockpit_sessions_v0_18.png)
+  ![cockpit sessions index](docs/screenshots/portal_csr_cockpit_sessions_v1.jpg)
 
 - **Live conversation** — agent renders ASCII tool cards inline (catalog VAS list, plan detail, etc.). Destructive actions propose first, wait for `/confirm`.
 
-  ![cockpit conversation](docs/screenshots/portal_csr_cockpit_session_v0_18.png)
+  ![cockpit conversation](docs/screenshots/portal_csr_cockpit_session_v1.jpg)
 
 ### Self-serve portal (customer-facing)
 
 - **Public landing** — `localhost:9001/welcome`.
 
-  ![self-serve welcome](docs/screenshots/portal_self_serve_welcome_v0_18.png)
+  ![self-serve welcome](docs/screenshots/portal_self_serve_welcome_v1.jpg)
 
 - **Plan picker** — `localhost:9001/plans`. Three plans, all four allowance rows aligned (Data / Voice / SMS / Roaming). PLAN_S has no roaming included; PLAN_M ships 500 mb, PLAN_L ships 2 GB.
 
-  ![self-serve plans](docs/screenshots/portal_self_serve_plans_v0_18.png)
+  ![self-serve plans](docs/screenshots/portal_self_serve_plans_v1.jpg)
 
 ### Distributed trace (`bss trace`)
 
@@ -56,7 +56,7 @@ Every BSS write goes through the per-service policy layer. Three trigger paths f
 
 The audit log gets a coherent attribution on every write: `actor`, `channel` (`portal-self-serve` / `portal-csr` / `portal-chat` / `cli` / `system:renewal_worker`), and `service_identity` (`portal_self_serve` / `default` / etc. via the v0.9 named-token perimeter).
 
-## What's in the box (v0.7 → v0.20)
+## What's in the box (v0.7 → v1.0)
 
 | Release | What landed |
 |---|---|
@@ -73,8 +73,9 @@ The audit log gets a coherent attribution on every write: `actor`, `channel` (`p
 | **v0.17** | Telco hygiene release. MNP (port-in / port-out via `crm.port_request`), MSISDN replenishment (`bss inventory msisdn add-range` + low-watermark event), roaming as a product (`data_roaming` allowance type, `VAS_ROAMING_1GB` top-up) |
 | **v0.18** | Automated subscription-renewal worker. Three sweeps per tick: renew due / skip blocked-overdue / send upcoming-renewal email. Multi-replica safe via `FOR UPDATE SKIP LOCKED` from day one |
 | **v0.20** | Cockpit knowledge tool — Tier-0 FTS over `docs/HANDBOOK.md` + CLAUDE.md + runbooks; LLM cites anchors, citation guard catches un-cited claims. Catalog `--data-roaming-mb` flag closes the v0.17 admin gap. Postgres image moves to `pgvector/pgvector:pg16` |
+| **v1.0** | General Availability — wrap of the v0.x arc. All seven principles intact under load: bundled-prepaid, card-on-file, block-on-exhaust, CLI-first / LLM-native, TMF-compliant, lightweight (~2.65 GiB all-in incl. infra; p99 internal API < 50 ms), write-through policy. Real-provider integrations live; SM-DP+ remains NDA-gated mock. Single-Postgres / schema-per-domain holds; documented split path is ready when traffic demands it |
 
-Full per-release narratives in [`phases/V0_X_Y.md`](phases/). What's left for v1.0 is in [`ROADMAP.md`](ROADMAP.md).
+Full per-release narratives in [`phases/V0_X_Y.md`](phases/). Post-v1.0 work and non-goals live in [`ROADMAP.md`](ROADMAP.md).
 
 ## Quick start
 
@@ -153,7 +154,7 @@ bss admin knowledge search "rotate cockpit token"   # v0.20+ doc-corpus search
 - [`TOOL_SURFACE.md`](TOOL_SURFACE.md) — every LLM tool with arg shape and return shape
 - [`DECISIONS.md`](DECISIONS.md) — non-obvious architectural choices, append-only
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — phase discipline, DECISIONS pattern, test conventions
-- [`ROADMAP.md`](ROADMAP.md) — shipped + what's left for v1.0 + future + non-goals
+- [`ROADMAP.md`](ROADMAP.md) — shipped + post-v1.0 + non-goals
 - [`phases/`](phases/) — per-release build plans (PHASE_01 → PHASE_10, V0_2_0 → V0_20_0)
 - [`docs/runbooks/`](docs/runbooks/) — operational procedures (knowledge-indexer + pgvector prereq, Jaeger BYOI, API token rotation, snapshot regen, MNP port flows, Stripe cutover, payment idempotency, chat ownership trip, chat caps, chat-escalated case triage, chat transcript retention, three-provider sandbox soak)
 
@@ -198,7 +199,7 @@ uv run python -m scenarios.soak.run_soak --customers 2 --days 1
 uv run python -m scenarios.soak.run_soak --customers 30 --days 14
 ```
 
-The v0.12 baseline run is checked in at [`soak/report-v0.12.md`](soak/report-v0.12.md). A soak re-run on v1.0 is the public-cohort gate before tagging.
+The v0.12 baseline run is checked in at [`soak/report-v0.12.md`](soak/report-v0.12.md). A soak re-run on v1.0 was the gate that anchored the GA tag.
 
 ## License
 
