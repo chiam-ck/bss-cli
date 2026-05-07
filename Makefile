@@ -415,4 +415,5 @@ reset-db:
 	psql "$$PSQL_URL" -c "DROP SCHEMA IF EXISTS crm, catalog, inventory, payment, order_mgmt, service_inventory, provisioning, subscription, mediation, billing, audit, portal_auth, cockpit, integrations, knowledge CASCADE;"; \
 	psql "$$PSQL_URL" -c "DELETE FROM public.alembic_version;" 2>/dev/null || true; \
 	$(MAKE) migrate; \
-	$(MAKE) seed
+	$(MAKE) seed; \
+	$(MAKE) knowledge-reindex
