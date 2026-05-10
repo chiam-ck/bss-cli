@@ -37,8 +37,9 @@ async def catalog_get_offering(offering_id: ProductOfferingId) -> dict[str, Any]
     """Get a single product offering with prices and allowances.
 
     Args:
-        offering_id: Must be ``PLAN_S`` / ``PLAN_M`` / ``PLAN_L``. Other IDs
-            come back as not found — there are no other plans in v0.1.
+        offering_id: Any active sellable plan ID — get the current set
+            from ``catalog.list_active_offerings``. Unknown IDs come
+            back as not found.
 
     Returns:
         Offering dict.

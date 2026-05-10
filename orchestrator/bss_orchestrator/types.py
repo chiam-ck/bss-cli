@@ -107,8 +107,10 @@ AggregateId = Annotated[
 ]
 ProductOfferingId = Annotated[
     str,
-    "Plan offering ID — MUST be one of PLAN_S, PLAN_M, PLAN_L. "
-    "No other plans exist in v0.1.",
+    "Plan offering ID, e.g. PLAN_S, PLAN_M, PLAN_L (v1.0 baseline). "
+    "Get the full active set from catalog.list_active_offerings — "
+    "operators can add new plans (PLAN_XL, PLAN_CNY, etc.) at runtime; "
+    "never hardcode. Never fabricate.",
 ]
 ProductOfferingPriceId = Annotated[
     str,

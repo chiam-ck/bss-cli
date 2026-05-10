@@ -11,7 +11,27 @@ from __future__ import annotations
 
 from typing import Any
 
-_PLAN_ORDER = {"PLAN_S": 0, "PLAN_M": 1, "PLAN_L": 2}
+
+def _price_value(p: dict[str, Any]) -> float:
+    """Sort key — recurring price ascending. Offerings without a numeric
+    price sink to the end so the catalog can grow new shapes without
+    breaking ordering."""
+    pops = p.get("productOfferingPrice") or []
+    if pops:
+        amount = (pops[0].get("price") or {}).get("taxIncludedAmount") or {}
+        v = amount.get("value")
+        if isinstance(v, (int, float)):
+            return float(v)
+    return float("inf")
+
+
+def _is_sellable_plan(o: dict[str, Any]) -> bool:
+    """Active, sellable, bundle (i.e. a plan offering, not VAS)."""
+    return (
+        o.get("isSellable", True)
+        and (o.get("lifecycleStatus") or "active") == "active"
+        and o.get("isBundle", True)
+    )
 
 
 def _allowance_str(allowances: list[dict[str, Any]], kind: str) -> str:
@@ -41,15 +61,14 @@ def _price_str(p: dict[str, Any]) -> str:
 
 
 def flatten_offerings(offerings: list[dict[str, Any]]) -> list[dict[str, str]]:
-    """Return template-shaped dicts for PLAN_S / PLAN_M / PLAN_L only.
-
-    Other offerings (VAS top-ups, etc.) are not rendered on the landing
-    page — the v0.4 portal is three-plan-bundle signup only.
-    """
+    """Return template-shaped dicts for every active sellable plan,
+    sorted cheapest-first. New offerings added via
+    ``bss admin catalog add-offering`` appear automatically — no source
+    edit required (#36)."""
     plans: list[dict[str, str]] = []
     for p in sorted(
-        (o for o in offerings if o.get("id") in _PLAN_ORDER),
-        key=lambda o: _PLAN_ORDER[o["id"]],
+        (o for o in offerings if _is_sellable_plan(o)),
+        key=_price_value,
     ):
         allowances = p.get("bundleAllowance") or p.get("allowances") or []
         voice = _allowance_str(allowances, "voice")

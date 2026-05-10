@@ -76,17 +76,22 @@ _WORKER_CHANNEL = "system"
 _REMINDER_LOOKAHEAD_SECONDS_DEFAULT = 24 * 60 * 60
 
 
-_PLAN_NAME_FALLBACKS = {
-    "PLAN_S": "Lite",
-    "PLAN_M": "Standard",
-    "PLAN_L": "Max",
-}
-
-
-def _plan_name(offering_id: str) -> str:
-    """Map offering_id → human plan name. Falls back to the id itself
-    if unknown (e.g. a future PLAN_XL added without updating this map)."""
-    return _PLAN_NAME_FALLBACKS.get(offering_id, offering_id)
+async def _build_plan_name_map(
+    catalog_client, offering_ids: set[str]
+) -> dict[str, str]:
+    """Per-sweep cache of offering_id → human name. Pulls from the
+    catalog so any plan added at runtime (PLAN_XL, PLAN_CNY, etc.)
+    renders with its real name in renewal-reminder emails — no source
+    edit required (#36). Falls back to the id on lookup failure so a
+    catalog blip can't block the reminder sweep."""
+    out: dict[str, str] = {}
+    for oid in offering_ids:
+        try:
+            offering = await catalog_client.get_offering(oid)
+            out[oid] = offering.get("name") or oid
+        except Exception:
+            out[oid] = oid
+    return out
 
 
 def _format_renewal_date(dt) -> str:
@@ -304,6 +309,13 @@ async def _sweep_upcoming_renewal_reminder(app) -> None:
         await repo.mark_reminder_sent(ids=ids, at=now)
         await session.commit()
 
+    # Catalog lookups for plan names happen once per unique offering
+    # in the batch — not once per row.
+    plan_names = await _build_plan_name_map(
+        app.state.catalog_client,
+        {r["offering_id"] for r in rows},
+    )
+
     # ── Txn 2 (per id): CRM lookup + email send + log ─────────────────
     token = auth_context.push(actor=_WORKER_ACTOR, channel=_WORKER_CHANNEL)
     sent = 0
@@ -338,7 +350,7 @@ async def _sweep_upcoming_renewal_reminder(app) -> None:
             try:
                 app.state.email_adapter.send_renewal_reminder(
                     email,
-                    plan_name=_plan_name(row["offering_id"]),
+                    plan_name=plan_names.get(row["offering_id"], row["offering_id"]),
                     msisdn=row["msisdn"],
                     amount=f"{row['price_amount']:.2f}",
                     currency=row["price_currency"],

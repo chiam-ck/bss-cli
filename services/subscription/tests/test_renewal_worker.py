@@ -73,12 +73,25 @@ def _build_app(
         }
     )
 
+    # v1.0.1 (#36) — renewal worker now fetches plan names from
+    # catalog instead of a hardcoded id→name dict, so the test mock
+    # has to answer get_offering with the same names the old fallback
+    # used.
+    catalog_client = MagicMock()
+    catalog_client.get_offering = AsyncMock(
+        side_effect=lambda oid: {
+            "PLAN_S": {"id": "PLAN_S", "name": "Lite"},
+            "PLAN_M": {"id": "PLAN_M", "name": "Standard"},
+            "PLAN_L": {"id": "PLAN_L", "name": "Max"},
+        }.get(oid, {"id": oid, "name": oid})
+    )
+
     app = SimpleNamespace(
         state=SimpleNamespace(
             session_factory=_factory,
             crm_client=crm_client,
             payment_client=MagicMock(),
-            catalog_client=MagicMock(),
+            catalog_client=catalog_client,
             inventory_client=MagicMock(),
             mq_exchange=None,
             email_adapter=email_adapter,
