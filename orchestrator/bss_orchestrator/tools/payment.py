@@ -11,7 +11,7 @@ from ..types import Currency, CustomerId, PaymentAttemptId, PaymentMethodId
 from ._registry import register
 
 
-def _local_tokenize(card_number: str) -> dict[str, Any]:
+def local_tokenize_card(card_number: str) -> dict[str, Any]:
     """Sandbox client-side tokenizer (mirrors services/payment mock_tokenizer).
 
     Payment service never exposed a public /dev/tokenize endpoint — real
@@ -65,7 +65,7 @@ async def payment_add_card(
             - ``payment.add_card.token_invalid``: card rejected by mock tokeniser.
     """
     c = get_clients()
-    tok = _local_tokenize(card_number)
+    tok = local_tokenize_card(card_number)
     return await c.payment.create_payment_method(
         customer_id=customer_id,
         card_token=tok["cardToken"],

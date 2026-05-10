@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 from bss_clients import PolicyViolationFromServer
 from bss_orchestrator.clients import get_clients
+from bss_orchestrator.tools.payment import local_tokenize_card
 from rich import print as rprint
 
 from .._runtime import run_async
@@ -20,12 +21,13 @@ def add_card(
     customer: Annotated[str, typer.Option("--customer")],
     card: Annotated[str, typer.Option("--card", help="16-digit PAN (tokenised by CLI).")],
 ) -> None:
-    """Tokenise a PAN via /dev/tokenize and attach it as a payment method.
+    """Tokenise a PAN client-side and attach it as a payment method.
 
     v0.16+ — gated on ``BSS_PAYMENT_PROVIDER=mock``. In stripe-mode,
     customers add cards via the self-serve portal (Stripe Elements);
     server-side tokenization is forbidden in production because the
-    PAN must never touch BSS.
+    PAN must never touch BSS. Sandbox CLI mirrors mock_tokenizer's
+    FAIL/DECLINE embedding so charge-failure scenarios stay honest.
     """
     provider = os.environ.get("BSS_PAYMENT_PROVIDER", "mock")
     if provider != "mock":
@@ -41,14 +43,15 @@ def add_card(
 
     async def _do() -> None:
         c = get_clients()
-        tok = await c.payment.dev_tokenize_card(card)
+        tok = local_tokenize_card(card)
         pm = await c.payment.create_payment_method(
             customer_id=customer,
             card_token=tok["cardToken"],
             last4=tok["last4"],
             brand=tok["brand"],
         )
-        rprint(f"[green]Added[/] {pm['id']}  {pm.get('brand')}•••{pm.get('last4')}")
+        cs = pm.get("cardSummary") or {}
+        rprint(f"[green]Added[/] {pm['id']}  {cs.get('brand', '')}•••{cs.get('last4', '')}")
 
     _run_safely(_do())
 
@@ -60,9 +63,12 @@ def list_methods(customer: Annotated[str, typer.Option("--customer")]) -> None:
     async def _do() -> None:
         c = get_clients()
         for pm in await c.payment.list_methods(customer):
+            cs = pm.get("cardSummary") or {}
+            exp_m = cs.get("expMonth")
+            exp_y = cs.get("expYear")
+            exp = f"{exp_m:02}/{exp_y}" if exp_m and exp_y else "  /    "
             rprint(
-                f"{pm['id']:<9} {pm.get('brand', ''):<6}•••{pm.get('last4', '')}  "
-                f"{pm.get('expMonth', '?'):02}/{pm.get('expYear', '????')}"
+                f"{pm['id']:<9} {cs.get('brand', ''):<6}•••{cs.get('last4', '')}  {exp}"
             )
 
     _run_safely(_do())
@@ -178,5 +184,5 @@ def _run_safely(coro) -> None:
     try:
         run_async(coro)
     except PolicyViolationFromServer as e:
-        rprint(f"[red]POLICY_VIOLATION[/] [bold]{e.rule}[/]  {e.message}")
+        rprint(f"[red]POLICY_VIOLATION[/] [bold]{e.rule}[/]  {e.detail}")
         raise typer.Exit(code=2)

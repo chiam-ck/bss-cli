@@ -7,6 +7,7 @@ from typing import Annotated
 import typer
 from bss_clients import PolicyViolationFromServer
 from bss_orchestrator.clients import get_clients
+from bss_orchestrator.tools.payment import local_tokenize_card
 from rich import print as rprint
 
 from .._runtime import run_async
@@ -22,7 +23,7 @@ def create(
     phone: Annotated[str | None, typer.Option("--phone")] = None,
     card: Annotated[
         str | None,
-        typer.Option("--card", help="16-digit PAN; CLI tokenises it via /dev/tokenize."),
+        typer.Option("--card", help="16-digit PAN; CLI tokenises it client-side (sandbox)."),
     ] = None,
 ) -> None:
     """Create a customer; optionally tokenise + attach a card-on-file."""
@@ -30,9 +31,11 @@ def create(
     async def _do() -> None:
         c = get_clients()
         customer = await c.crm.create_customer(name=name, email=email, phone=phone)
-        rprint(f"[green]Created[/] {customer['id']}  {customer['name']}")
+        ind = customer.get("individual") or {}
+        display = " ".join(p for p in (ind.get("givenName"), ind.get("familyName")) if p) or "—"
+        rprint(f"[green]Created[/] {customer['id']}  {display}")
         if card:
-            tok = await c.payment.dev_tokenize_card(card)
+            tok = local_tokenize_card(card)
             pm = await c.payment.create_payment_method(
                 customer_id=customer["id"],
                 card_token=tok["cardToken"],
@@ -102,5 +105,5 @@ def _run_safely(coro) -> None:
     try:
         run_async(coro)
     except PolicyViolationFromServer as e:
-        rprint(f"[red]POLICY_VIOLATION[/] [bold]{e.rule}[/]  {e.message}")
+        rprint(f"[red]POLICY_VIOLATION[/] [bold]{e.rule}[/]  {e.detail}")
         raise typer.Exit(code=2)

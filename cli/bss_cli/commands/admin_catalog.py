@@ -217,5 +217,5 @@ def _run_safely(coro) -> None:
     try:
         run_async(coro)
     except PolicyViolationFromServer as e:
-        rprint(f"[red]POLICY_VIOLATION[/] [bold]{e.rule}[/]  {e.message}")
+        rprint(f"[red]POLICY_VIOLATION[/] [bold]{e.rule}[/]  {e.detail}")
         raise typer.Exit(code=2)
