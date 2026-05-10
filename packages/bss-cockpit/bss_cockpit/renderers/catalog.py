@@ -4,12 +4,47 @@ from __future__ import annotations
 
 from typing import Any
 
-# PLAN_M is the recommended default — gets a ★ marker on the comparison
-# table so the operator's eye lands on it first. Spec carry-over from
-# v0.6 renderer polish.
-_POPULAR_PLAN = "PLAN_M"
+# PLAN_M is the recommended default when present — gets a ★ marker on
+# the comparison table so the operator's eye lands on it first. When
+# the catalog grows past the v0.1 three-plan shape (PLAN_XL, PLAN_CNY,
+# etc.), the popular marker stays on PLAN_M if it's still active; if
+# PLAN_M has been retired the renderer falls back to the median plan
+# by price (see ``_pick_popular``).
+_POPULAR_PLAN_DEFAULT = "PLAN_M"
 
-_PLAN_ORDER = {"PLAN_S": 0, "PLAN_M": 1, "PLAN_L": 2}
+
+def _price_value(p: dict[str, Any]) -> float:
+    """Sort key — recurring price ascending. Offerings without a numeric
+    price sink to the end so the catalog can grow new shapes without
+    breaking ordering."""
+    pops = p.get("productOfferingPrice") or []
+    if pops:
+        amount = (pops[0].get("price") or {}).get("taxIncludedAmount") or {}
+        v = amount.get("value")
+        if isinstance(v, (int, float)):
+            return float(v)
+    return float("inf")
+
+
+def _is_sellable_plan(o: dict[str, Any]) -> bool:
+    """Active, sellable, bundle (i.e. a plan offering, not VAS)."""
+    return (
+        o.get("isSellable", True)
+        and (o.get("lifecycleStatus") or "active") == "active"
+        and o.get("isBundle", True)
+    )
+
+
+def _pick_popular(plans: list[dict[str, Any]]) -> str | None:
+    """The ★ marker — sticks with PLAN_M if still active, else picks
+    the median by price (n // 2) so a 2-plan catalog stars the upper
+    one and a 5-plan catalog stars the middle one."""
+    if not plans:
+        return None
+    ids = {p.get("id") for p in plans}
+    if _POPULAR_PLAN_DEFAULT in ids:
+        return _POPULAR_PLAN_DEFAULT
+    return plans[len(plans) // 2].get("id")
 
 
 def _allowance_str(allowances: list[dict[str, Any]], kind: str) -> str:
@@ -47,9 +82,11 @@ def _price_str(p: dict[str, Any]) -> str:
 
 
 def _ordered_plans(offerings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """All active sellable plans, cheapest first. New catalog entries
+    appear automatically — no source edit required (#36)."""
     return sorted(
-        [o for o in offerings if o.get("id") in _PLAN_ORDER],
-        key=lambda o: _PLAN_ORDER[o["id"]],
+        [o for o in offerings if _is_sellable_plan(o)],
+        key=_price_value,
     )
 
 
@@ -110,11 +147,13 @@ def render_vas_list(vas: list[dict[str, Any]]) -> str:
 
 
 def render_catalog(offerings: list[dict[str, Any]]) -> str:
-    """Three-column plan comparison: PLAN_S / PLAN_M / PLAN_L side-by-side."""
+    """N-column plan comparison, cheapest-first (#36 — was hardcoded
+    to PLAN_S/M/L; now renders every active sellable plan)."""
     plans = _ordered_plans(offerings)
     if not plans:
         return "(no plans in catalog)"
 
+    popular = _pick_popular(plans)
     cols: list[list[str]] = []
     for p in plans:
         name = p.get("name", p.get("id", "?"))
@@ -127,7 +166,7 @@ def render_catalog(offerings: list[dict[str, Any]]) -> str:
         sms = _allowance_str(allowances, "sms")
 
         # Header gets a ★ on the popular plan so the eye lands on it first.
-        marker = " ★" if p["id"] == _POPULAR_PLAN else ""
+        marker = " ★" if p["id"] == popular else ""
         header = f"{p['id']}{marker}  {name}"
         # v0.17 — show roaming when the plan carries any (PLAN_S has 0
         # and renders "—"; PLAN_M/L show their bundled MB).
@@ -143,9 +182,10 @@ def render_catalog(offerings: list[dict[str, Any]]) -> str:
         ]
         cols.append(col)
 
-    col_width = 22  # fixed col width keeps the 3-col grid aligned
+    col_width = 22  # per-column width
     sep = "  "
-    inner_content = col_width * 3 + len(sep) * 2  # 66 chars of payload
+    n = len(plans)
+    inner_content = col_width * n + len(sep) * max(0, n - 1)
     inner = inner_content + 4  # +4 for "  " left pad + " │" right pad spacing
     title = "Product Offerings"
     out_lines = ["┌─ " + title + " " + "─" * max(2, inner - len(title) - 4) + "┐"]
@@ -174,7 +214,7 @@ def render_catalog_show(offering: dict[str, Any]) -> str:
     # the portal line_card filter).
     roaming = _allowance_str(allowances, "data_roaming")
 
-    marker = "  ★ MOST POPULAR" if pid == _POPULAR_PLAN else ""
+    marker = "  ★ MOST POPULAR" if pid == _POPULAR_PLAN_DEFAULT else ""
     title = f"{pid}  {name}{marker}"
     width = 60
     top = "┌─ " + title + " " + "─" * max(0, width - len(title) - 4) + "┐"

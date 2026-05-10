@@ -18,7 +18,7 @@ app = typer.Typer(help="Manage commercial orders (TMF622).", no_args_is_help=Tru
 @app.command("create")
 def create(
     customer: Annotated[str, typer.Option("--customer")],
-    offering: Annotated[str, typer.Option("--offering", help="PLAN_S | PLAN_M | PLAN_L")],
+    offering: Annotated[str, typer.Option("--offering", help="Offering ID — see `bss catalog list`.")],
     msisdn: Annotated[str | None, typer.Option("--msisdn", help="Preferred MSISDN.")] = None,
     wait: Annotated[bool, typer.Option("--wait/--no-wait")] = True,
 ) -> None:

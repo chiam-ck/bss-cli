@@ -22,7 +22,9 @@ async def order_create(
 
     Args:
         customer_id: Customer ID with the CUST- prefix (opaque suffix).
-        offering_id: One of ``PLAN_S`` / ``PLAN_M`` / ``PLAN_L``.
+        offering_id: An active sellable plan ID. Get the current set
+            from ``catalog.list_active_offerings`` — operators may add
+            new plans at runtime; never hardcode the v1.0 trio.
         msisdn_preference: Optional preferred MSISDN. If unset or unavailable,
             SOM auto-picks one from the pool.
         notes: Optional free text stored on the order.
