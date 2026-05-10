@@ -42,7 +42,8 @@ def create(
                 last4=tok["last4"],
                 brand=tok["brand"],
             )
-            rprint(f"[green]Attached card[/] {pm['id']}  {pm.get('brand')}•••{pm.get('last4')}")
+            cs = pm.get("cardSummary") or {}
+            rprint(f"[green]Attached card[/] {pm['id']}  {cs.get('brand', '')}•••{cs.get('last4', '')}")
 
     _run_safely(_do())
 
