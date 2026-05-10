@@ -229,18 +229,3 @@ class PaymentClient(BSSClient):
             params={"dryRun": "true" if dry_run else "false"},
         )
         return resp.json()
-
-    # ── Dev tokenizer ────────────────────────────────────────────────────
-
-    async def dev_tokenize_card(self, card_number: str) -> dict[str, Any]:
-        """POST /dev/tokenize — dev-only tokenizer (sandbox).
-
-        Returns {cardToken, last4, brand}. Used by the CLI to tokenize the
-        user-supplied PAN before calling create_payment_method.
-        """
-        resp = await self._request(
-            "POST",
-            "/dev/tokenize",
-            json={"cardNumber": card_number},
-        )
-        return resp.json()
