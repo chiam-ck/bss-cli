@@ -3073,3 +3073,182 @@ Postgres need to make the call themselves — installing an extension
 on a database used by other tenants is the operator's call, not the
 deployer's. The migration's failure is loud and the runbook is the
 first hit on the error.
+
+
+## 2026-05-21 — v1.1.0 — Phase 0 amendment: promo codes via loyalty-cli (integrate, don't build)
+
+**Context.** v1.1 adds promotions (targeted + non-targeted). A separate,
+already-running system — `samurai-bot/loyalty-cli` (`~/claude/loyalty-cli`,
+dockerized on `:8080`) — is a headless offer/promo/loyalty engine. We had
+to decide whether to build a promotions engine inside BSS or integrate the
+existing one. Promos are a scope addition CLAUDE.md reserves for explicit
+Phase 0 approval; this entry (and the siblings below) is that record.
+
+**Decision.** Integrate loyalty-cli as a pure **entitlement** engine over
+HTTP; build only the catalog adaptation in BSS. loyalty answers "can this
+customer claim this offer, is there inventory, was it cancelled." BSS owns
+all money. loyalty ships **unmodified** — v1.1 calls its existing tool
+surface only. Verified: loyalty's `OfferDefinition` carries no monetary
+field (only a free-form `characteristics: dict[str,str]`), so the
+entitlement/pricing split is clean, not forced.
+
+**Alternatives.** Build promo codes natively in the catalog (new tables,
+FSM, redemption tracking) — rejected: rebuilds ~80% of what loyalty already
+ships and runs, and CK had already built loyalty-cli for this. Modify
+loyalty to carry money — rejected: violates loyalty's own doctrine ("domain
+knows nothing about vendors / money") and couples two products.
+
+**Consequences.** BSS gains genuine TMF671 (Promotion Management) coverage
+via the adapter. One new `bss-clients` class (`LoyaltyClient`), one new
+catalog domain object (`promotion`), and small extensions elsewhere — no
+new engine. Adds one small container (loyalty-http) pointed at the shared
+Postgres instance (`loyalty` schema); measure against the 4GB motto.
+
+
+## 2026-05-21 — v1.1.0 — Join key is `offer_definition_id`, not the code string
+
+**Context.** A BSS `promotion` (money terms) must link to a loyalty
+construct. Candidates: the literal code string, or loyalty's
+`offer_definition_id`.
+
+**Decision.** Key the catalog `promotion` row by `offer_definition_id`. One
+promotion row per loyalty OfferDefinition; many codes/offers share it.
+
+**Alternatives.** Key by code — rejected: a targeted campaign mints many
+codes/offers that all share one OfferDefinition (and codeless targeting has
+no code at all), so per-code keying would either duplicate the discount onto
+every code or break entirely. loyalty's own model is many-codes→one-OD;
+matching it keeps the mapping 1:1 and honest.
+
+**Consequences.** Non-targeted code lookup costs one extra read
+(`promo_code.show` → OD → promotion) — accepted (DECISIONS below: loyalty
+untouched). Targeted assignment and discount terms both hang off the same OD
+key with no duplication.
+
+
+## 2026-05-21 — v1.1.0 — Discount duration lives on the subscription; activation = period 1; plan change ends it
+
+**Context.** Promos must support first-period-only, N periods, and perpetual.
+But `renew()` charges the snapshot on the subscription row and the renewal
+worker never re-reads the catalog (v0.7 doctrine). So duration cannot live in
+the catalog alone.
+
+**Decision.** The subscription carries `discount_type`, `discount_value`, and
+`discount_periods_remaining` (`-1` = perpetual). `price_amount` stays the full
+base; effective is computed at charge. Activation counts as period 1;
+`renew()` charges the discounted amount while the counter is > 0 and
+decrements it, then reverts to full. **A scheduled plan change clears the
+discount fields** — the new plan is a new price with no carried promo.
+
+**Alternatives.** "Activation separate, X renewals discounted" — rejected as
+less intuitive (X=3 would mean 4 cheap periods). Discount survives plan change
+— rejected for v1.1: a percent discount riding onto a different plan's price,
+or an absolute discount exceeding the new price, is surprising; revisit if
+demanded. Store effective on the row instead of recomputing — rejected:
+keeping base + terms makes the "reverts to $X" UX and audit trivial.
+
+**Consequences.** Mirrors the existing `pending_*` plan-change fields exactly
+— same pattern, no new machinery. The renewal worker stays untouched (it calls
+`service.renew()` and nothing else). The subscription TMF response must now
+expose discount fields for the portal — touches that contract + tests.
+
+
+## 2026-05-21 — v1.1.0 — Promo composes with the lowest-active-price snapshot
+
+**Context.** Catalog already supports windowed promo price rows via
+"lowest-active-price-wins". How does a promo code interact with that?
+
+**Decision.** Compose. The catalog's lowest-active price still wins and is
+snapshotted as the base; the promo discount then applies on top of that
+snapshot.
+
+**Alternatives.** Exclusive (a code suppresses windowed pricing) — rejected:
+more surprising to operators and customers, and harder to reason about than
+"the base is whatever you'd pay today, the code takes a cut of that."
+
+**Consequences.** Two discount mechanisms can stack (e.g. base $25, windowed
+$20 wins, 20%-off code → $16). Operators must be aware when running both at
+once; the preview endpoint shows the final effective price so there's no
+surprise at checkout.
+
+
+## 2026-05-21 — v1.1.0 — Claim the entitlement at activation, not at order create
+
+**Context.** loyalty's `revoke` restores inventory but does **not**
+un-consume a promo code — a claimed-then-revoked single-use code is
+permanently burned. The order lifecycle (acknowledged → SOM provisioning →
+activation charge) has several failure points after a code could be claimed.
+
+**Decision.** Validate + compute + snapshot the discount at `create_order`
+(read-only `promo_code.show` / `offer.list`), but **consume** the entitlement
+(`offer.claim` / `offer.advance_to_claimed`) only in
+`handle_service_order_completed`, immediately before the activation charge.
+On charge decline, `offer.revoke`. Derive the loyalty `Idempotency-Key` from
+the order id so a crash-retry can't double-claim.
+
+**Alternatives.** Claim at `create_order` (loyalty-idiomatic; it has
+`claim_ttl` + `reconcile.run` for abandoned claims) — rejected for UX: a
+provisioning hiccup would burn the customer's single-use code. Claim-at-
+activation shrinks the burn window to "payment declined," the one case where
+burning is defensible (the customer can't pay anyway).
+
+**Consequences.** A rare shared-code race (another order consumes the code in
+the create→activation window) is resolved by hard-failing the activation with
+`promo.claimed_elsewhere` rather than silently charging full price. COM owns
+the entire claim/redeem/revoke lifecycle; subscription needs no LoyaltyClient.
+
+
+## 2026-05-21 — v1.1.0 — Targeted promos are codeless assigned offers, not personalized codes
+
+**Context.** "Targeted" means an operator decides who gets an offer during a
+campaign. Two loyalty mechanisms could express this: (a) a
+`single_use_unique_per_customer` code pre-bound to one customer, or (b)
+`offer.issue` — assign an Offer directly to a named customer in `issued`
+state, no code. Verified in loyalty's code: `promo_code.register` does **not**
+accept a `customer_id` (binding happens only on first consume), and Campaign
+has **no** audience/recipient field — targeting lives purely at the Offer
+level via a per-customer `offer.issue` loop (no bulk tool).
+
+**Decision.** Targeted = codeless assigned offers via `offer.issue`. An
+operator picks recipients (manual list / CSV / segment / random-N for demo)
+and BSS loops `offer.issue` per customer. The offer auto-applies at order time
+(discovered via `offer.list`) and shows on the customer's dashboard. A BSS
+operator tool `bss promo assign` + a `seed_targeted_campaign.py` simulator
+perform the pairing (loyalty has no bulk path — the loop is the simulator).
+
+**Alternatives.** Pre-bound personalized codes (the "wrong customer is
+rejected" model) — rejected: loyalty's public `promo_code.register` can't set
+`customer_id`, so this would require modifying loyalty, violating the
+"integrate, don't modify" decision above. The codeless path also removes the
+code-distribution problem and gives a cleaner dashboard story.
+
+**Consequences.** Eligibility is enforced by **presence**, not rejection: a
+non-targeted customer simply has no offer issued to them, so no discount
+applies — there is no "wrong customer" error path. loyalty remains the hard
+gate (`advance_to_claimed`/`redeem` only work on the customer's own offer in
+the right state); BSS pre-checks via `offer.list` for clean UX. The campaign
+in loyalty stays an approval/grouping wrapper only — the pairing is BSS-driven
+per-customer issuance.
+
+
+## 2026-05-21 — v1.1.0 — The loyalty API token never leaves a BSS service process
+
+**Context.** The self-serve portal needs to show entitlements and accept promo
+codes. Should it call loyalty directly?
+
+**Decision.** No. Only BSS services (catalog, COM) hold a `LoyaltyClient` and
+the `BSS_LOYALTY_API_TOKEN`. The portal calls catalog (preview / entitlement
+reads) and COM (order) over the existing `bss-clients` surface; it never holds
+the loyalty token. Same posture as the OpenRouter key never leaving the
+orchestrator (v0.11–v0.12).
+
+**Alternatives.** Give the portal a loyalty token for direct reads — rejected:
+widens the blast radius of a portal compromise and breaks the "loyalty calls
+stay server-side" boundary. Route everything through the orchestrator —
+rejected: the portal's promo paths are direct writes/reads, not chat, and only
+chat goes through the orchestrator (v0.11 doctrine).
+
+**Consequences.** Two new thin catalog read endpoints (`/promo/preview`,
+`/promo/customer-offers`) back the portal UI. The loyalty token lives in
+exactly two BSS service configs. Rotation is per those services, not the
+portal.
