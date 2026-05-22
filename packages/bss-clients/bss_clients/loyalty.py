@@ -153,6 +153,20 @@ class LoyaltyClient(BSSClient):
             raise Timeout("GET /healthz timed out")
         return resp.status_code == 200
 
+    # ── customer registry (CRM syncs BSS customers into loyalty) ─────────
+
+    async def register_customer(
+        self, *, customer_id: str, active: bool = True, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        """``customer.register`` — mirror a BSS customer into loyalty's registry
+        so its customer-facing views/audit recognise the id. Idempotent on the
+        customer id (re-registering an existing customer is a safe replay)."""
+        return await self._call(
+            "customer.register",
+            {"id": customer_id, "active": active},
+            idempotency_key=idempotency_key or f"cust:{customer_id}",
+        )
+
     # ── offer definitions + promo codes (catalog: create saga) ──────────
 
     async def register_offer_definition(

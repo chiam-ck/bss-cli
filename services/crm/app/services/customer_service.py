@@ -37,12 +37,14 @@ class CustomerService:
         interaction_repo: InteractionRepository,
         subscription_client: SubscriptionClient | None = None,
         msisdn_repo: MsisdnRepository | None = None,
+        loyalty_client=None,
     ) -> None:
         self._session = session
         self._customer_repo = customer_repo
         self._interaction_repo = interaction_repo
         self._subscription_client = subscription_client
         self._msisdn_repo = msisdn_repo
+        self._loyalty_client = loyalty_client
 
     async def create_customer(
         self,
@@ -126,6 +128,20 @@ class CustomerService:
         )
 
         await self._session.commit()
+
+        # v1.1.1 — mirror the new customer into loyalty's registry so its
+        # customer-facing views recognise the id. Best-effort: a loyalty hiccup
+        # must never fail customer creation (the backfill command reconciles
+        # drift). Idempotent on the customer id.
+        if self._loyalty_client is not None:
+            try:
+                await self._loyalty_client.register_customer(customer_id=customer_id)
+            except Exception:  # noqa: BLE001 — sync is non-critical to CRM
+                log.warning(
+                    "crm.customer.loyalty_register_failed",
+                    customer_id=customer_id,
+                    exc_info=True,
+                )
         return customer
 
     async def get_customer(self, customer_id: str) -> Customer | None:

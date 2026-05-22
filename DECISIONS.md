@@ -3324,3 +3324,22 @@ returns the targeted promo's code. COM's consume simplifies to a single
 claim-by-code path. Dashboard "your offer" reads the eligibility join, not loyalty
 `offer.list`. loyalty `offer.issue`/`advance_to_claimed` remain in the client
 (valid ops) but are no longer wired by BSS.
+
+## 2026-05-22 — v1.1.1 — CRM mirrors customers into loyalty's registry
+
+**Context.** loyalty accepts a `customer_id` string on claim/issue without the
+customer being registered, so offers worked — but loyalty's customer-facing
+screens (which list registered customers) never showed BSS customers, and an
+operator browsing loyalty couldn't find them.
+
+**Decision.** BSS eagerly registers customers in loyalty via `customer.register`:
+CRM calls it best-effort on `customer.create` (a loyalty hiccup never fails CRM
+creation), and `backfill_loyalty_customers.py` reconciles pre-existing customers
++ create-time drift. This makes CRM a third holder of a `LoyaltyClient` /
+`BSS_LOYALTY_API_TOKEN` (alongside catalog + COM); the token still never leaves a
+BSS process. loyalty ships unmodified (`customer.register` is an existing tool).
+
+**Alternatives.** Lazy-register at first promo touch — rejected: the operator
+expects every customer visible in loyalty, not just promo users. Event-driven
+sync via MQ — rejected for v1.1.1: more moving parts than a best-effort call +
+a backfill, for no extra guarantee (the backfill is the reconciler either way).

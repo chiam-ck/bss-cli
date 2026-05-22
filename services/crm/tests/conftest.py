@@ -113,6 +113,11 @@ async def client(settings: Settings, db_engine, db_session: AsyncSession):
     mock_sub_client.list_for_customer = AsyncMock(return_value=[])
     app.state.subscription_client = mock_sub_client
 
+    # v1.1.1 — loyalty client for customer-registry sync (best-effort).
+    mock_loyalty = AsyncMock()
+    mock_loyalty.register_customer = AsyncMock(return_value={"id": "ok"})
+    app.state.loyalty_client = mock_loyalty
+
     transport = ASGITransport(app=app)
     # v0.3 — every request needs the API token; default header here so
     # existing test bodies stay unchanged.

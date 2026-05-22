@@ -5,7 +5,7 @@ import structlog
 from fastapi import Depends, FastAPI, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from bss_clients import TokenAuthProvider
+from bss_clients import BearerAuthProvider, LoyaltyClient, TokenAuthProvider
 from bss_clients.subscription import SubscriptionClient
 from bss_middleware import api_token, validate_api_token_present
 from bss_telemetry import configure_telemetry
@@ -42,9 +42,20 @@ async def lifespan(app: FastAPI):
         base_url=settings.subscription_url,
         auth_provider=TokenAuthProvider(api_token()),
     )
+    # v1.1.1 — loyalty client for customer-registry sync. Fail fast if unset.
+    if not settings.loyalty_api_token:
+        raise RuntimeError(
+            "BSS_LOYALTY_API_TOKEN is unset — CRM mirrors customers into loyalty "
+            "(v1.1.1). Generate with: openssl rand -hex 32"
+        )
+    app.state.loyalty_client = LoyaltyClient(
+        base_url=settings.loyalty_base_url,
+        auth_provider=BearerAuthProvider(settings.loyalty_api_token),
+    )
     log.info("service.starting", service=settings.service_name)
     yield
     await app.state.subscription_client.close()
+    await app.state.loyalty_client.close()
     log.info("service.stopping", service=settings.service_name)
     await engine.dispose()
 
@@ -111,6 +122,7 @@ async def get_customer_service(
         interaction_repo=InteractionRepository(session),
         subscription_client=request.app.state.subscription_client,
         msisdn_repo=MsisdnRepository(session),
+        loyalty_client=request.app.state.loyalty_client,
     )
 
 
