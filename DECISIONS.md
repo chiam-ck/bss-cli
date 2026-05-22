@@ -3252,3 +3252,37 @@ chat goes through the orchestrator (v0.11 doctrine).
 `/promo/customer-offers`) back the portal UI. The loyalty token lives in
 exactly two BSS service configs. Rotation is per those services, not the
 portal.
+
+## 2026-05-22 — v1.1.0 — Implementation notes: contract corrections found while building
+
+**Context.** Building v1.1 against the live `loyalty-cli :8080` surfaced several
+gaps between the Phase 0 plan and loyalty's actual contract. Recorded here so the
+runbook + future work match shipped behaviour.
+
+**Corrections.**
+
+1. **Tool names use underscores.** loyalty's tools are `offer_definition.register`
+   (not `offer-definition.register`). Fixed in the plan + `LoyaltyClient`.
+2. **Revoke reason enum.** loyalty's `RevokeReason` has `order_cancelled`, not the
+   plan's `ORDER_FAILED`. COM maps an activation decline to `order_cancelled`.
+3. **422 refusal envelope is FastAPI-wrapped.** loyalty returns
+   `{"detail": {"refused": true, "code", "detail"}}`; `LoyaltyClient` unwraps
+   `detail` before translating to `PolicyViolationFromServer`.
+4. **`discount_periods_total` mapping.** Catalog computes the subscription
+   counter's start value from `duration_kind`: single→1, multi→N, perpetual→−1.
+5. **Idempotency keys must be per-operation, not per-saga.** *(Caught only by the
+   live smoke test — unit tests with a fake loyalty client passed.)* loyalty's
+   idempotency cache dedupes on `(actor_id, idempotency_key)` **without** the tool
+   name. The create saga reusing `promotion_id` for both `offer_definition.register`
+   and `promo_code.register` made the second call replay the first's cached result —
+   the code was silently never registered. Fix: distinct keys per step
+   (`{promotion_id}:od` / `{promotion_id}:code`), and likewise in COM's consume
+   lifecycle (`{order_id}:claim` / `:advance` / `:redeem` / `:revoke`). Regression
+   guards assert key-distinctness in both services.
+6. **Catalog now depends on `bss-clients`.** It was read-mostly and never held a
+   client before v1.1; adding `LoyaltyClient` required the workspace dep in
+   `services/catalog/pyproject.toml` (the container failed to import otherwise).
+
+**Lesson.** A fake that doesn't model the provider's idempotency semantics hides
+exactly this class of bug. The live smoke test (`bss promo create` → `/promo/validate`)
+is the gate that caught it; pytest with `FakeLoyalty` did not.
