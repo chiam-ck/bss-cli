@@ -24,6 +24,7 @@ async def create_order(
         msisdn_preference=body.msisdn_preference,
         notes=body.notes,
         discount_code=body.discount_code,
+        skip_assigned_offer=body.skip_assigned_offer,
     )
     return to_product_order_response(order)
 

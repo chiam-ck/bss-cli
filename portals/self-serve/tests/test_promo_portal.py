@@ -172,6 +172,45 @@ async def test_dashboard_shows_assigned_offer(seed_db, fake_clients):
 
 
 @pytest.mark.asyncio
+async def test_signup_form_shows_assigned_offer_preapplied(seed_db, fake_clients):
+    # a linked customer with an assigned offer sees it pre-applied + a remove toggle
+    async with seed_db() as db:
+        sess, _ = await create_test_session(
+            db, email="ada@example.sg", customer_id="CUST-042", verified=True
+        )
+        await db.commit()
+        sid = sess.id
+    fake_clients.catalog.assigned_offer = {
+        "valid": True, "label": "20% off", "base": "25.00", "effective": "20.00",
+    }
+    with patch("bss_self_serve.routes.signup.get_clients", return_value=fake_clients):
+        with TestClient(create_app(Settings())) as c:
+            c.cookies.set(PORTAL_SESSION_COOKIE, sid)
+            body = c.get("/signup/PLAN_M", params={"msisdn": "91234567"}).text
+    assert "Apply your" in body
+    assert "20% off" in body
+    assert 'name="apply_offer"' in body  # the remove/keep toggle
+    assert 'name="offer_shown"' in body  # the hidden marker for opt-out detection
+    assert "checked" in body  # pre-applied by default
+
+
+@pytest.mark.asyncio
+async def test_signup_form_no_offer_no_block(seed_db, fake_clients):
+    # a new customer (no linked id) sees no offer block
+    async with seed_db() as db:
+        sess, _ = await create_test_session(
+            db, email="new@example.sg", customer_id=None, verified=True
+        )
+        await db.commit()
+        sid = sess.id
+    with patch("bss_self_serve.routes.signup.get_clients", return_value=fake_clients):
+        with TestClient(create_app(Settings())) as c:
+            c.cookies.set(PORTAL_SESSION_COOKIE, sid)
+            body = c.get("/signup/PLAN_M", params={"msisdn": "91234567"}).text
+    assert 'name="offer_shown"' not in body
+
+
+@pytest.mark.asyncio
 async def test_promo_preview_valid_renders_discounted_price(seed_db, fake_clients):
     async with seed_db() as db:
         sess, _ = await create_test_session(

@@ -76,6 +76,9 @@ class FakeCatalog:
     customer_offers: dict[str, Any] = field(
         default_factory=lambda: {"offers": []}
     )
+    assigned_offer: dict[str, Any] = field(
+        default_factory=lambda: {"valid": False, "reason": "no_applicable_offer"}
+    )
 
     async def list_offerings(self) -> list[dict[str, Any]]:
         return list(self.offerings)
@@ -94,6 +97,11 @@ class FakeCatalog:
         self, *, customer_id: str, state: str | None = None
     ) -> dict[str, Any]:
         return dict(self.customer_offers)
+
+    async def resolve_assigned_offer(
+        self, *, customer_id: str, offering: str
+    ) -> dict[str, Any]:
+        return dict(self.assigned_offer)
 
 
 @dataclass
@@ -263,6 +271,7 @@ class FakeCOM:
         msisdn_preference: str | None = None,
         notes: str | None = None,
         discount_code: str | None = None,
+        skip_assigned_offer: bool = False,
     ) -> dict[str, Any]:
         if self.next_error is not None:
             err = self.next_error
@@ -273,6 +282,7 @@ class FakeCOM:
             "offering_id": offering_id,
             "msisdn_preference": msisdn_preference,
             "discount_code": discount_code,
+            "skip_assigned_offer": skip_assigned_offer,
         }
         self.create_calls.append(record)
         new_id = f"ORD-{len(self.create_calls):04d}"

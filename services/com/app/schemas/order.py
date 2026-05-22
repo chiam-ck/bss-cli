@@ -20,6 +20,8 @@ class CreateOrderRequest(BaseModel):
     notes: str | None = None
     # v1.1 — optional typed promo code. Absent → assigned-offer discovery still runs.
     discount_code: str | None = None
+    # v1.1 — opt out of the auto-applied assigned offer (customer unticked it).
+    skip_assigned_offer: bool = False
 
 
 class OrderItemResponse(BaseModel):

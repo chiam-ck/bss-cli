@@ -84,6 +84,24 @@
   </fieldset>
   {% endif %}
 
+  {% if assigned_offer %}
+    {# v1.1 — the customer has a targeted offer; pre-apply it (cheapest, resolved
+       server-side) with a remove toggle. Untick to pay full price; typing a
+       different code below overrides it. #}
+    <fieldset class="offer-applied">
+      <legend>Your offer</legend>
+      <input type="hidden" name="offer_shown" value="1" />
+      <label class="offer-toggle">
+        <input type="checkbox" name="apply_offer" value="1" checked />
+        🎁 Apply your <strong>{{ assigned_offer.label }}</strong> offer —
+        <span class="promo-was">SGD {{ assigned_offer.base }}/mo</span> →
+        <strong class="promo-now">SGD {{ assigned_offer.effective }}/mo</strong>
+      </label>
+      <p class="form-hint">Auto-applied. Untick to pay full price, or enter a
+        different code below (a typed code overrides your offer).</p>
+    </fieldset>
+  {% endif %}
+
   <fieldset>
     <legend>Promo code <span class="form-optional">(optional)</span></legend>
     <label>Have a promo code?

@@ -72,6 +72,9 @@ class SignupSession:
     # an invalid code never blocks signup (catalog validates, order proceeds at
     # full price).
     promo_code: str = ""
+    # v1.1 — customer unticked their auto-applied assigned offer in the funnel.
+    # Passed to com.create_order(skip_assigned_offer=) at the order step.
+    skip_assigned_offer: bool = False
     # v0.8 — portal-auth identity that owns this signup. Pinned at the
     # POST /signup step from request.state.identity (the verified-email
     # session). The POST handler calls ``link_to_customer(identity_id,
@@ -139,6 +142,7 @@ class SessionStore:
         card_pan: str,
         identity_id: str | None = None,
         promo_code: str = "",
+        skip_assigned_offer: bool = False,
     ) -> SignupSession:
         session_id = uuid.uuid4().hex
         session = SignupSession(
@@ -152,6 +156,7 @@ class SessionStore:
             card_pan_last4=card_pan[-4:],
             identity_id=identity_id,
             promo_code=promo_code.strip(),
+            skip_assigned_offer=skip_assigned_offer,
         )
         async with self._lock:
             self._prune_locked()

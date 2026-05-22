@@ -57,6 +57,7 @@ class OrderService:
         msisdn_preference: str | None = None,
         notes: str | None = None,
         discount_code: str | None = None,
+        skip_assigned_offer: bool = False,
     ) -> ProductOrder:
         """Create a new order (acknowledged) and stamp the price snapshot.
 
@@ -80,7 +81,10 @@ class OrderService:
         price_offering_price_id = active_price["id"]
 
         discount = await self._resolve_discount(
-            customer_id=customer_id, offering_id=offering_id, discount_code=discount_code
+            customer_id=customer_id,
+            offering_id=offering_id,
+            discount_code=discount_code,
+            skip_assigned_offer=skip_assigned_offer,
         )
 
         order_id = await self._repo.next_order_id()
@@ -140,14 +144,21 @@ class OrderService:
         return await self._repo.get(order_id)
 
     async def _resolve_discount(
-        self, *, customer_id: str, offering_id: str, discount_code: str | None
+        self,
+        *,
+        customer_id: str,
+        offering_id: str,
+        discount_code: str | None,
+        skip_assigned_offer: bool = False,
     ) -> dict:
         """Resolve a promo to stamp as INTENT on the order item.
 
-        Returns the discount fields, or ``{}`` for no/invalid promo. Catalog
-        owns all promo logic (loyalty link, applicability, effective price); COM
-        just records the terms. A catalog/loyalty hiccup must never block the
-        order, so transport errors degrade to "no discount" with a warning.
+        Precedence: a typed ``discount_code`` always wins. Otherwise the
+        customer's cheapest applicable *assigned* offer auto-applies — unless
+        ``skip_assigned_offer`` is set (the customer opted out in the funnel).
+        Returns the discount fields, or ``{}`` for no/invalid/opted-out promo.
+        Catalog owns all promo logic; a catalog/loyalty hiccup degrades to "no
+        discount" (never blocks the order).
         """
         try:
             if discount_code:
@@ -162,6 +173,8 @@ class OrderService:
                     )
                     return {}
                 offer_id = None  # a typed code's offer is created at claim
+            elif skip_assigned_offer:
+                return {}  # customer opted out of their auto-applied offer
             else:
                 res = await self._catalog.resolve_assigned_offer(
                     customer_id=customer_id, offering=offering_id

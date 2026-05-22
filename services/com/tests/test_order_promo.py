@@ -82,6 +82,25 @@ class TestTargetedAssignedOffer:
         mock_clients["catalog"].validate_promo.assert_not_awaited()
 
 
+class TestOptOutOfAssignedOffer:
+    async def test_skip_assigned_offer_ignores_auto_apply(self, client, mock_clients):
+        # customer HAS an applicable assigned offer...
+        mock_clients["catalog"].resolve_assigned_offer = AsyncMock(
+            return_value={
+                "valid": True, "offerId": "OFF-1", "offerDefinitionId": "OD_VIP",
+                "discountType": "percent", "discountValue": "15",
+                "discountPeriodsTotal": 1, "base": "25.00", "effective": "21.25",
+            }
+        )
+        # ...but they opted out → no discount stamped, and discovery isn't consulted
+        r = await _create(client, skipAssignedOffer=True)
+        assert r.status_code == 201
+        item = r.json()["items"][0]
+        assert item["discountType"] is None
+        assert item["promoOfferId"] is None
+        mock_clients["catalog"].resolve_assigned_offer.assert_not_awaited()
+
+
 class TestPromoNeverBlocksOrder:
     async def test_catalog_error_degrades_to_no_discount(self, client, mock_clients):
         from bss_clients import ServerError

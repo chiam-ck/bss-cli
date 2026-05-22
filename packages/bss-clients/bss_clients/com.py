@@ -33,11 +33,13 @@ class COMClient(BSSClient):
         msisdn_preference: str | None = None,
         notes: str | None = None,
         discount_code: str | None = None,
+        skip_assigned_offer: bool = False,
     ) -> dict[str, Any]:
         """POST /tmf-api/productOrderingManagement/v4/productOrder.
 
         ``discount_code`` (v1.1) is an optional typed promo code. When omitted,
-        COM still runs assigned-offer discovery for the customer.
+        COM auto-applies the customer's cheapest assigned offer — unless
+        ``skip_assigned_offer`` is set (the customer opted out).
         """
         body: dict[str, Any] = {
             "customerId": customer_id,
@@ -49,6 +51,8 @@ class COMClient(BSSClient):
             body["notes"] = notes
         if discount_code is not None:
             body["discountCode"] = discount_code
+        if skip_assigned_offer:
+            body["skipAssignedOffer"] = True
         resp = await self._request(
             "POST",
             "/tmf-api/productOrderingManagement/v4/productOrder",
