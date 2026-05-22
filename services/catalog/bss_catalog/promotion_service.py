@@ -199,6 +199,25 @@ class PromotionService:
             }
         }
 
+    async def _consumed_offer_definitions(self, customer_id: str) -> set[str]:
+        """OfferDefinition ids the customer has already claimed/redeemed in loyalty.
+
+        Used to drop already-used promos from the dashboard + auto-apply: a
+        targeted code is single-use-per-customer by default, so once consumed it
+        must not show as available again. (For a multi_use targeted promo this is
+        conservative — it would hide after first use; targeted promos are
+        single-use by default and BSS doesn't store the kind, so we accept that.)
+        One loyalty call per customer.
+        """
+        if self._loyalty is None:
+            return set()
+        resp = await self._loyalty.list_offers(customer_id=customer_id, limit=200)
+        return {
+            row.get("offer_definition_id")
+            for row in resp.get("rows", [])
+            if row.get("state") in {"claimed", "redeemed"} and row.get("offer_definition_id")
+        }
+
     async def resolve_eligible_promo(self, *, customer_id: str, offering_id: str) -> dict:
         """Auto-apply path (v1.1.1): the best *targeted* promo this customer is
         eligible for and that applies to ``offering_id``.
@@ -209,8 +228,11 @@ class PromotionService:
         """
         if self._loyalty is None:
             return {"valid": False, "reason": "loyalty_not_configured"}
+        consumed = await self._consumed_offer_definitions(customer_id)
         best: dict | None = None
         for promo in await self._repo.list_eligible_promotions(customer_id):
+            if promo.offer_definition_id in consumed:
+                continue  # already used this single-use targeted promo
             composed = await self._compose(promo, offering_id)
             if composed.get("reason"):
                 continue
@@ -255,8 +277,11 @@ class PromotionService:
         """
         if self._loyalty is None:
             return []
+        consumed = await self._consumed_offer_definitions(customer_id)
         out: list[dict] = []
         for promo in await self._repo.list_eligible_promotions(customer_id):
+            if promo.offer_definition_id in consumed:
+                continue  # already used → don't show as available
             out.append(
                 {
                     "promotion_id": promo.id,

@@ -24,10 +24,15 @@ The discount **composes** with the catalog's lowest-active price (unlike v0.7
 windowed prices, which don't stack): the base snapshot is selected first, then
 the promo discount applies on top.
 
-## Prerequisites — env
+## Prerequisites — env (loyalty is OPTIONAL)
 
-The catalog and COM services each hold a loyalty client; the token never leaves
-those processes. Both fail fast at boot if it's missing.
+> **loyalty-cli is not a prerequisite for BSS-CLI.** It's an *adapter* you enable
+> when you want promotions. With no loyalty configured, BSS-CLI runs completely
+> normally — signup, orders, activation, renewal, the portal — the promo
+> subsystem is simply off. See DECISIONS 2026-05-22 (graceful degradation).
+
+To enable promotions, set (the catalog, COM, and CRM services each build a
+loyalty client; the token never leaves those processes):
 
 ```bash
 BSS_LOYALTY_BASE_URL=http://<loyalty-host>:8080   # loyalty-cli HTTP root
@@ -36,6 +41,13 @@ BSS_LOYALTY_API_TOKEN=<loyalty-cli's LOYALTY_API_TOKEN>
 
 In the bundled compose these flow to every service via `env_file: .env`. Verify
 loyalty is reachable: `curl -s $BSS_LOYALTY_BASE_URL/healthz` → `200`.
+
+**When `BSS_LOYALTY_API_TOKEN` is unset:** catalog/COM/CRM still boot (a
+`*.loyalty.disabled` warning is logged, no crash). `bss promo create` is rejected
+(`catalog.promotion.loyalty_not_configured`); code validation returns "not
+configured" so **orders proceed at full price**; the dashboard shows no offers;
+customers are not mirrored into loyalty. Set the token and restart those three
+services to turn promotions on.
 
 ## Non-targeted: a typed code
 

@@ -1582,7 +1582,7 @@ bss promo create --id PROMO_VIP --type percent --value 20 --duration single --au
 bss promo assign --promo PROMO_VIP --customers CUST-001,CUST-007   # eligibility list
 ```
 
-Consumed at activation (a provisioning failure never burns a code; a payment decline revokes it). Renewal decrements a per-subscription counter; a plan change ends the promo. Operator-only — customers type a code, never issue one. **Full runbook: [`docs/runbooks/promo-codes.md`](runbooks/promo-codes.md)** (env, duration semantics, lifecycle, troubleshooting).
+Consumed at activation (a provisioning failure never burns a code; a payment decline revokes it). Renewal decrements a per-subscription counter; a plan change ends the promo. Operator-only — customers type a code, never issue one. **loyalty-cli is an optional adapter** — with `BSS_LOYALTY_API_TOKEN` unset, catalog/COM/CRM still boot and everything works minus promotions (orders proceed at full price). **Full runbook: [`docs/runbooks/promo-codes.md`](runbooks/promo-codes.md)** (env, optional behavior, duration semantics, lifecycle, troubleshooting).
 
 ### 8.3 Migrate customers to a new price
 

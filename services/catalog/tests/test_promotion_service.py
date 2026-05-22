@@ -499,6 +499,25 @@ class TestResolveEligiblePromo:
         assert r["valid"] is False
         assert r["reason"] == "no_eligible_promo"
 
+    async def test_already_used_promo_excluded(self, db_session: AsyncSession):
+        # eligible, but the customer already redeemed it → not offered again
+        pid = _pid("PROMO_USED")
+        loyalty = FakeLoyalty()
+        try:
+            svc = _svc(db_session, loyalty)
+            await _create_targeted(svc, pid)
+            await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-1"])
+            # customer has a redeemed offer for this promo's OD
+            loyalty.list_rows = [
+                {"offer_id": "OFF-X", "state": "redeemed", "offer_definition_id": f"OD_{pid}"}
+            ]
+            r = await svc.resolve_eligible_promo(customer_id="CUST-1", offering_id="PLAN_M")
+            assert r["valid"] is False  # already used → not auto-applied
+            offers = await svc.list_customer_offers(customer_id="CUST-1")
+            assert offers == []  # and not shown on the dashboard
+        finally:
+            await _cleanup(db_session, pid)
+
 
 class TestListCustomerOffers:
     async def test_lists_eligible_promotions(self, db_session: AsyncSession):

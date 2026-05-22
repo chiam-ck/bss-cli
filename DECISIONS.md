@@ -3343,3 +3343,29 @@ BSS process. loyalty ships unmodified (`customer.register` is an existing tool).
 expects every customer visible in loyalty, not just promo users. Event-driven
 sync via MQ — rejected for v1.1.1: more moving parts than a best-effort call +
 a backfill, for no extra guarantee (the backfill is the reconciler either way).
+
+## 2026-05-22 — v1.1.1 — loyalty-cli is an optional adapter, not a prerequisite
+
+**Context.** v1.1 wired catalog/COM/CRM to fail fast at boot when
+`BSS_LOYALTY_API_TOKEN` was unset. Ops review: promotions are a value-add, not a
+core requirement — BSS-CLI must run without loyalty configured.
+
+**Decision.** loyalty-cli is an **optional adapter**. When the token is unset, the
+three services that hold a `LoyaltyClient` (catalog, COM, CRM) boot with the
+client set to `None` and log a `*.loyalty.disabled` warning — no crash. The promo
+subsystem degrades cleanly:
+- `bss promo create` / `assign` → rejected with
+  `catalog.promotion.loyalty_not_configured`.
+- code validation / preview / eligibility-resolve → return invalid/empty, so
+  **orders and signup proceed at full price** (never blocked).
+- CRM customer→loyalty sync is skipped.
+- COM consume already no-ops on a None client.
+
+This deliberately overrides the provider-adapter doctrine ("never silently fall
+back; raise on missing prod creds") — that rule is for *mandatory* providers
+(Stripe, Didit). loyalty is genuinely optional, so graceful degradation is
+correct here. SOM and the portals never hold a loyalty client.
+
+**Consequences.** A BSS-CLI deployment with no loyalty is fully functional minus
+promotions. Turning promotions on is purely: set the two env vars + restart
+catalog/COM/CRM. No migration, no code change.
