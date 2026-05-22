@@ -19,7 +19,7 @@ from datetime import datetime
 from decimal import Decimal
 
 import structlog
-from bss_clients import LoyaltyClient, NotFound, PolicyViolationFromServer
+from bss_clients import ClientError, LoyaltyClient, NotFound, PolicyViolationFromServer
 from bss_clock import now as clock_now
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -211,7 +211,15 @@ class PromotionService:
         """
         if self._loyalty is None:
             return set()
-        resp = await self._loyalty.list_offers(customer_id=customer_id, limit=200)
+        try:
+            # loyalty caps offer.list at limit=100; a customer holding >100
+            # offers is not a real scenario for this gate.
+            resp = await self._loyalty.list_offers(customer_id=customer_id, limit=100)
+        except ClientError:
+            # A loyalty hiccup must not 500 the dashboard — degrade to "no
+            # known usage" (shows eligible promos; loyalty still gates at claim).
+            log.warning("catalog.promotion.consumed_check_failed", customer_id=customer_id)
+            return set()
         return {
             row.get("offer_definition_id")
             for row in resp.get("rows", [])
