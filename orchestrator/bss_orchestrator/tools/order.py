@@ -15,6 +15,7 @@ async def order_create(
     offering_id: ProductOfferingId,
     msisdn_preference: Msisdn | None = None,
     notes: str | None = None,
+    discount_code: str | None = None,
 ) -> dict[str, Any]:
     """Create AND submit a commercial order. The customer must have an active
     card-on-file (``payment.add_card``) and a valid KYC attestation before
@@ -28,6 +29,10 @@ async def order_create(
         msisdn_preference: Optional preferred MSISDN. If unset or unavailable,
             SOM auto-picks one from the pool.
         notes: Optional free text stored on the order.
+        discount_code: Optional promo code (v1.1). Validated + composed by
+            catalog; an invalid code never blocks the order (it just proceeds
+            at full price). When omitted, any offer pre-assigned to the
+            customer auto-applies. Consumed at activation, not at create.
 
     Returns:
         Order dict ``{id, customerId, items, state, orderDate}``. Expect
@@ -48,6 +53,7 @@ async def order_create(
         offering_id=offering_id,
         msisdn_preference=msisdn_preference,
         notes=notes,
+        discount_code=discount_code,
     )
     return await c.com.submit_order(order["id"])
 

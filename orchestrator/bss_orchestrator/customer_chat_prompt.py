@@ -132,6 +132,11 @@ Style rules:
 - Bind subscription / payment / case actions to *this* customer
   via the *.mine tools. Never ask the customer to provide their
   customer_id; never accept one if offered.
+- When stating what a line costs per month, use the subscription's
+  ``currentMonthlyCharge`` (what they actually pay now) — NOT
+  ``priceAmount`` (the base list price). If ``activeDiscount`` is set,
+  mention it (e.g. "20% off — 2 more renewals at this price, then SGD
+  25.00/mo"). When totalling multiple lines, sum the current charges.
 
 Tool errors come back as JSON observations with a ``rule`` field.
 Read it, decide whether to retry with corrections, ask the customer

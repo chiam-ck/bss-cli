@@ -5,8 +5,10 @@ from contextlib import asynccontextmanager
 
 import structlog
 from bss_clients import (
+    BearerAuthProvider,
     CatalogClient,
     CRMClient,
+    LoyaltyClient,
     NoAuthProvider,
     PaymentClient,
     SOMClient,
@@ -57,12 +59,24 @@ async def lifespan(app: FastAPI):
         base_url=settings.subscription_url,
         auth_provider=TokenAuthProvider(api_token()),
     )
+    # v1.1 — COM's own loyalty client (consume lifecycle). OPTIONAL: when the
+    # token is unset, loyalty is OFF and the order/activation flow runs normally
+    # without promos (no discount stamped → nothing to claim). Never blocks COM.
+    if settings.loyalty_api_token:
+        loyalty_client = LoyaltyClient(
+            base_url=settings.loyalty_base_url,
+            auth_provider=BearerAuthProvider(settings.loyalty_api_token),
+        )
+    else:
+        loyalty_client = None
+        log.warning("com.loyalty.disabled", reason="BSS_LOYALTY_API_TOKEN unset")
 
     app.state.crm_client = crm_client
     app.state.catalog_client = catalog_client
     app.state.payment_client = payment_client
     app.state.som_client = som_client
     app.state.subscription_client = subscription_client
+    app.state.loyalty_client = loyalty_client
 
     # Set up MQ consumer (non-blocking — logs warning if MQ not configured)
     try:
@@ -86,6 +100,8 @@ async def lifespan(app: FastAPI):
     await payment_client.close()
     await som_client.close()
     await subscription_client.close()
+    if loyalty_client is not None:
+        await loyalty_client.close()
     await engine.dispose()
 
 
@@ -107,5 +123,6 @@ async def get_order_service(
         payment_client=request.app.state.payment_client,
         som_client=request.app.state.som_client,
         subscription_client=request.app.state.subscription_client,
+        loyalty_client=request.app.state.loyalty_client,
         exchange=request.app.state.mq_exchange,
     )

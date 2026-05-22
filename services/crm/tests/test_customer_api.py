@@ -24,6 +24,10 @@ class TestCreateCustomer:
         assert body["@type"] == "Customer"
         assert "id" in body
         assert body["id"].startswith("CUST-")
+        # v1.1.1 — the new customer is mirrored into loyalty's registry
+        loyalty = client._transport.app.state.loyalty_client  # type: ignore[attr-defined]
+        loyalty.register_customer.assert_awaited_once()
+        assert loyalty.register_customer.await_args.kwargs["customer_id"] == body["id"]
 
     async def test_create_customer_no_contact_medium(self, client: AsyncClient):
         r = await client.post(

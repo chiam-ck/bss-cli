@@ -62,6 +62,26 @@ class TokenAuthProvider:
         return dict(self._headers)
 
 
+class BearerAuthProvider:
+    """v1.1 — ``Authorization: Bearer <token>`` for external services.
+
+    Used by ``LoyaltyClient`` to authenticate against samurai-bot/loyalty-cli,
+    whose HTTP surface expects a bearer token (not BSS's ``X-BSS-API-Token``).
+    Construct with the value of ``BSS_LOYALTY_API_TOKEN`` (read from env in
+    the caller's config layer; the token never leaves the BSS process that
+    holds it). Empty token raises immediately — same fail-fast posture as
+    ``TokenAuthProvider``.
+    """
+
+    def __init__(self, token: str) -> None:
+        if not token:
+            raise ValueError("BearerAuthProvider requires a non-empty token")
+        self._headers = {"Authorization": f"Bearer {token}"}
+
+    async def get_headers(self) -> dict[str, str]:
+        return dict(self._headers)
+
+
 class NamedTokenAuthProvider:
     """v0.9 — outbound auth provider for an external-facing surface.
 

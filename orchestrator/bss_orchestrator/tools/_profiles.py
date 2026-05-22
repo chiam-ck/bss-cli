@@ -186,6 +186,10 @@ TOOL_PROFILES: dict[str, set[str]] = {
         "catalog.add_offering",
         "catalog.add_price",
         "catalog.window_offering",
+        # Promotions (v1.1) — operator-only by doctrine; never customer_self_serve.
+        "promo.create",
+        "promo.assign",
+        "promo.show",
         # Subscription writes
         "subscription.terminate",
         "subscription.schedule_plan_change",

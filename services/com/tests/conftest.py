@@ -13,6 +13,7 @@ from app.main import create_app
 from bss_clients import (
     CatalogClient,
     CRMClient,
+    LoyaltyClient,
     PaymentClient,
     SOMClient,
     SubscriptionClient,
@@ -100,6 +101,12 @@ def _mock_catalog() -> AsyncMock:
             "taxIncludedAmount": {"value": "25.00", "unit": "SGD"},
         },
     })
+    # v1.1 — default to "no promo" so create_order's discount discovery is a
+    # no-op for the existing (non-promo) tests; promo tests override these.
+    mock.validate_promo = AsyncMock(return_value={"valid": False, "reason": "unknown_code"})
+    mock.resolve_eligible_promo = AsyncMock(
+        return_value={"valid": False, "reason": "no_eligible_promo"}
+    )
     mock.close = AsyncMock()
     return mock
 
@@ -135,6 +142,18 @@ def _mock_subscription() -> AsyncMock:
     return mock
 
 
+def _mock_loyalty() -> AsyncMock:
+    # v1.1 — COM's consume-lifecycle client. claim returns a synthetic offer id;
+    # advance/redeem/revoke are no-ops. Non-promo tests never reach these.
+    mock = AsyncMock(spec=LoyaltyClient)
+    mock.claim_offer = AsyncMock(return_value={"offer_id": "OFF-CLAIMED-1", "state": "claimed"})
+    mock.advance_offer_to_claimed = AsyncMock(return_value={"state": "claimed"})
+    mock.redeem_offer = AsyncMock(return_value={"state": "redeemed"})
+    mock.revoke_offer = AsyncMock(return_value={"state": "revoked"})
+    mock.close = AsyncMock()
+    return mock
+
+
 @pytest_asyncio.fixture
 async def client(settings: Settings, db_engine, db_session: AsyncSession):
     app = create_app(settings)
@@ -146,6 +165,7 @@ async def client(settings: Settings, db_engine, db_session: AsyncSession):
     app.state.payment_client = _mock_payment()
     app.state.som_client = _mock_som()
     app.state.subscription_client = _mock_subscription()
+    app.state.loyalty_client = _mock_loyalty()
 
     class _FakeSessionFactory:
         def __call__(self):
@@ -179,4 +199,5 @@ async def mock_clients(client):
         "payment": app.state.payment_client,
         "som": app.state.som_client,
         "subscription": app.state.subscription_client,
+        "loyalty": app.state.loyalty_client,
     }

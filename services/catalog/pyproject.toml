@@ -8,6 +8,7 @@ dependencies = [
     "structlog>=24.4",
     "pydantic-settings>=2.0",
     "bss-models",
+    "bss-clients",
     "bss-telemetry",
     "bss-middleware",
     "bss-clock",
@@ -31,6 +32,7 @@ packages = ["bss_catalog"]
 
 [tool.uv.sources]
 bss-models = { workspace = true }
+bss-clients = { workspace = true }
 bss-telemetry = { workspace = true }
 bss-middleware = { workspace = true }
 bss-clock = { workspace = true }

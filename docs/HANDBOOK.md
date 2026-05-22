@@ -1568,6 +1568,22 @@ bss admin catalog show --at 2026-02-15T00:00:00Z
 
 **Anti-pattern:** UPDATE-ing the existing price row to the discount and reverting later. That breaks the snapshot for any subscriber who ordered between your update and revert.
 
+#### Pattern C — promo codes (v1.1)
+
+A third mechanism, distinct from A/B: **loyalty-cli entitlements**, for typed codes and targeted offers. The discount *composes* on top of the lowest-active price (it stacks, unlike windowed prices).
+
+```bash
+# Non-targeted typed code (customer enters SUMMER25 at checkout):
+bss promo create --id PROMO_SUMMER25 --type percent --value 20 \
+    --duration multi --periods 3 --code SUMMER25 --code-kind multi_use
+
+# Targeted code (in loyalty but unadvertised; auto-applies for eligible customers):
+bss promo create --id PROMO_VIP --type percent --value 20 --duration single --audience targeted
+bss promo assign --promo PROMO_VIP --customers CUST-001,CUST-007   # eligibility list
+```
+
+Consumed at activation (a provisioning failure never burns a code; a payment decline revokes it). Renewal decrements a per-subscription counter; a plan change ends the promo. Operator-only — customers type a code, never issue one. **loyalty-cli is an optional adapter** — with `BSS_LOYALTY_API_TOKEN` unset, catalog/COM/CRM still boot and everything works minus promotions (orders proceed at full price). **Full runbook: [`docs/runbooks/promo-codes.md`](runbooks/promo-codes.md)** (env, optional behavior, duration semantics, lifecycle, troubleshooting).
+
 ### 8.3 Migrate customers to a new price
 
 > [!info] **Why this is its own flow.** Catalog price changes by design DO NOT affect existing subscribers (snapshot pricing, motto #7). To move existing subscribers, an explicit operator-initiated migration with regulator notice is required.

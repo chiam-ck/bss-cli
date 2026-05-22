@@ -51,6 +51,7 @@ INDEXED_PATHS: tuple[str, ...] = (
     # in the v0.19 doc survey; refreshing it is post-v0.20 work.
     "docs/runbooks/portal-auth.md",
     "docs/runbooks/post-login-self-serve-ops.md",
+    "docs/runbooks/promo-codes.md",
     "docs/runbooks/snapshot-regeneration.md",
     "docs/runbooks/stripe-cutover.md",
     "docs/runbooks/three-provider-sandbox-soak.md",

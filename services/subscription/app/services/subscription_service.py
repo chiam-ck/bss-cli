@@ -43,6 +43,7 @@ from app.policies.usage import check_roaming_balance_required
 from app.policies.vas import check_not_terminated, check_vas_offering_sellable
 from app.repositories.subscription_repo import SubscriptionRepository
 from app.repositories.vas_repo import VasPurchaseRepository
+from bss_models import apply_discount
 from bss_models.subscription import (
     BundleBalance,
     Subscription,
@@ -51,6 +52,22 @@ from bss_models.subscription import (
 )
 
 log = structlog.get_logger()
+
+
+def _initial_discount_remaining(
+    discount_type: str | None, discount_periods_total: int | None
+) -> int:
+    """Discounted-periods counter AFTER the activation charge (period 1).
+
+    No discount → 0. Perpetual (total = -1) → -1 (never decrements). Otherwise
+    total - 1: single (total 1) → 0, multi N → N-1. Matches the plan's worked
+    example ($25/20%/3 → remaining 2 after create).
+    """
+    if not discount_type or discount_periods_total is None:
+        return 0
+    if discount_periods_total < 0:
+        return -1
+    return max(discount_periods_total - 1, 0)
 
 
 class SubscriptionService:
@@ -119,11 +136,33 @@ class SubscriptionService:
                     context={"offering_id": offering_id},
                 )
 
+        # v1.1 — promo discount carried on the snapshot. `amount` stays the FULL
+        # base (persisted as price_amount); the activation charge is the
+        # effective price for period 1.
+        discount_type = price_snapshot.get("discountType") if price_snapshot else None
+        discount_value = (
+            Decimal(str(price_snapshot["discountValue"]))
+            if price_snapshot and price_snapshot.get("discountValue") is not None
+            else None
+        )
+        discount_periods_total = (
+            price_snapshot.get("discountPeriodsTotal") if price_snapshot else None
+        )
+        promo_code = price_snapshot.get("promoCode") if price_snapshot else None
+        promo_offer_definition_id = (
+            price_snapshot.get("promoOfferDefinitionId") if price_snapshot else None
+        )
+        charge_amount = (
+            apply_discount(discount_type, discount_value, amount)
+            if discount_type and discount_value is not None
+            else amount
+        )
+
         # Policy: payment must succeed
         payment_result = await self._payment.charge(
             customer_id=customer_id,
             payment_method_id=payment_method_id,
-            amount=amount,
+            amount=charge_amount,
             currency="SGD",
             purpose="activation",
         )
@@ -161,6 +200,14 @@ class SubscriptionService:
             price_amount=amount,
             price_currency=currency,
             price_offering_price_id=offering_price_id,
+            # v1.1 — discount snapshot. remaining is set AFTER the period-1 charge.
+            discount_type=discount_type,
+            discount_value=discount_value,
+            discount_periods_remaining=_initial_discount_remaining(
+                discount_type, discount_periods_total
+            ),
+            promo_code=promo_code,
+            promo_offer_definition_id=promo_offer_definition_id,
         )
         await self._repo.create(sub)
 
@@ -211,11 +258,19 @@ class SubscriptionService:
                 "paymentAttemptId": payment_result.get("id", ""),
                 "periodStart": now.isoformat(),
                 "periodEnd": period_end.isoformat(),
+                "amountCharged": str(charge_amount),
+                "promoCode": promo_code,
             },
         )
 
         await self._session.commit()
-        log.info("subscription.created", subscription_id=sub_id, state="active")
+        log.info(
+            "subscription.created",
+            subscription_id=sub_id,
+            state="active",
+            amount_charged=str(charge_amount),
+            discount_type=discount_type,
+        )
 
         # Reload to get balances
         sub = await self._repo.get(sub_id)
@@ -561,6 +616,21 @@ class SubscriptionService:
         # the new plan, for vanilla renewals that's the current plan.
         offering = await self._catalog.get_offering(target_offering_id)
 
+        # v1.1 — apply the promo discount to this renewal while the per-sub
+        # counter is live (>0, or -1 perpetual). A pending plan change ends the
+        # promo, so it always charges the full new price (cleared on success).
+        applying_discount = (
+            not applying_pending
+            and sub.discount_type is not None
+            and sub.discount_value is not None
+            and sub.discount_periods_remaining != 0
+        )
+        charge_amount = (
+            apply_discount(sub.discount_type, sub.discount_value, amount)
+            if applying_discount
+            else amount
+        )
+
         # Find payment method
         methods = await self._payment.list_methods(sub.customer_id)
         default_method = next((m for m in methods if m.get("isDefault")), None)
@@ -576,7 +646,7 @@ class SubscriptionService:
         payment_result = await self._payment.charge(
             customer_id=sub.customer_id,
             payment_method_id=default_method["id"],
-            amount=amount,
+            amount=charge_amount,
             currency=currency,
             purpose="renewal",
         )
@@ -686,6 +756,15 @@ class SubscriptionService:
             sub.pending_offering_id = None
             sub.pending_offering_price_id = None
             sub.pending_effective_at = None
+            # v1.1 — a plan change ends the promo (DECISIONS 2026-05-21).
+            sub.discount_type = None
+            sub.discount_value = None
+            sub.discount_periods_remaining = 0
+            sub.promo_code = None
+            sub.promo_offer_definition_id = None
+        elif applying_discount and sub.discount_periods_remaining > 0:
+            # Consumed one discounted renewal period; perpetual (-1) never decrements.
+            sub.discount_periods_remaining -= 1
 
         await self._transition(sub, "renew", reason="renewal_payment_approved")
         sub.current_period_start = now
@@ -708,6 +787,8 @@ class SubscriptionService:
                     "priceCurrency": currency,
                     "priceOfferingPriceId": offering_price_id,
                 },
+                "amountCharged": str(charge_amount),
+                "discountApplied": applying_discount,
             },
         )
 

@@ -308,6 +308,54 @@ existing customers; explicit operator-initiated migrations
 (`subscription.migrate_to_new_price`) carry a notice period and
 emit per-subscription `notification.requested` events.
 
+### `catalog.promotion` (v1.1)
+
+The money terms for a promotion + the join key to a loyalty-cli OfferDefinition.
+The only new domain object in v1.1; loyalty owns the entitlement (codes/offers,
+limits, inventory, targeting), this row owns the discount. No FK to loyalty (HTTP
+boundary). The discount **composes** on top of the lowest-active price snapshot.
+
+| column | type | notes |
+|---|---|---|
+| id | TEXT PK | e.g. `PROMO_SUMMER25` |
+| name | TEXT | v1.1.1 — operator-set friendly label for customer display ("VIP Welcome"); NULL → UI falls back to the discount label |
+| code | TEXT | the loyalty code (BOTH audiences, v1.1.1). Public = advertised/typed; targeted = unadvertised, derived from id if omitted. Partial-unique on `(code, tenant_id)` |
+| audience | TEXT | `public` (anyone may type) \| `targeted` (eligibility-gated, auto-applied). v1.1.1 (CHECK) |
+| offer_definition_id | TEXT | loyalty join key; NULL until the create saga completes |
+| discount_type | TEXT | `percent` \| `absolute` (CHECK) |
+| discount_value | NUMERIC(12,2) | percent 0-100, or absolute amount |
+| currency | TEXT | default `SGD` (for absolute) |
+| applicable_offering_ids | TEXT[] | NULL = all sellable offerings |
+| duration_kind | TEXT | `single` \| `multi` \| `perpetual` (CHECK); multi ⇔ periods_total set (CHECK) |
+| periods_total | SMALLINT | N for multi; NULL for single/perpetual |
+| valid_from / valid_to | TIMESTAMPTZ | optional validity window |
+| state | TEXT | `pending_link` → `active` → `retired` (CHECK) |
+| created_by | TEXT | operator actor |
+
+Index `ix_promotion_offer_definition_id` backs the OD→terms lookup (validate,
+resolve, reconcile). A promotion stays `pending_link` until loyalty's
+`offer_definition.register` + `promo_code.register` returns; a live code does
+nothing until the row is `active`, so a half-failed create saga is harmless and
+resumable.
+
+### `catalog.promotion_eligibility` (v1.1.1)
+
+Which customers may use a **targeted** promotion's code (loyalty's `promo_code`
+has no customer field, so the per-customer pairing lives here; BSS is the gate).
+A targeted code auto-applies for customers with a row here and is rejected
+(`not_eligible`) for anyone without one. Public promos have no rows.
+
+| column | type | notes |
+|---|---|---|
+| id | BIGSERIAL PK | |
+| promotion_id | TEXT FK→catalog.promotion.id | |
+| customer_id | TEXT | |
+| created_by | TEXT | operator actor |
+
+Unique on `(promotion_id, customer_id, tenant_id)` (idempotent assign); index on
+`(customer_id, tenant_id)` for the order-time "what's this customer eligible for?"
+lookup.
+
 ### `catalog.bundle_allowance`
 | column | type | notes |
 |---|---|---|
@@ -411,6 +459,12 @@ Seed: all three plans → same CFS + two RFS.
 | price_amount | NUMERIC(10,2) | v0.7+ — snapshot stamped at create_order |
 | price_currency | TEXT | v0.7+ |
 | price_offering_price_id | TEXT | v0.7+ — copied to subscription on activation |
+| discount_code | TEXT | v1.1 — typed promo code (NULL for targeted/no-promo) |
+| promo_offer_definition_id | TEXT | v1.1 — loyalty OD; discount INTENT stamped at create |
+| discount_type | TEXT | v1.1 — `percent`\|`absolute` |
+| discount_value | NUMERIC(12,2) | v1.1 |
+| discount_periods_total | SMALLINT | v1.1 — single=1, multi=N, perpetual=-1 |
+| promo_offer_id | TEXT | v1.1 — loyalty offer id; set at create for assigned offers, at claim for typed codes |
 
 ### `order_mgmt.order_state_history`
 Standard state history shape.
@@ -509,6 +563,16 @@ Seed: 6 rules covering HLR_PROVISION, PCRF_POLICY_PUSH, OCS_BALANCE_INIT, ESIM_P
 | pending_offering_id | TEXT | v0.7+ — set when a plan change / price migration is scheduled |
 | pending_offering_price_id | TEXT | v0.7+ — same |
 | pending_effective_at | TIMESTAMPTZ | v0.7+ — earliest moment renewal applies the pending pivot |
+| discount_type | TEXT | v1.1 — `percent`\|`absolute`; NULL = no promo |
+| discount_value | NUMERIC(12,2) | v1.1 |
+| discount_periods_remaining | SMALLINT NOT NULL DEFAULT 0 | v1.1 — discounted periods left; `renew()` decrements while >0; `-1` = perpetual |
+| promo_code | TEXT | v1.1 — forensic |
+| promo_offer_definition_id | TEXT | v1.1 — forensic / loyalty join |
+
+v1.1 — `price_amount` stays the **full base** snapshot; the effective per-period
+charge is `apply_discount(discount_type, discount_value, price_amount)` while
+`discount_periods_remaining` is live (>0, or -1 perpetual). A pending plan change
+clears all discount fields at the renewal pivot (a plan change ends the promo).
 
 Index `ix_subscription_due_for_renewal` on `(state, next_renewal_at) WHERE state IN ('active','blocked')` (v0.18) backs both renewal-worker sweep queries.
 

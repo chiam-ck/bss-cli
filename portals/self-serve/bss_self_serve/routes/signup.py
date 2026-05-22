@@ -104,6 +104,20 @@ async def signup_form(
         except Exception:  # noqa: BLE001 — best-effort read
             prefill_name = ""
 
+    # v1.1 — surface the customer's best applicable assigned (targeted) offer so
+    # it shows pre-applied on the form with a remove toggle. Only a linked
+    # customer can hold offers; a brand-new signup has none. Best-effort.
+    assigned_offer = None
+    if is_returning:
+        try:
+            res = await clients.catalog.resolve_eligible_promo(
+                customer_id=identity.customer_id, offering=plan_id
+            )
+            if res.get("valid"):
+                assigned_offer = res
+        except Exception:  # noqa: BLE001 — non-critical display
+            assigned_offer = None
+
     return templates.TemplateResponse(
         request,
         "signup.html",
@@ -115,6 +129,7 @@ async def signup_form(
             "identity_email": identity.email,
             "prefill_name": prefill_name,
             "is_returning": is_returning,
+            "assigned_offer": assigned_offer,
             # v0.16 — drives the form's mode-switch (mock card-number
             # input vs Stripe-Elements-deferred-to-COF-step). The
             # publishable key is later read at the COF step's iframe
@@ -135,6 +150,48 @@ def _format_msisdn(msisdn: str) -> str:
 # ── POST /signup — step 1: create customer + link identity ──────────────
 
 
+@router.get("/signup/promo/preview", response_class=HTMLResponse)
+async def signup_promo_preview(
+    request: Request,
+    offering: str = Query(...),
+    code: str = Query(default=""),
+    has_offer: str = Query(default=""),  # "1" when an assigned offer is pre-applied
+    identity: IdentityView = Depends(requires_verified_email),
+) -> HTMLResponse:
+    """Live discounted-price preview for the signup form's promo field (v1.1).
+
+    Reads catalog's ``/promo/preview`` (which does the loyalty lookup + composes
+    the discount). Best-effort: an empty/invalid code or a catalog hiccup renders
+    a benign note and never blocks signup. The portal holds no loyalty token —
+    all promo knowledge comes through the catalog client.
+    """
+    code = code.strip()
+    if not code:
+        return HTMLResponse("")  # nothing entered yet → clear the preview slot
+    try:
+        result = await get_clients().catalog.preview_promo(
+            code=code, offering=offering, customer_id=identity.customer_id
+        )
+    except Exception:  # noqa: BLE001 — preview must never break the funnel
+        log.warning("signup.promo_preview.failed", offering=offering, exc_info=True)
+        result = {"valid": False, "reason": None}
+    return templates.TemplateResponse(
+        request,
+        "partials/promo_preview.html",
+        {
+            "valid": result.get("valid", False),
+            "code": code,
+            "label": result.get("label"),
+            "base": result.get("base"),
+            "effective": result.get("effective"),
+            "reason": result.get("reason"),
+            # when an offer is pre-applied: a valid code REPLACES it; an invalid
+            # code leaves it in place (the backend falls back to the offer).
+            "has_offer": bool(has_offer),
+        },
+    )
+
+
 @router.post("/signup")
 async def signup_submit(
     request: Request,
@@ -149,6 +206,12 @@ async def signup_submit(
     # need a valid PAN — the route enforces that below by branching
     # on identity.customer_id.
     card_pan: str = Form(default=""),
+    promo_code: str = Form(default=""),  # v1.1 — optional typed promo code
+    # v1.1 — the assigned-offer toggle. `offer_shown` is a hidden marker that the
+    # form rendered an offer; `apply_offer` is the checkbox ("1" when ticked,
+    # absent when unticked). skip = the offer was shown AND the customer unticked.
+    offer_shown: str = Form(default=""),
+    apply_offer: str = Form(default=""),
     identity: IdentityView = Depends(requires_verified_email),
 ) -> Response:
     """Run step 1 (``crm.create_customer``) and bind the verified
@@ -174,6 +237,8 @@ async def signup_submit(
         msisdn=msisdn,
         card_pan=card_pan,
         identity_id=identity.id,
+        promo_code=promo_code,
+        skip_assigned_offer=bool(offer_shown) and not bool(apply_offer),
     )
 
     # v0.11 — second-line support. If the verified identity is already
@@ -1119,6 +1184,12 @@ async def signup_step_order(
             customer_id=sig.customer_id,
             offering_id=sig.plan,
             msisdn_preference=sig.msisdn,
+            # v1.1 — typed promo code (empty → none). COM validates via catalog;
+            # an invalid code is ignored (order proceeds at full price). When no
+            # code is typed, COM auto-applies the cheapest assigned offer unless
+            # the customer unticked it (skip_assigned_offer).
+            discount_code=sig.promo_code or None,
+            skip_assigned_offer=sig.skip_assigned_offer,
         )
         order_id = created.get("id") if isinstance(created, dict) else None
         if not isinstance(order_id, str):

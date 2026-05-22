@@ -101,6 +101,8 @@ class CRMClient(BSSClient):
         *,
         state: str | None = None,
         name_contains: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[dict[str, Any]]:
         """GET /tmf-api/customerManagement/v4/customer."""
         params: dict[str, Any] = {}
@@ -108,6 +110,10 @@ class CRMClient(BSSClient):
             params["status"] = state
         if name_contains:
             params["name"] = name_contains
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
         resp = await self._request(
             "GET",
             "/tmf-api/customerManagement/v4/customer",

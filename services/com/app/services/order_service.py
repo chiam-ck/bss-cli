@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
+from bss_clients import ClientError
 from bss_clock import now as clock_now
 from bss_telemetry import semconv, tracer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,7 @@ class OrderService:
         som_client,
         subscription_client,
         exchange,
+        loyalty_client=None,
     ):
         self._session = session
         self._repo = repo
@@ -44,6 +46,7 @@ class OrderService:
         self._payment = payment_client
         self._som = som_client
         self._subscription = subscription_client
+        self._loyalty = loyalty_client
         self._exchange = exchange
 
     async def create_order(
@@ -53,12 +56,20 @@ class OrderService:
         offering_id: str,
         msisdn_preference: str | None = None,
         notes: str | None = None,
+        discount_code: str | None = None,
+        skip_assigned_offer: bool = False,
     ) -> ProductOrder:
         """Create a new order (acknowledged) and stamp the price snapshot.
 
         v0.7 — the active price row at this moment is captured on the order
         item so renewal will charge what the customer signed up for, even if
         the catalog row is later retired or repriced.
+
+        v1.1 — resolve a promo discount and stamp it as INTENT on the order item
+        (the entitlement is not consumed until activation, Flow 2/3). A typed
+        ``discount_code`` is validated; otherwise the customer's assigned offers
+        are checked for one applicable to this offering. An invalid/absent promo
+        never blocks the order — it simply proceeds at full price.
         """
         await check_customer_exists(customer_id, self._crm)
         _, active_price = await check_offering_currently_sellable(offering_id, self._catalog)
@@ -68,6 +79,13 @@ class OrderService:
         price_amount = Decimal(str(active_price["price"]["taxIncludedAmount"]["value"]))
         price_currency = active_price["price"]["taxIncludedAmount"].get("unit", "SGD")
         price_offering_price_id = active_price["id"]
+
+        discount = await self._resolve_discount(
+            customer_id=customer_id,
+            offering_id=offering_id,
+            discount_code=discount_code,
+            skip_assigned_offer=skip_assigned_offer,
+        )
 
         order_id = await self._repo.next_order_id()
         item_id = await self._repo.next_item_id()
@@ -89,6 +107,15 @@ class OrderService:
             price_amount=price_amount,
             price_currency=price_currency,
             price_offering_price_id=price_offering_price_id,
+            # v1.1 — discount INTENT (not yet claimed). promo_offer_id is set
+            # now only for an assigned offer (it already exists); a typed code's
+            # offer is created at claim time in handle_service_order_completed.
+            discount_code=discount.get("discount_code"),
+            promo_offer_definition_id=discount.get("offer_definition_id"),
+            discount_type=discount.get("discount_type"),
+            discount_value=discount.get("discount_value"),
+            discount_periods_total=discount.get("discount_periods_total"),
+            promo_offer_id=discount.get("promo_offer_id"),
         )
         self._session.add(item)
         await self._repo.create(order)
@@ -115,6 +142,114 @@ class OrderService:
 
         await self._session.commit()
         return await self._repo.get(order_id)
+
+    async def _resolve_discount(
+        self,
+        *,
+        customer_id: str,
+        offering_id: str,
+        discount_code: str | None,
+        skip_assigned_offer: bool = False,
+    ) -> dict:
+        """Resolve a promo to stamp as INTENT on the order item.
+
+        Precedence: a *valid* typed ``discount_code`` wins. If the typed code is
+        invalid (a typo), we fall back to the customer's cheapest applicable
+        *assigned* offer rather than dropping to full price — a typo shouldn't
+        cost the customer their auto-offer. ``skip_assigned_offer`` (the funnel
+        opt-out) suppresses that fallback. Promos do NOT stack: exactly one
+        applies, composed onto the base price. Returns the discount fields or
+        ``{}``. Catalog owns all promo logic; a transport hiccup degrades to "no
+        discount" (never blocks the order).
+        """
+        res: dict | None = None
+        code_to_claim: str | None = None
+        try:
+            if discount_code:
+                typed = await self._catalog.validate_promo(
+                    code=discount_code, offering=offering_id, customer_id=customer_id
+                )
+                if typed.get("valid"):
+                    res, code_to_claim = typed, discount_code  # typed code wins
+                else:
+                    log.info(
+                        "order.promo.code_invalid_fallback_to_eligible",
+                        code=discount_code,
+                        reason=typed.get("reason"),
+                    )
+            # No code, or an invalid code → the customer's best eligible targeted
+            # promo auto-applies (unless they opted out). v1.1.1: this returns a
+            # CODE too, so the consume path is identical to a typed code.
+            if res is None and not skip_assigned_offer:
+                eligible = await self._catalog.resolve_eligible_promo(
+                    customer_id=customer_id, offering=offering_id
+                )
+                if eligible.get("valid"):
+                    res, code_to_claim = eligible, eligible.get("code")
+        except ClientError:
+            log.warning("order.promo.resolve_failed", code=discount_code, exc_info=True)
+            return {}
+
+        if res is None:
+            return {}
+
+        raw_value = res.get("discountValue")
+        return {
+            # the code to claim at activation — typed or the targeted promo's code
+            "discount_code": code_to_claim,
+            "offer_definition_id": res.get("offerDefinitionId"),
+            "discount_type": res.get("discountType"),
+            "discount_value": Decimal(raw_value) if raw_value is not None else None,
+            "discount_periods_total": res.get("discountPeriodsTotal"),
+            # v1.1.1: both paths claim by code at activation; the loyalty offer id
+            # is captured then, not at create.
+            "promo_offer_id": None,
+        }
+
+    async def _claim_entitlement(self, order: ProductOrder, item) -> str | None:
+        """Consume the promo entitlement at activation (the gate).
+
+        v1.1.1 — ONE path for both audiences: ``offer.claim(source=promo_code)``
+        on the code stamped at order create (a typed code, or a targeted promo's
+        code resolved via eligibility). loyalty dedupes idempotency on
+        (actor, key) WITHOUT the tool name, so claim/redeem/revoke each use a
+        distinct ``{order_id}:<op>`` key. Returns the loyalty offer id to
+        redeem/revoke, or None when there's no promo.
+        """
+        if item is None or not item.discount_type or not item.discount_code:
+            return None
+        if self._loyalty is None:
+            return None
+        result = await self._loyalty.claim_offer(
+            customer_id=order.customer_id,
+            source={"type": "promo_code", "code": item.discount_code},
+            idempotency_key=f"{order.id}:claim",
+        )
+        return result.get("offer_id")
+
+    async def _redeem_entitlement(self, offer_id: str, order_id: str) -> None:
+        """Finalize the entitlement after a successful activation. Best-effort:
+        the subscription already exists, so a redeem hiccup is logged, not fatal."""
+        try:
+            await self._loyalty.redeem_offer(
+                offer_id=offer_id, order_ref=order_id, idempotency_key=f"{order_id}:redeem"
+            )
+        except ClientError:
+            log.warning("order.promo.redeem_failed", offer_id=offer_id, exc_info=True)
+
+    async def _revoke_entitlement(self, offer_id: str, order_id: str) -> None:
+        """Release the entitlement when activation fails (payment decline).
+        Best-effort — a revoke hiccup is logged; loyalty's TTL/expiry is the
+        backstop. Reason maps to loyalty's ``order_cancelled`` RevokeReason."""
+        try:
+            await self._loyalty.revoke_offer(
+                offer_id=offer_id,
+                reason="order_cancelled",
+                idempotency_key=f"{order_id}:revoke",
+                order_ref=order_id,
+            )
+        except ClientError:
+            log.warning("order.promo.revoke_failed", offer_id=offer_id, exc_info=True)
 
     async def submit_order(self, order_id: str) -> ProductOrder:
         """Submit an order (acknowledged -> in_progress), publish to MQ."""
@@ -237,15 +372,34 @@ class OrderService:
                 )
                 return
 
+            item = order.items[0] if order.items else None
+
             # Resolve price snapshot — prefer event payload, fall back to the
             # row stamped at create_order time. The order item is the durable
             # source of truth in case the event arrives stripped.
-            if price_snapshot is None and order.items and order.items[0].price_amount is not None:
-                item = order.items[0]
+            if price_snapshot is None and item is not None and item.price_amount is not None:
                 price_snapshot = {
                     "priceAmount": str(item.price_amount),
                     "priceCurrency": item.price_currency,
                     "priceOfferingPriceId": item.price_offering_price_id,
+                }
+
+            # v1.1 — consume the promo entitlement (the gate). claim-at-activation:
+            # SOM has already succeeded by now, so a provisioning failure never
+            # burns the code; only a payment decline can (→ revoke below). The
+            # discount terms then ride on the snapshot so subscription charges
+            # the effective price for period 1.
+            offer_id = await self._claim_entitlement(order, item)
+            if item is not None and item.discount_type and price_snapshot is not None:
+                price_snapshot = {
+                    **price_snapshot,
+                    "discountType": item.discount_type,
+                    "discountValue": (
+                        str(item.discount_value) if item.discount_value is not None else None
+                    ),
+                    "discountPeriodsTotal": item.discount_periods_total,
+                    "promoCode": item.discount_code,
+                    "promoOfferDefinitionId": item.promo_offer_definition_id,
                 }
 
             # Create subscription
@@ -258,14 +412,29 @@ class OrderService:
             }
             if price_snapshot is not None:
                 create_kwargs["price_snapshot"] = price_snapshot
-            sub_result = await self._subscription.create(**create_kwargs)
+            try:
+                sub_result = await self._subscription.create(**create_kwargs)
+            except Exception:
+                # Activation failed (typically a payment decline). Release the
+                # entitlement so a single-use code isn't burned, then propagate.
+                if offer_id is not None:
+                    await self._revoke_entitlement(offer_id, order.id)
+                raise
             if sub_result.get("id"):
                 span.set_attribute(semconv.BSS_SUBSCRIPTION_ID, sub_result["id"])
 
+            # Activation succeeded → redeem the entitlement.
+            if offer_id is not None:
+                await self._redeem_entitlement(offer_id, order.id)
+
             # Update order item
-            if order.items:
-                order.items[0].target_subscription_id = sub_result.get("id")
-                order.items[0].state = "completed"
+            if item is not None:
+                item.target_subscription_id = sub_result.get("id")
+                item.state = "completed"
+                if offer_id is not None:
+                    # capture the loyalty offer id (for a typed code it was minted
+                    # at claim; for an assigned offer it's the same id).
+                    item.promo_offer_id = offer_id
 
             check_order_transition(order.state, "completed")
             order.state = "completed"

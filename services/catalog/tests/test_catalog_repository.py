@@ -13,18 +13,29 @@ def repo(db_session):
     return CatalogRepository(db_session)
 
 
+SEED_PLANS = {"PLAN_S", "PLAN_M", "PLAN_L"}
+
+
 class TestListOfferings:
-    async def test_returns_three_plans(self, repo: CatalogRepository):
+    async def test_includes_seed_plans(self, repo: CatalogRepository):
+        # The canonical seed ships PLAN_S/M/L, but a deployment may carry
+        # additional offerings (#36 — the catalog renders every active
+        # offering, not a hardcoded set). Assert the seed plans are present
+        # rather than an exact count, so the test stays green whether the
+        # target DB has only the seed or has been extended.
         offerings = await repo.list_offerings()
-        assert len(offerings) == 3
         ids = {o.id for o in offerings}
-        assert ids == {"PLAN_S", "PLAN_M", "PLAN_L"}
+        assert SEED_PLANS <= ids
 
     async def test_filter_by_lifecycle_status(self, repo: CatalogRepository):
         active = await repo.list_offerings(lifecycle_status="active")
-        assert len(active) == 3
+        # Filter correctness: everything returned is active, and the seed
+        # plans (all active) are among them.
+        assert all(o.lifecycle_status == "active" for o in active)
+        assert SEED_PLANS <= {o.id for o in active}
         retired = await repo.list_offerings(lifecycle_status="retired")
-        assert len(retired) == 0
+        assert all(o.lifecycle_status == "retired" for o in retired)
+        assert SEED_PLANS.isdisjoint({o.id for o in retired})
 
     async def test_limit_and_offset(self, repo: CatalogRepository):
         first = await repo.list_offerings(limit=1, offset=0)

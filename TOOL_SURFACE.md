@@ -111,6 +111,18 @@ These tools are wired into the `operator_cockpit` profile only. MNP is operator-
 | `catalog.add_price` | create | v0.7 — admin only — not in LLM registry |
 | `catalog.window_offering` | update | v0.7 — admin only — not in LLM registry |
 
+## Promotion tools — `(v1.1, operator/cockpit only — never customer_self_serve)`
+
+Compose over loyalty-cli (the entitlement engine) through the catalog service.
+A customer may *type* a code at checkout (`order.create discount_code=`) but
+cannot enumerate or self-issue promotions.
+
+| Tool | Type | Description |
+|---|---|---|
+| `promo.create` | create | Two-system saga: BSS money terms + loyalty OfferDefinition (+ code for non-targeted). `percent`/`absolute`, `single`/`multi`/`perpetual` |
+| `promo.assign` | create | Targeted: issue a codeless offer to chosen customers (per-customer `offer.issue` loop); auto-applies at their next order |
+| `promo.show` | read | Promotion money terms + loyalty link + state |
+
 ## Payment tools
 
 | Tool | Type | Description |
@@ -126,7 +138,7 @@ These tools are wired into the `operator_cockpit` profile only. MNP is operator-
 
 | Tool | Type | Description |
 |---|---|---|
-| `order.create` | create | Customer must exist, have COF, be KYC-verified (if enforced) |
+| `order.create` | create | Customer must exist, have COF, be KYC-verified (if enforced). v1.1 — optional `discount_code` (typed promo); invalid code never blocks the order |
 | `order.get` | read | With items and state history |
 | `order.list` | read | |
 | `order.cancel` | destructive | Only before SOM started |

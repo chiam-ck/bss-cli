@@ -103,6 +103,48 @@ class _NotOwnedByActor(Exception):
 # ─── Subscription reads ──────────────────────────────────────────────
 
 
+def _discount_label(dtype: str, dval: Any, currency: str) -> str:
+    """Human label for a promo discount — mirrors bss_models.discount_label
+    (inlined to keep the orchestrator dep-free of bss-models)."""
+    from decimal import Decimal
+
+    v = Decimal(str(dval))
+    if dtype == "percent":
+        return f"{format(v.normalize(), 'f')}% off"
+    return f"{currency} {v.quantize(Decimal('0.01'))} off"
+
+
+def _annotate_pricing(sub: dict[str, Any]) -> dict[str, Any]:
+    """Surface the *current* monthly charge + an active-discount note on a
+    subscription dict the chat sees, so the LLM reports what the customer
+    actually pays (effective price) — not the base list price — when a promo is
+    live. Code-enforced at the seam: the prompt alone isn't reliable on small
+    models (see [[feedback_llm_hallucination_fight]])."""
+    price = sub.get("priceAmount")
+    effective = sub.get("effectiveAmount")
+    currency = sub.get("priceCurrency") or "SGD"
+    dtype = sub.get("discountType")
+    dval = sub.get("discountValue")
+    remaining = sub.get("discountPeriodsRemaining", 0) or 0
+    current = effective if effective is not None else price
+    sub["currentMonthlyCharge"] = (
+        f"{currency} {current}" if current is not None else None
+    )
+    if dtype and dval is not None and remaining != 0:
+        label = _discount_label(dtype, dval, currency)
+        if remaining == -1:
+            sub["activeDiscount"] = f"{label} (ongoing)"
+        else:
+            plural = "" if remaining == 1 else "s"
+            sub["activeDiscount"] = (
+                f"{label} — {remaining} more renewal{plural} at this price, "
+                f"then {currency} {price}/mo"
+            )
+    else:
+        sub["activeDiscount"] = None
+    return sub
+
+
 @register("subscription.list_mine")
 async def subscription_list_mine() -> list[dict[str, Any]]:
     """List the logged-in customer's subscriptions. customer_id is
@@ -119,7 +161,8 @@ async def subscription_list_mine() -> list[dict[str, Any]]:
         chat.no_actor_bound: invoked outside a chat-scoped session.
     """
     actor = _require_actor()
-    return await get_clients().subscription.list_for_customer(actor)
+    subs = await get_clients().subscription.list_for_customer(actor)
+    return [_annotate_pricing(s) for s in subs]
 
 
 @register("subscription.get_mine")
@@ -140,7 +183,7 @@ async def subscription_get_mine(subscription_id: SubscriptionId) -> dict[str, An
         chat.no_actor_bound: invoked outside a chat-scoped session.
     """
     actor = _require_actor()
-    return await _assert_subscription_owned(subscription_id, actor)
+    return _annotate_pricing(await _assert_subscription_owned(subscription_id, actor))
 
 
 @register("subscription.get_balance_mine")

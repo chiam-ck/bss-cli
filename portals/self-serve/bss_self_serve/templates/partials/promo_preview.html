@@ -1,0 +1,19 @@
+{# v1.1 — live promo-code preview, swapped under the signup form's code field.
+   `valid` → discounted price (and, when an offer is pre-applied, a note that it
+   REPLACES the offer). Invalid → an inline note; with an offer pre-applied the
+   offer stays (backend falls back to it), otherwise it's full price. Empty
+   render when no code has been entered yet. #}
+{% if valid %}
+<p class="promo-ok">🎉 <strong>{{ label }}</strong> code applied — was
+  <span class="promo-was">SGD {{ base }}/mo</span>,
+  now <strong class="promo-now">SGD {{ effective }}/mo</strong>.
+  {% if has_offer %}<br><small class="promo-note">This code replaces your auto-applied offer.</small>{% endif %}</p>
+{% elif code %}
+<p class="promo-err">
+  {% if reason == 'expired' %}That code has expired.
+  {% elif reason == 'not_applicable_to_offering' %}That code doesn't apply to this plan.
+  {% elif reason == 'not_yet_valid' %}That code isn't active yet.
+  {% else %}That code isn't valid.{% endif %}
+  {% if has_offer %}Your auto-applied offer still applies.
+  {% else %}You can still continue — you'll just pay the full price.{% endif %}</p>
+{% endif %}

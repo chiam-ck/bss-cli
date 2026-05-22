@@ -10,7 +10,7 @@ service ``/health`` versions). One bump per release; doctrine.
 # Single source of truth for the platform release version. Every surface
 # (REPL, CSR cockpit, self-serve portal, service /health) imports this
 # so a release bump is one line. Bump on every release tag.
-BSS_RELEASE = "1.0.1"
+BSS_RELEASE = "1.1.1"
 
 from .base import Base, TenantMixin, TimestampMixin
 
@@ -38,6 +38,8 @@ from .catalog import (
     ProductOfferingPrice,
     ProductSpecification,
     ProductToServiceMapping,
+    Promotion,
+    PromotionEligibility,
     ServiceSpecification,
     VasOffering,
 )
@@ -93,9 +95,14 @@ from .portal_auth import (
     StepUpPendingAction,
 )
 
+# Promo discount math — pure helpers shared across services (v1.1)
+from .discount import apply_discount, discount_label
+
 __all__ = [
     "BSS_RELEASE",
     "Base",
+    "apply_discount",
+    "discount_label",
     "TenantMixin",
     "TimestampMixin",
     # CRM
@@ -116,6 +123,8 @@ __all__ = [
     "ProductSpecification",
     "ProductOffering",
     "ProductOfferingPrice",
+    "Promotion",
+    "PromotionEligibility",
     "BundleAllowance",
     "VasOffering",
     "ServiceSpecification",

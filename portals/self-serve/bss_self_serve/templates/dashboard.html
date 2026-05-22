@@ -9,6 +9,24 @@
     (customer <code class="dashboard-cust">{{ customer_id }}</code>).
   </p>
 
+  {% if assigned_offers %}
+    {# v1.1 — targeted offers issued to this customer, not yet used. Applies
+       to the next order, so shown once at the customer level. #}
+    <ul class="dashboard-offers">
+      {% for offer in assigned_offers %}
+        <li class="dashboard-offer">
+          🎁
+          {% if offer.promotion.name %}
+            <strong>{{ offer.promotion.name }}</strong> — {{ offer.promotion.label }}
+          {% else %}
+            You have a <strong>{{ offer.promotion.label }}</strong> offer
+          {% endif %}
+          — applies automatically to your next order.
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
   <ul class="dashboard-lines">
     {% for line in lines %}
       <li class="dashboard-lines-item">

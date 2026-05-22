@@ -7,7 +7,7 @@ from datetime import datetime
 
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Computed, ForeignKey, Numeric, Text, func
+from sqlalchemy import BigInteger, Computed, ForeignKey, Numeric, SmallInteger, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TZDateTime, TenantMixin, TimestampMixin
@@ -57,6 +57,22 @@ class Subscription(Base, TenantMixin, TimestampMixin):
     pending_offering_id: Mapped[str | None] = mapped_column(Text)
     pending_offering_price_id: Mapped[str | None] = mapped_column(Text)
     pending_effective_at: Mapped[datetime | None] = mapped_column(TZDateTime)
+
+    # v1.1 — promo discount snapshot. price_amount above stays the FULL base;
+    # the effective charged amount is computed at charge time as
+    # apply(discount, price_amount). Mirrors the pending_* plan-change fields:
+    # same snapshot-on-the-row pattern, not a new one. renew() decrements
+    # discount_periods_remaining while > 0; a pending plan change clears all
+    # of these (a plan change ends the promo — DECISIONS 2026-05-21).
+    discount_type: Mapped[str | None] = mapped_column(Text)  # percent | absolute
+    discount_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    # > 0 = periods left at the discounted price; 0 = none (full price);
+    # -1 sentinel = perpetual (never decrements).
+    discount_periods_remaining: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    promo_code: Mapped[str | None] = mapped_column(Text)  # forensic
+    promo_offer_definition_id: Mapped[str | None] = mapped_column(Text)  # forensic / join
 
     balances: Mapped[list["BundleBalance"]] = relationship(back_populates="subscription")
     vas_purchases: Mapped[list["VasPurchase"]] = relationship(back_populates="subscription")

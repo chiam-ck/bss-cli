@@ -123,6 +123,11 @@ VasOfferingId = Annotated[
     "VAS offering ID, e.g. VAS_DATA_5GB, VAS_DATA_DAYPASS. "
     "Get from catalog.list_vas — never guess.",
 ]
+PromotionId = Annotated[
+    str,
+    "Promotion ID, e.g. PROMO_SUMMER25. Stable, operator-chosen; used as the "
+    "loyalty idempotency key. Get the set from promo.show — never fabricate.",
+]
 Msisdn = Annotated[
     str,
     "Mobile number, 8 digits, e.g. 90000005. No country code, no spaces.",
@@ -156,6 +161,14 @@ Duration = Annotated[
 # ─────────────────────────────────────────────────────────────────────────────
 # Enum types — Literal[...] renders as JSON-schema enum
 # ─────────────────────────────────────────────────────────────────────────────
+
+# v1.1 — promotion enums
+DiscountType = Literal["percent", "absolute"]
+DurationKind = Literal["single", "multi", "perpetual"]
+PromoAudience = Literal["public", "targeted"]
+PromoCodeKind = Literal[
+    "single_use_shared", "multi_use", "single_use_unique_per_customer"
+]
 
 CustomerState = Literal["pending", "active", "suspended", "closed"]
 SubscriptionState = Literal["pending", "active", "blocked", "terminated"]

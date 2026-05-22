@@ -84,6 +84,54 @@
   </fieldset>
   {% endif %}
 
+  {# v1.1 — one Discount section. Promos don't stack: exactly one applies. When
+     the customer has a targeted offer it's pre-applied (cheapest, resolved
+     server-side); the typed-code field is then secondary and framed as a
+     REPLACEMENT. A valid code replaces the offer; an invalid code leaves the
+     offer in place (backend falls back). With no offer, the code field is the
+     primary control. #}
+  <fieldset class="discount-section">
+    <legend>Discount{% if not assigned_offer %} <span class="form-optional">(optional)</span>{% endif %}</legend>
+
+    {% if assigned_offer %}
+      <input type="hidden" name="offer_shown" value="1" />
+      <label class="offer-toggle">
+        <input type="checkbox" name="apply_offer" value="1" checked />
+        <span>🎁 <strong>{{ assigned_offer.name or assigned_offer.label }}</strong> applied{% if assigned_offer.name %} <span class="form-optional">({{ assigned_offer.label }})</span>{% endif %} —
+          <span class="promo-was">SGD {{ assigned_offer.base }}/mo</span>
+          → <strong class="promo-now">SGD {{ assigned_offer.effective }}/mo</strong></span>
+      </label>
+      <p class="form-hint">Auto-applied to this order. Untick to pay full price.</p>
+
+      <details class="promo-code-alt">
+        <summary>Use a different code instead</summary>
+        <p class="form-hint">A valid code <strong>replaces</strong> the offer above. If it's not valid, your offer stays.</p>
+        <input type="text" name="promo_code" id="promo_code" autocomplete="off"
+               inputmode="text" placeholder="SUMMER25"
+               hx-get="/signup/promo/preview"
+               hx-trigger="change, keyup[key=='Enter']"
+               hx-include="#promo_code"
+               hx-vals='{"offering": "{{ plan.id }}", "has_offer": "1"}'
+               hx-target="#promo-preview"
+               hx-swap="innerHTML" />
+        <div id="promo-preview" class="promo-preview" aria-live="polite"></div>
+      </details>
+    {% else %}
+      <label>Have a promo code?
+        <input type="text" name="promo_code" id="promo_code" autocomplete="off"
+               inputmode="text" placeholder="SUMMER25"
+               hx-get="/signup/promo/preview"
+               hx-trigger="change, keyup[key=='Enter']"
+               hx-include="#promo_code"
+               hx-vals='{"offering": "{{ plan.id }}"}'
+               hx-target="#promo-preview"
+               hx-swap="innerHTML" />
+      </label>
+      {# Live discounted-price preview swapped in on blur / Enter. #}
+      <div id="promo-preview" class="promo-preview" aria-live="polite"></div>
+    {% endif %}
+  </fieldset>
+
   <button class="form-submit" type="submit">{% if is_returning %}Add line on {{ plan.id }}{% else %}Activate {{ plan.id }}{% endif %}</button>
 </form>
 {% endblock %}

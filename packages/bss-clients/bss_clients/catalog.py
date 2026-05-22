@@ -175,4 +175,123 @@ class CatalogClient(BSSClient):
         )
         return resp.json()
 
+    # ── v1.1 — promotions (catalog holds the loyalty link) ───────────────
+
+    _PROMO = "/tmf-api/promotionManagement/v4/promotion"
+
+    async def create_promotion(
+        self,
+        *,
+        promotion_id: str,
+        discount_type: str,
+        discount_value: str,
+        duration_kind: str,
+        audience: str = "public",
+        currency: str = "SGD",
+        code: str | None = None,
+        promo_code_kind: str | None = None,
+        applicable_offering_ids: list[str] | None = None,
+        periods_total: int | None = None,
+        valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
+        display_name: str | None = None,
+    ) -> dict[str, Any]:
+        """POST the create-promotion saga. Raises PolicyViolationFromServer on
+        a validation failure or a translated loyalty refusal."""
+        body: dict[str, Any] = {
+            "promotionId": promotion_id,
+            "discountType": discount_type,
+            "discountValue": discount_value,
+            "durationKind": duration_kind,
+            "audience": audience,
+            "currency": currency,
+        }
+        if code is not None:
+            body["code"] = code
+        if promo_code_kind is not None:
+            body["promoCodeKind"] = promo_code_kind
+        if applicable_offering_ids is not None:
+            body["applicableOfferingIds"] = applicable_offering_ids
+        if periods_total is not None:
+            body["periodsTotal"] = periods_total
+        if valid_from is not None:
+            body["validFrom"] = valid_from.isoformat()
+        if valid_to is not None:
+            body["validTo"] = valid_to.isoformat()
+        if display_name is not None:
+            body["displayName"] = display_name
+        resp = await self._request("POST", self._PROMO, json=body)
+        return resp.json()
+
+    async def get_promotion(self, promotion_id: str) -> dict[str, Any]:
+        resp = await self._request("GET", f"{self._PROMO}/{promotion_id}")
+        return resp.json()
+
+    async def list_promotions(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if state is not None:
+            params["state"] = state
+        resp = await self._request("GET", self._PROMO, params=params)
+        return resp.json()
+
+    async def assign_promotion(
+        self,
+        promotion_id: str,
+        *,
+        customer_ids: list[str],
+        source: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {"customerIds": customer_ids}
+        if source is not None:
+            body["source"] = source
+        resp = await self._request("POST", f"{self._PROMO}/{promotion_id}/assign", json=body)
+        return resp.json()
+
+    async def preview_promo(
+        self, *, code: str, offering: str, customer_id: str | None = None
+    ) -> dict[str, Any]:
+        """Portal live-preview: {valid, label, base, effective, reason}.
+        ``customer_id`` gates a targeted code on eligibility."""
+        params: dict[str, Any] = {"code": code, "offering": offering}
+        if customer_id is not None:
+            params["customerId"] = customer_id
+        resp = await self._request("GET", "/promo/preview", params=params)
+        return resp.json()
+
+    async def validate_promo(
+        self, *, code: str, offering: str, customer_id: str | None = None
+    ) -> dict[str, Any]:
+        """Order-time validation: full discount terms COM stamps onto the order.
+        ``customer_id`` gates a targeted code on eligibility."""
+        params: dict[str, Any] = {"code": code, "offering": offering}
+        if customer_id is not None:
+            params["customerId"] = customer_id
+        resp = await self._request("GET", "/promo/validate", params=params)
+        return resp.json()
+
+    async def list_customer_offers(
+        self, *, customer_id: str, state: str | None = None
+    ) -> dict[str, Any]:
+        """Targeted-offer entitlement reads for the dashboard / order discovery."""
+        params: dict[str, Any] = {"customerId": customer_id}
+        if state is not None:
+            params["state"] = state
+        resp = await self._request("GET", "/promo/customer-offers", params=params)
+        return resp.json()
+
+    async def resolve_eligible_promo(
+        self, *, customer_id: str, offering: str
+    ) -> dict[str, Any]:
+        """Targeted order-time resolution (v1.1.1): best targeted promo the
+        customer is eligible for + terms + the promo's CODE (COM claims by code).
+        {valid: False} if none."""
+        resp = await self._request(
+            "GET",
+            "/promo/resolve-eligible",
+            params={"customerId": customer_id, "offering": offering},
+        )
+        return resp.json()
+
 

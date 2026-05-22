@@ -6,7 +6,7 @@ product_order, order_item, order_state_history.
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, ForeignKey, Numeric, Text, func
+from sqlalchemy import BigInteger, ForeignKey, Numeric, SmallInteger, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TZDateTime, TenantMixin, TimestampMixin
@@ -48,6 +48,17 @@ class OrderItem(Base, TenantMixin, TimestampMixin):
     price_amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     price_currency: Mapped[str | None] = mapped_column(Text)
     price_offering_price_id: Mapped[str | None] = mapped_column(Text)
+
+    # v1.1 — promo discount captured at order create (INTENT, not yet claimed),
+    # carried into the subscription snapshot at activation. discount_code is the
+    # typed non-targeted code (NULL for targeted/no-promo). promo_offer_id is
+    # the loyalty offer id captured at claim — used for redeem/revoke.
+    discount_code: Mapped[str | None] = mapped_column(Text)
+    promo_offer_definition_id: Mapped[str | None] = mapped_column(Text)
+    discount_type: Mapped[str | None] = mapped_column(Text)  # percent | absolute
+    discount_value: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    discount_periods_total: Mapped[int | None] = mapped_column(SmallInteger)
+    promo_offer_id: Mapped[str | None] = mapped_column(Text)
 
     order: Mapped["ProductOrder"] = relationship(back_populates="items")
 

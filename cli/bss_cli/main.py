@@ -57,6 +57,7 @@ from .commands import (
     onboard as onboard_cmd,
     order as order_cmd,
     payment as payment_cmd,
+    promo as promo_cmd,
     prov as prov_cmd,
     scenario as scenario_cmd,
     som as som_cmd,
@@ -80,6 +81,7 @@ app.add_typer(order_cmd.app, name="order")
 app.add_typer(subscription_cmd.app, name="subscription")
 app.add_typer(catalog_cmd.app, name="catalog")
 app.add_typer(payment_cmd.app, name="payment")
+app.add_typer(promo_cmd.app, name="promo")
 app.add_typer(usage_cmd.app, name="usage")
 app.add_typer(prov_cmd.app, name="prov")
 app.add_typer(som_cmd.app, name="som")

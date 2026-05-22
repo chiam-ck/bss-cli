@@ -34,17 +34,20 @@ class TestProductOffering:
         r = await client.get("/tmf-api/productCatalogManagement/v4/productOffering")
         assert r.status_code == 200
         offerings = r.json()
-        assert len(offerings) == 3
+        # Seed plans present; a deployment may add more (#36).
+        ids = {o["id"] for o in offerings}
+        assert {"PLAN_S", "PLAN_M", "PLAN_L"} <= ids
 
-        # TMF620 camelCase field names
-        first = offerings[0]
-        assert "isBundle" in first
-        assert "isSellable" in first
-        assert "lifecycleStatus" in first
-        assert "productOfferingPrice" in first
-        assert "bundleAllowance" in first
-        assert "@type" in first
-        assert first["@type"] == "ProductOffering"
+        # TMF620 camelCase field names — assert shape on a known seed plan
+        # (list ordering isn't guaranteed, so don't index [0]).
+        plan_s = next(o for o in offerings if o["id"] == "PLAN_S")
+        assert "isBundle" in plan_s
+        assert "isSellable" in plan_s
+        assert "lifecycleStatus" in plan_s
+        assert "productOfferingPrice" in plan_s
+        assert "bundleAllowance" in plan_s
+        assert "@type" in plan_s
+        assert plan_s["@type"] == "ProductOffering"
 
     async def test_list_offerings_has_spec_ref(self, client: AsyncClient):
         r = await client.get("/tmf-api/productCatalogManagement/v4/productOffering")

@@ -2,7 +2,13 @@
 
 from .admin import AdminClient
 from .audit import AuditClient
-from .auth import AuthProvider, NamedTokenAuthProvider, NoAuthProvider, TokenAuthProvider
+from .auth import (
+    AuthProvider,
+    BearerAuthProvider,
+    NamedTokenAuthProvider,
+    NoAuthProvider,
+    TokenAuthProvider,
+)
 from .base import (
     BSSClient,
     reset_service_identity_token,
@@ -14,6 +20,7 @@ from .com import COMClient
 from .crm import CRMClient
 from .errors import ClientError, NotFound, PolicyViolationFromServer, ServerError, Timeout
 from .inventory import InventoryClient
+from .loyalty import LoyaltyClient
 from .mediation import MediationClient
 from .payment import PaymentClient
 from .provisioning import ProvisioningClient
@@ -25,11 +32,13 @@ __all__ = [
     "AuditClient",
     "AuthProvider",
     "BSSClient",
+    "BearerAuthProvider",
     "COMClient",
     "CRMClient",
     "CatalogClient",
     "ClientError",
     "InventoryClient",
+    "LoyaltyClient",
     "MediationClient",
     "NamedTokenAuthProvider",
     "NoAuthProvider",

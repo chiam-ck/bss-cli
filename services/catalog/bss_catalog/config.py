@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     env: str = "development"
     tenant_default: str = "DEFAULT"
 
+    # v1.1 — loyalty-cli integration. Catalog holds the LoyaltyClient (the
+    # token never leaves this process). base_url defaults to the bundled
+    # same-network service name; BYOI overrides via BSS_LOYALTY_BASE_URL.
+    loyalty_base_url: str = "http://loyalty-http:8080"
+    loyalty_api_token: str = ""
+
     model_config = SettingsConfigDict(
         env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",

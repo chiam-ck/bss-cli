@@ -50,6 +50,7 @@ async def setup_consumer(app) -> None:
                     payment_client=None,
                     som_client=None,
                     subscription_client=app.state.subscription_client,
+                    loyalty_client=app.state.loyalty_client,
                     exchange=exchange,
                 )
                 await svc.handle_service_order_completed(

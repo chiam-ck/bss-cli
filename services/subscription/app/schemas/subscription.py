@@ -6,6 +6,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from bss_models import apply_discount
 from bss_models.subscription import BundleBalance, Subscription, VasPurchase
 
 SUBSCRIPTION_PATH = "/subscription-api/v1/subscription"
@@ -19,6 +20,13 @@ class PriceSnapshot(BaseModel):
     price_amount: Decimal
     price_currency: str
     price_offering_price_id: str
+    # v1.1 — optional promo discount carried from the order. price_amount stays
+    # the FULL base; the effective per-period charge is computed at charge time.
+    discount_type: str | None = None
+    discount_value: Decimal | None = None
+    discount_periods_total: int | None = None
+    promo_code: str | None = None
+    promo_offer_definition_id: str | None = None
 
 
 class SubscriptionCreateRequest(BaseModel):
@@ -92,6 +100,16 @@ class SubscriptionResponse(BaseModel):
     pending_offering_id: str | None = None
     pending_offering_price_id: str | None = None
     pending_effective_at: datetime | None = None
+    # v1.1 — promo discount snapshot (the portal dashboard renders these).
+    # price_amount above is the FULL base; effective_amount is what's charged
+    # this period. discount_periods_remaining: >0 discounted periods left,
+    # 0 none, -1 perpetual.
+    discount_type: str | None = None
+    discount_value: Decimal | None = None
+    discount_periods_remaining: int = 0
+    effective_amount: Decimal | None = None
+    promo_code: str | None = None
+    promo_offer_definition_id: str | None = None
     at_type: str = "Subscription"
 
 
@@ -132,6 +150,20 @@ def to_subscription_response(sub: Subscription) -> SubscriptionResponse:
         pending_offering_id=sub.pending_offering_id,
         pending_offering_price_id=sub.pending_offering_price_id,
         pending_effective_at=sub.pending_effective_at,
+        discount_type=sub.discount_type,
+        discount_value=sub.discount_value,
+        discount_periods_remaining=sub.discount_periods_remaining,
+        # What this period actually charges: discounted while the counter is
+        # live (>0 or perpetual -1), else the full base.
+        effective_amount=(
+            apply_discount(sub.discount_type, sub.discount_value, sub.price_amount)
+            if sub.discount_type
+            and sub.discount_value is not None
+            and sub.discount_periods_remaining != 0
+            else sub.price_amount
+        ),
+        promo_code=sub.promo_code,
+        promo_offer_definition_id=sub.promo_offer_definition_id,
     )
 
 
