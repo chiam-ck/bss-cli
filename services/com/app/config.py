@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     env: str = "development"
     tenant_default: str = "DEFAULT"
 
+    # v1.1 — COM holds its own LoyaltyClient for the consume lifecycle
+    # (offer.claim/advance_to_claimed/redeem/revoke). Token never leaves COM.
+    loyalty_base_url: str = "http://loyalty-http:8080"
+    loyalty_api_token: str = ""
+
     model_config = SettingsConfigDict(
         env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",

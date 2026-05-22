@@ -37,6 +37,7 @@ class OrderService:
         som_client,
         subscription_client,
         exchange,
+        loyalty_client=None,
     ):
         self._session = session
         self._repo = repo
@@ -45,6 +46,7 @@ class OrderService:
         self._payment = payment_client
         self._som = som_client
         self._subscription = subscription_client
+        self._loyalty = loyalty_client
         self._exchange = exchange
 
     async def create_order(
@@ -181,6 +183,57 @@ class OrderService:
             "promo_offer_id": offer_id,
         }
 
+    async def _claim_entitlement(self, order: ProductOrder, item) -> str | None:
+        """Consume the promo entitlement at activation (Flow 2/3 gate).
+
+        Non-targeted (typed code): ``offer.claim`` mints + claims the offer from
+        the code. Targeted (assigned offer already on the customer):
+        ``offer.advance_to_claimed``. Idempotency-Key = order id so a redelivered
+        completion event replays rather than double-consuming. Returns the
+        loyalty offer id to redeem/revoke, or None when there's no promo.
+        """
+        if item is None or not item.discount_type or self._loyalty is None:
+            return None
+        if item.discount_code:
+            result = await self._loyalty.claim_offer(
+                customer_id=order.customer_id,
+                source={"type": "promo_code", "code": item.discount_code},
+                idempotency_key=order.id,
+            )
+            return result.get("offer_id")
+        if item.promo_offer_id:
+            await self._loyalty.advance_offer_to_claimed(
+                offer_id=item.promo_offer_id,
+                idempotency_key=order.id,
+                order_ref=order.id,
+            )
+            return item.promo_offer_id
+        return None
+
+    async def _redeem_entitlement(self, offer_id: str, order_id: str) -> None:
+        """Finalize the entitlement after a successful activation. Best-effort:
+        the subscription already exists, so a redeem hiccup is logged, not fatal."""
+        try:
+            await self._loyalty.redeem_offer(
+                offer_id=offer_id, order_ref=order_id, idempotency_key=order_id
+            )
+        except ClientError:
+            log.warning("order.promo.redeem_failed", offer_id=offer_id, exc_info=True)
+
+    async def _revoke_entitlement(self, offer_id: str, order_id: str) -> None:
+        """Release the entitlement when activation fails (payment decline).
+        Best-effort — a revoke hiccup is logged; loyalty's TTL/expiry is the
+        backstop. Reason maps to loyalty's ``order_cancelled`` RevokeReason."""
+        try:
+            await self._loyalty.revoke_offer(
+                offer_id=offer_id,
+                reason="order_cancelled",
+                idempotency_key=order_id,
+                order_ref=order_id,
+            )
+        except ClientError:
+            log.warning("order.promo.revoke_failed", offer_id=offer_id, exc_info=True)
+
     async def submit_order(self, order_id: str) -> ProductOrder:
         """Submit an order (acknowledged -> in_progress), publish to MQ."""
         order = await self._repo.get(order_id)
@@ -302,15 +355,34 @@ class OrderService:
                 )
                 return
 
+            item = order.items[0] if order.items else None
+
             # Resolve price snapshot — prefer event payload, fall back to the
             # row stamped at create_order time. The order item is the durable
             # source of truth in case the event arrives stripped.
-            if price_snapshot is None and order.items and order.items[0].price_amount is not None:
-                item = order.items[0]
+            if price_snapshot is None and item is not None and item.price_amount is not None:
                 price_snapshot = {
                     "priceAmount": str(item.price_amount),
                     "priceCurrency": item.price_currency,
                     "priceOfferingPriceId": item.price_offering_price_id,
+                }
+
+            # v1.1 — consume the promo entitlement (the gate). claim-at-activation:
+            # SOM has already succeeded by now, so a provisioning failure never
+            # burns the code; only a payment decline can (→ revoke below). The
+            # discount terms then ride on the snapshot so subscription charges
+            # the effective price for period 1.
+            offer_id = await self._claim_entitlement(order, item)
+            if item is not None and item.discount_type and price_snapshot is not None:
+                price_snapshot = {
+                    **price_snapshot,
+                    "discountType": item.discount_type,
+                    "discountValue": (
+                        str(item.discount_value) if item.discount_value is not None else None
+                    ),
+                    "discountPeriodsTotal": item.discount_periods_total,
+                    "promoCode": item.discount_code,
+                    "promoOfferDefinitionId": item.promo_offer_definition_id,
                 }
 
             # Create subscription
@@ -323,14 +395,29 @@ class OrderService:
             }
             if price_snapshot is not None:
                 create_kwargs["price_snapshot"] = price_snapshot
-            sub_result = await self._subscription.create(**create_kwargs)
+            try:
+                sub_result = await self._subscription.create(**create_kwargs)
+            except Exception:
+                # Activation failed (typically a payment decline). Release the
+                # entitlement so a single-use code isn't burned, then propagate.
+                if offer_id is not None:
+                    await self._revoke_entitlement(offer_id, order.id)
+                raise
             if sub_result.get("id"):
                 span.set_attribute(semconv.BSS_SUBSCRIPTION_ID, sub_result["id"])
 
+            # Activation succeeded → redeem the entitlement.
+            if offer_id is not None:
+                await self._redeem_entitlement(offer_id, order.id)
+
             # Update order item
-            if order.items:
-                order.items[0].target_subscription_id = sub_result.get("id")
-                order.items[0].state = "completed"
+            if item is not None:
+                item.target_subscription_id = sub_result.get("id")
+                item.state = "completed"
+                if offer_id is not None:
+                    # capture the loyalty offer id (for a typed code it was minted
+                    # at claim; for an assigned offer it's the same id).
+                    item.promo_offer_id = offer_id
 
             check_order_transition(order.state, "completed")
             order.state = "completed"
