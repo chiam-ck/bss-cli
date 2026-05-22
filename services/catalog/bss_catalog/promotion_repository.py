@@ -10,7 +10,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bss_models.catalog import Promotion
+from bss_models.catalog import Promotion, PromotionEligibility
 
 
 class PromotionRepository:
@@ -50,4 +50,54 @@ class PromotionRepository:
         stmt = select(Promotion).order_by(Promotion.id).limit(limit).offset(offset)
         if state is not None:
             stmt = stmt.where(Promotion.state == state)
+        return list((await self._session.execute(stmt)).scalars().all())
+
+    # ── eligibility (v1.1.1 — targeted = code + eligibility list) ─────────
+
+    async def add_eligibility(
+        self, *, promotion_id: str, customer_id: str, created_by: str
+    ) -> bool:
+        """Add a (promotion, customer) eligibility row. Idempotent — returns
+        False if it already existed (so a re-run reports it as 'already')."""
+        existing = await self._session.execute(
+            select(PromotionEligibility.id).where(
+                PromotionEligibility.promotion_id == promotion_id,
+                PromotionEligibility.customer_id == customer_id,
+            )
+        )
+        if existing.scalar_one_or_none() is not None:
+            return False
+        self._session.add(
+            PromotionEligibility(
+                promotion_id=promotion_id,
+                customer_id=customer_id,
+                created_by=created_by,
+            )
+        )
+        return True
+
+    async def is_eligible(self, promotion_id: str, customer_id: str) -> bool:
+        r = await self._session.execute(
+            select(PromotionEligibility.id)
+            .where(
+                PromotionEligibility.promotion_id == promotion_id,
+                PromotionEligibility.customer_id == customer_id,
+            )
+            .limit(1)
+        )
+        return r.scalar_one_or_none() is not None
+
+    async def list_eligible_promotions(self, customer_id: str) -> list[Promotion]:
+        """Active targeted promotions this customer is eligible for (the
+        auto-apply candidate set + the dashboard read)."""
+        stmt = (
+            select(Promotion)
+            .join(PromotionEligibility, PromotionEligibility.promotion_id == Promotion.id)
+            .where(
+                PromotionEligibility.customer_id == customer_id,
+                Promotion.state == "active",
+                Promotion.audience == "targeted",
+            )
+            .order_by(Promotion.id)
+        )
         return list((await self._session.execute(stmt)).scalars().all())

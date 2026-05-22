@@ -163,30 +163,29 @@ class OrderService:
         discount" (never blocks the order).
         """
         res: dict | None = None
-        offer_id: str | None = None
-        used_typed = False
+        code_to_claim: str | None = None
         try:
             if discount_code:
                 typed = await self._catalog.validate_promo(
-                    code=discount_code, offering=offering_id
+                    code=discount_code, offering=offering_id, customer_id=customer_id
                 )
                 if typed.get("valid"):
-                    res, used_typed = typed, True  # typed code wins
+                    res, code_to_claim = typed, discount_code  # typed code wins
                 else:
                     log.info(
-                        "order.promo.code_invalid_fallback_to_assigned",
+                        "order.promo.code_invalid_fallback_to_eligible",
                         code=discount_code,
                         reason=typed.get("reason"),
                     )
-            # No code, or an invalid code → try the auto-applied assigned offer
-            # (unless the customer opted out).
+            # No code, or an invalid code → the customer's best eligible targeted
+            # promo auto-applies (unless they opted out). v1.1.1: this returns a
+            # CODE too, so the consume path is identical to a typed code.
             if res is None and not skip_assigned_offer:
-                assigned = await self._catalog.resolve_assigned_offer(
+                eligible = await self._catalog.resolve_eligible_promo(
                     customer_id=customer_id, offering=offering_id
                 )
-                if assigned.get("valid"):
-                    res = assigned
-                    offer_id = assigned.get("offerId")  # assigned offer exists already
+                if eligible.get("valid"):
+                    res, code_to_claim = eligible, eligible.get("code")
         except ClientError:
             log.warning("order.promo.resolve_failed", code=discount_code, exc_info=True)
             return {}
@@ -196,45 +195,37 @@ class OrderService:
 
         raw_value = res.get("discountValue")
         return {
-            # stamp the typed code only when it was the one actually used
-            "discount_code": discount_code if used_typed else None,
+            # the code to claim at activation — typed or the targeted promo's code
+            "discount_code": code_to_claim,
             "offer_definition_id": res.get("offerDefinitionId"),
             "discount_type": res.get("discountType"),
             "discount_value": Decimal(raw_value) if raw_value is not None else None,
             "discount_periods_total": res.get("discountPeriodsTotal"),
-            "promo_offer_id": offer_id,
+            # v1.1.1: both paths claim by code at activation; the loyalty offer id
+            # is captured then, not at create.
+            "promo_offer_id": None,
         }
 
     async def _claim_entitlement(self, order: ProductOrder, item) -> str | None:
-        """Consume the promo entitlement at activation (Flow 2/3 gate).
+        """Consume the promo entitlement at activation (the gate).
 
-        Non-targeted (typed code): ``offer.claim`` mints + claims the offer from
-        the code. Targeted (assigned offer already on the customer):
-        ``offer.advance_to_claimed``. Idempotency-Key = order id so a redelivered
-        completion event replays rather than double-consuming. Returns the
-        loyalty offer id to redeem/revoke, or None when there's no promo.
+        v1.1.1 — ONE path for both audiences: ``offer.claim(source=promo_code)``
+        on the code stamped at order create (a typed code, or a targeted promo's
+        code resolved via eligibility). loyalty dedupes idempotency on
+        (actor, key) WITHOUT the tool name, so claim/redeem/revoke each use a
+        distinct ``{order_id}:<op>`` key. Returns the loyalty offer id to
+        redeem/revoke, or None when there's no promo.
         """
-        if item is None or not item.discount_type or self._loyalty is None:
+        if item is None or not item.discount_type or not item.discount_code:
             return None
-        # loyalty dedupes idempotency on (actor, key) WITHOUT the tool name, so
-        # claim/advance/redeem/revoke for one order each need a distinct key —
-        # otherwise redeem would replay claim's cached result. Suffix per op; a
-        # redelivered completion event still replays the same op correctly.
-        if item.discount_code:
-            result = await self._loyalty.claim_offer(
-                customer_id=order.customer_id,
-                source={"type": "promo_code", "code": item.discount_code},
-                idempotency_key=f"{order.id}:claim",
-            )
-            return result.get("offer_id")
-        if item.promo_offer_id:
-            await self._loyalty.advance_offer_to_claimed(
-                offer_id=item.promo_offer_id,
-                idempotency_key=f"{order.id}:advance",
-                order_ref=order.id,
-            )
-            return item.promo_offer_id
-        return None
+        if self._loyalty is None:
+            return None
+        result = await self._loyalty.claim_offer(
+            customer_id=order.customer_id,
+            source={"type": "promo_code", "code": item.discount_code},
+            idempotency_key=f"{order.id}:claim",
+        )
+        return result.get("offer_id")
 
     async def _redeem_entitlement(self, offer_id: str, order_id: str) -> None:
         """Finalize the entitlement after a successful activation. Best-effort:

@@ -68,6 +68,7 @@ async def _ensure_promotion(catalog: CatalogClient, promotion_id: str) -> None:
             discount_type="percent",
             discount_value="20",
             duration_kind="single",
+            audience="targeted",  # v1.1.1 — eligibility-gated code, not codeless
             display_name="VIP welcome — 20% off first month",
         )
         print(f"✓ created promotion {promo['id']} (OD={promo.get('offerDefinitionId')})")

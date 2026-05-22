@@ -104,8 +104,8 @@ def _mock_catalog() -> AsyncMock:
     # v1.1 — default to "no promo" so create_order's discount discovery is a
     # no-op for the existing (non-promo) tests; promo tests override these.
     mock.validate_promo = AsyncMock(return_value={"valid": False, "reason": "unknown_code"})
-    mock.resolve_assigned_offer = AsyncMock(
-        return_value={"valid": False, "reason": "no_applicable_offer"}
+    mock.resolve_eligible_promo = AsyncMock(
+        return_value={"valid": False, "reason": "no_eligible_promo"}
     )
     mock.close = AsyncMock()
     return mock

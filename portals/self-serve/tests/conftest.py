@@ -90,7 +90,9 @@ class FakeCatalog:
         # v0.7 active-as-of query — for tests, return everything seeded.
         return list(self.offerings)
 
-    async def preview_promo(self, *, code: str, offering: str) -> dict[str, Any]:
+    async def preview_promo(
+        self, *, code: str, offering: str, customer_id: str | None = None
+    ) -> dict[str, Any]:
         return dict(self.promo_preview)
 
     async def list_customer_offers(
@@ -98,7 +100,7 @@ class FakeCatalog:
     ) -> dict[str, Any]:
         return dict(self.customer_offers)
 
-    async def resolve_assigned_offer(
+    async def resolve_eligible_promo(
         self, *, customer_id: str, offering: str
     ) -> dict[str, Any]:
         return dict(self.assigned_offer)

@@ -135,8 +135,14 @@ class Promotion(Base, TenantMixin, TimestampMixin):
     __table_args__ = {"schema": SCHEMA}
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)  # e.g. PROMO_SUMMER25
-    # NULL for codeless targeted promotions (assigned via offer.issue, not typed).
+    # The loyalty promo code. Present for BOTH audiences (v1.1.1): a public code
+    # is advertised/typed; a targeted code is BSS-internal, auto-applied only for
+    # eligible customers (gated by promotion_eligibility) and not advertised.
     code: Mapped[str | None] = mapped_column(Text)
+    # public = anyone may type the code; targeted = eligibility-gated + auto-applied.
+    audience: Mapped[str] = mapped_column(
+        Text, nullable=False, default="public", server_default="public"
+    )
     # The loyalty join key. NULL until the create saga completes.
     offer_definition_id: Mapped[str | None] = mapped_column(Text)
     discount_type: Mapped[str] = mapped_column(Text, nullable=False)  # percent | absolute
@@ -152,6 +158,26 @@ class Promotion(Base, TenantMixin, TimestampMixin):
     valid_from: Mapped[datetime | None] = mapped_column(TZDateTime)
     valid_to: Mapped[datetime | None] = mapped_column(TZDateTime)
     state: Mapped[str] = mapped_column(Text, nullable=False)  # pending_link → active → retired
+    created_by: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class PromotionEligibility(Base, TenantMixin, TimestampMixin):
+    """v1.1.1 — which customers may use a *targeted* promotion's code.
+
+    One code lives in loyalty; the per-customer pairing lives here (loyalty's
+    promo_code has no customer field). BSS is the eligibility gate: a targeted
+    code auto-applies for customers with a row here, and a typed targeted code
+    is rejected for anyone without one. Public promos have no rows.
+    """
+
+    __tablename__ = "promotion_eligibility"
+    __table_args__ = {"schema": SCHEMA}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    promotion_id: Mapped[str] = mapped_column(
+        Text, ForeignKey(f"{SCHEMA}.promotion.id"), nullable=False
+    )
+    customer_id: Mapped[str] = mapped_column(Text, nullable=False)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
 
 

@@ -31,6 +31,10 @@ def create(
     discount_type: Annotated[str, typer.Option("--type", help="percent | absolute.")],
     discount_value: Annotated[str, typer.Option("--value", help="Discount amount (percent 0-100, or absolute).")],
     duration_kind: Annotated[str, typer.Option("--duration", help="single | multi | perpetual.")],
+    audience: Annotated[
+        str,
+        typer.Option("--audience", help="public (typed) | targeted (eligibility-gated, auto-applied)."),
+    ] = "public",
     currency: Annotated[str, typer.Option("--currency")] = "SGD",
     code: Annotated[
         str | None,
@@ -69,6 +73,7 @@ def create(
             discount_type=discount_type,
             discount_value=value,
             duration_kind=duration_kind,
+            audience=audience,
             currency=currency,
             code=code,
             promo_code_kind=promo_code_kind,
@@ -78,9 +83,9 @@ def create(
             valid_to=valid_to,
             display_name=display_name,
         )
-        kind = f"code [bold]{code}[/]" if code else "codeless (targeted)"
         rprint(
-            f"[green]✓[/] Created promotion [bold]{result['id']}[/] ({kind}) — "
+            f"[green]✓[/] Created promotion [bold]{result['id']}[/] "
+            f"(audience={result.get('audience')}, code={result.get('code')}) — "
             f"state={result['state']}, OD={result.get('offerDefinitionId')}"
         )
 
@@ -92,23 +97,23 @@ def assign(
     promotion_id: Annotated[str, typer.Option("--promo", help="An active promotion id.")],
     customers: Annotated[str, typer.Option("--customers", help="Comma-separated customer ids.")],
 ) -> None:
-    """Assign a codeless (targeted) promotion to specific customers."""
+    """Add customers to a targeted promotion's eligibility list."""
     customer_ids = [c.strip() for c in customers.split(",") if c.strip()]
 
     async def _do() -> None:
         result = await get_clients().catalog.assign_promotion(
             promotion_id, customer_ids=customer_ids
         )
-        issued = result.get("issued", [])
-        skipped = result.get("skipped", [])
+        eligible = result.get("eligible", [])
+        already = result.get("already", [])
         rprint(
-            f"[green]✓[/] Assigned [bold]{promotion_id}[/]: "
-            f"{len(issued)} issued, {len(skipped)} skipped"
+            f"[green]✓[/] Eligibility for [bold]{promotion_id}[/] "
+            f"(code {result.get('code')}): {len(eligible)} added, {len(already)} already"
         )
-        for cid in issued:
-            rprint(f"  • [green]issued[/] {cid}")
-        for s in skipped:
-            rprint(f"  • [yellow]skipped[/] {s.get('customer_id')} ({s.get('reason')})")
+        for cid in eligible:
+            rprint(f"  • [green]added[/] {cid}")
+        for cid in already:
+            rprint(f"  • [dim]already[/] {cid}")
 
     _run_safely(_do())
 

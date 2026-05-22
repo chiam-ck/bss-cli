@@ -110,7 +110,7 @@ async def signup_form(
     assigned_offer = None
     if is_returning:
         try:
-            res = await clients.catalog.resolve_assigned_offer(
+            res = await clients.catalog.resolve_eligible_promo(
                 customer_id=identity.customer_id, offering=plan_id
             )
             if res.get("valid"):
@@ -169,7 +169,9 @@ async def signup_promo_preview(
     if not code:
         return HTMLResponse("")  # nothing entered yet → clear the preview slot
     try:
-        result = await get_clients().catalog.preview_promo(code=code, offering=offering)
+        result = await get_clients().catalog.preview_promo(
+            code=code, offering=offering, customer_id=identity.customer_id
+        )
     except Exception:  # noqa: BLE001 — preview must never break the funnel
         log.warning("signup.promo_preview.failed", offering=offering, exc_info=True)
         result = {"valid": False, "reason": None}

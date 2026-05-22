@@ -39,6 +39,7 @@ from .catalog import (
     ProductSpecification,
     ProductToServiceMapping,
     Promotion,
+    PromotionEligibility,
     ServiceSpecification,
     VasOffering,
 )
@@ -123,6 +124,7 @@ __all__ = [
     "ProductOffering",
     "ProductOfferingPrice",
     "Promotion",
+    "PromotionEligibility",
     "BundleAllowance",
     "VasOffering",
     "ServiceSpecification",

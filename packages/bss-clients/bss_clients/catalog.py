@@ -186,6 +186,7 @@ class CatalogClient(BSSClient):
         discount_type: str,
         discount_value: str,
         duration_kind: str,
+        audience: str = "public",
         currency: str = "SGD",
         code: str | None = None,
         promo_code_kind: str | None = None,
@@ -202,6 +203,7 @@ class CatalogClient(BSSClient):
             "discountType": discount_type,
             "discountValue": discount_value,
             "durationKind": duration_kind,
+            "audience": audience,
             "currency": currency,
         }
         if code is not None:
@@ -247,18 +249,26 @@ class CatalogClient(BSSClient):
         resp = await self._request("POST", f"{self._PROMO}/{promotion_id}/assign", json=body)
         return resp.json()
 
-    async def preview_promo(self, *, code: str, offering: str) -> dict[str, Any]:
-        """Portal live-preview: {valid, label, base, effective, reason}."""
-        resp = await self._request(
-            "GET", "/promo/preview", params={"code": code, "offering": offering}
-        )
+    async def preview_promo(
+        self, *, code: str, offering: str, customer_id: str | None = None
+    ) -> dict[str, Any]:
+        """Portal live-preview: {valid, label, base, effective, reason}.
+        ``customer_id`` gates a targeted code on eligibility."""
+        params: dict[str, Any] = {"code": code, "offering": offering}
+        if customer_id is not None:
+            params["customerId"] = customer_id
+        resp = await self._request("GET", "/promo/preview", params=params)
         return resp.json()
 
-    async def validate_promo(self, *, code: str, offering: str) -> dict[str, Any]:
-        """Order-time validation: full discount terms COM stamps onto the order."""
-        resp = await self._request(
-            "GET", "/promo/validate", params={"code": code, "offering": offering}
-        )
+    async def validate_promo(
+        self, *, code: str, offering: str, customer_id: str | None = None
+    ) -> dict[str, Any]:
+        """Order-time validation: full discount terms COM stamps onto the order.
+        ``customer_id`` gates a targeted code on eligibility."""
+        params: dict[str, Any] = {"code": code, "offering": offering}
+        if customer_id is not None:
+            params["customerId"] = customer_id
+        resp = await self._request("GET", "/promo/validate", params=params)
         return resp.json()
 
     async def list_customer_offers(
@@ -271,14 +281,15 @@ class CatalogClient(BSSClient):
         resp = await self._request("GET", "/promo/customer-offers", params=params)
         return resp.json()
 
-    async def resolve_assigned_offer(
+    async def resolve_eligible_promo(
         self, *, customer_id: str, offering: str
     ) -> dict[str, Any]:
-        """Targeted order-time resolution: best applicable assigned offer +
-        terms + the loyalty offer id COM advances/redeems. {valid: False} if none."""
+        """Targeted order-time resolution (v1.1.1): best targeted promo the
+        customer is eligible for + terms + the promo's CODE (COM claims by code).
+        {valid: False} if none."""
         resp = await self._request(
             "GET",
-            "/promo/resolve-assigned",
+            "/promo/resolve-eligible",
             params={"customerId": customer_id, "offering": offering},
         )
         return resp.json()

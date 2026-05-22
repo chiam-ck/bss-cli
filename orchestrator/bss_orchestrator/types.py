@@ -165,6 +165,7 @@ Duration = Annotated[
 # v1.1 — promotion enums
 DiscountType = Literal["percent", "absolute"]
 DurationKind = Literal["single", "multi", "perpetual"]
+PromoAudience = Literal["public", "targeted"]
 PromoCodeKind = Literal[
     "single_use_shared", "multi_use", "single_use_unique_per_customer"
 ]

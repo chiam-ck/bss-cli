@@ -108,6 +108,7 @@ class TestPromotionWrites:
             "discountType": "percent",
             "discountValue": "20",
             "durationKind": "multi",
+            "audience": "public",
             "currency": "SGD",
             "code": "SUMMER",
             "promoCodeKind": "multi_use",

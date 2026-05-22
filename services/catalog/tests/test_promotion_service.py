@@ -85,6 +85,11 @@ class FakeLoyalty:
 
 
 async def _cleanup(session: AsyncSession, *promotion_ids: str):
+    # eligibility rows FK to promotion → delete them first
+    await session.execute(
+        text("DELETE FROM catalog.promotion_eligibility WHERE promotion_id = ANY(:ids)"),
+        {"ids": list(promotion_ids)},
+    )
     await session.execute(
         text("DELETE FROM catalog.promotion WHERE id = ANY(:ids)"),
         {"ids": list(promotion_ids)},
@@ -97,9 +102,11 @@ def _svc(session, loyalty, actor="admin"):
 
 
 class TestCreatePromotionTargeted:
-    async def test_codeless_promo_goes_active_without_promo_code_register(
+    async def test_targeted_promo_derives_and_registers_a_code(
         self, db_session: AsyncSession
     ):
+        # v1.1.1 — targeted promos are eligibility-gated CODES (not codeless).
+        # No code given → one is derived from the id; it IS registered in loyalty.
         pid = _pid("PROMO_VIP")
         loyalty = FakeLoyalty()
         try:
@@ -108,16 +115,17 @@ class TestCreatePromotionTargeted:
                 discount_type="percent",
                 discount_value=Decimal("20"),
                 duration_kind="single",
+                audience="targeted",
             )
             assert promo.state == "active"
+            assert promo.audience == "targeted"
+            assert promo.code == pid  # derived
             assert promo.offer_definition_id == f"OD_{pid}"
-            assert promo.code is None
-            # targeted = codeless → OD registered, but NO promo code
-            assert len(loyalty.called("register_offer_definition")) == 1
-            assert loyalty.called("register_promo_code") == []
-            # per-step idempotency key (loyalty dedupes on (actor,key) without
-            # the tool name, so OD + code registration need distinct keys)
-            assert loyalty.called("register_offer_definition")[0]["idempotency_key"] == f"{pid}:od"
+            # both audiences register a code now
+            reg = loyalty.called("register_promo_code")
+            assert len(reg) == 1
+            assert reg[0]["code"] == pid
+            assert reg[0]["kind"] == "single_use_unique_per_customer"  # targeted default
         finally:
             await _cleanup(db_session, pid)
 
@@ -167,6 +175,7 @@ class TestSagaFailureLeavesPendingLink:
                     discount_type="percent",
                     discount_value=Decimal("10"),
                     duration_kind="single",
+                    audience="targeted",
                 )
             assert exc.value.rule == "catalog.promotion.loyalty_refused"
             # row written but NOT confirmed — harmless, reconcilable
@@ -187,6 +196,7 @@ class TestSagaFailureLeavesPendingLink:
                     discount_type="percent",
                     discount_value=Decimal("15"),
                     duration_kind="single",
+                    audience="targeted",
                 )
             # retry with a healthy loyalty resumes the same row (no duplicate)
             healthy = FakeLoyalty()
@@ -195,6 +205,7 @@ class TestSagaFailureLeavesPendingLink:
                 discount_type="percent",
                 discount_value=Decimal("15"),
                 duration_kind="single",
+                audience="targeted",
             )
             assert promo.state == "active"
             assert promo.offer_definition_id == f"OD_{pid}"
@@ -212,6 +223,7 @@ class TestCreatePromotionGuards:
                 discount_type="percent",
                 discount_value=Decimal("10"),
                 duration_kind="single",
+                audience="targeted",
             )
             with pytest.raises(PolicyViolation) as exc:
                 await _svc(db_session, FakeLoyalty()).create_promotion(
@@ -219,6 +231,7 @@ class TestCreatePromotionGuards:
                     discount_type="percent",
                     discount_value=Decimal("10"),
                     duration_kind="single",
+                    audience="targeted",
                 )
             assert exc.value.rule == "catalog.promotion.already_exists"
         finally:
@@ -384,99 +397,93 @@ class TestValidateForOrder:
             await _cleanup(db_session, pid)
 
 
+async def _create_targeted(svc, pid, value="20"):
+    return await svc.create_promotion(
+        promotion_id=pid,
+        discount_type="percent",
+        discount_value=Decimal(value),
+        duration_kind="single",
+        audience="targeted",
+    )
+
+
 class TestAssignTargeted:
-    async def test_issues_to_each_customer_skipping_duplicates(self, db_session: AsyncSession):
+    async def test_adds_eligibility_idempotently(self, db_session: AsyncSession):
         pid = _pid("PROMO_ASSIGN")
-        loyalty = FakeLoyalty(issue_refuse_for={"CUST-DUP"})
         try:
-            svc = _svc(db_session, loyalty)
-            await svc.create_promotion(  # codeless = targeted
-                promotion_id=pid,
-                discount_type="percent",
-                discount_value=Decimal("10"),
-                duration_kind="single",
-            )
-            res = await svc.assign_targeted(
-                promotion_id=pid, customer_ids=["CUST-1", "CUST-2", "CUST-DUP"]
-            )
-            assert set(res["issued"]) == {"CUST-1", "CUST-2"}
-            assert [s["customer_id"] for s in res["skipped"]] == ["CUST-DUP"]
-            issues = loyalty.called("issue_offer")
-            assert len(issues) == 3
-            # deterministic offer id == idempotency key (re-runnable)
-            assert all(i["offer_id"] == i["idempotency_key"] for i in issues)
-            assert issues[0]["offer_definition_id"] == f"OD_{pid}"
+            svc = _svc(db_session, FakeLoyalty())
+            await _create_targeted(svc, pid)
+            res = await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-1", "CUST-2"])
+            assert set(res["eligible"]) == {"CUST-1", "CUST-2"}
+            assert res["already"] == []
+            # re-run → both already eligible (idempotent)
+            res2 = await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-1", "CUST-3"])
+            assert res2["eligible"] == ["CUST-3"]
+            assert res2["already"] == ["CUST-1"]
         finally:
             await _cleanup(db_session, pid)
 
-    async def test_requires_active_promotion(self, db_session: AsyncSession):
+    async def test_rejects_public_or_missing_promo(self, db_session: AsyncSession):
+        # missing promo
         with pytest.raises(PolicyViolation) as exc:
             await _svc(db_session, FakeLoyalty()).assign_targeted(
                 promotion_id=_pid("PROMO_GHOST"), customer_ids=["CUST-1"]
             )
-        assert exc.value.rule == "catalog.promotion.not_active"
-
-
-class TestResolveAssignedOffer:
-    async def test_picks_best_applicable_offer(self, db_session: AsyncSession):
-        # two active promos assigned to the customer; lowest effective wins
-        pid_lo, pid_hi = _pid("PROMO_LO"), _pid("PROMO_HI")
-        loyalty = FakeLoyalty()
+        assert exc.value.rule == "catalog.promotion.not_targeted"
+        # a public promo can't take eligibility
+        pid = _pid("PROMO_PUB")
+        code = f"PUB_{uuid.uuid4().hex[:6].upper()}"
         try:
-            svc = _svc(db_session, loyalty)
+            svc = _svc(db_session, FakeLoyalty())
             await svc.create_promotion(
-                promotion_id=pid_lo, discount_type="percent",
-                discount_value=Decimal("40"), duration_kind="single",
+                promotion_id=pid, discount_type="percent", discount_value=Decimal("10"),
+                duration_kind="single", code=code, promo_code_kind="multi_use",
             )
-            await svc.create_promotion(
-                promotion_id=pid_hi, discount_type="percent",
-                discount_value=Decimal("10"), duration_kind="single",
-            )
-            loyalty.list_rows = [
-                {"offer_id": "OFF-HI", "state": "issued", "offer_definition_id": f"OD_{pid_hi}"},
-                {"offer_id": "OFF-LO", "state": "issued", "offer_definition_id": f"OD_{pid_lo}"},
-            ]
-            r = await svc.resolve_assigned_offer(customer_id="CUST-1", offering_id="PLAN_M")
+            with pytest.raises(PolicyViolation) as exc:
+                await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-1"])
+            assert exc.value.rule == "catalog.promotion.not_targeted"
+        finally:
+            await _cleanup(db_session, pid)
+
+
+class TestResolveEligiblePromo:
+    async def test_picks_best_eligible_promo_and_returns_code(self, db_session: AsyncSession):
+        # two targeted promos, customer eligible for both; lowest effective wins
+        pid_lo, pid_hi = _pid("PROMO_LO"), _pid("PROMO_HI")
+        try:
+            svc = _svc(db_session, FakeLoyalty())
+            await _create_targeted(svc, pid_lo, value="40")
+            await _create_targeted(svc, pid_hi, value="10")
+            await svc.assign_targeted(promotion_id=pid_lo, customer_ids=["CUST-1"])
+            await svc.assign_targeted(promotion_id=pid_hi, customer_ids=["CUST-1"])
+            r = await svc.resolve_eligible_promo(customer_id="CUST-1", offering_id="PLAN_M")
             assert r["valid"] is True
-            # 40% off beats 10% off → lower effective price
-            assert r["offer_id"] == "OFF-LO"
+            assert r["promotion_id"] == pid_lo  # 40% off beats 10%
+            assert r["code"] == pid_lo  # COM claims by this code
             assert r["discount_periods_total"] == 1
         finally:
             await _cleanup(db_session, pid_lo, pid_hi)
 
-    async def test_no_applicable_offer(self, db_session: AsyncSession):
-        loyalty = FakeLoyalty()
-        loyalty.list_rows = []
-        r = await _svc(db_session, loyalty).resolve_assigned_offer(
+    async def test_no_eligible_promo(self, db_session: AsyncSession):
+        r = await _svc(db_session, FakeLoyalty()).resolve_eligible_promo(
             customer_id="CUST-NONE", offering_id="PLAN_M"
         )
         assert r["valid"] is False
-        assert r["reason"] == "no_applicable_offer"
+        assert r["reason"] == "no_eligible_promo"
 
 
 class TestListCustomerOffers:
-    async def test_enriches_offers_with_promotion_terms(self, db_session: AsyncSession):
+    async def test_lists_eligible_promotions(self, db_session: AsyncSession):
         pid = _pid("PROMO_LIST")
-        loyalty = FakeLoyalty()
         try:
-            svc = _svc(db_session, loyalty)
-            await svc.create_promotion(
-                promotion_id=pid,
-                discount_type="percent",
-                discount_value=Decimal("30"),
-                duration_kind="single",
-            )
-            od = f"OD_{pid}"
-            loyalty.list_rows = [
-                {"offer_id": "OFF-1", "state": "issued", "offer_definition_id": od},
-                {"offer_id": "OFF-2", "state": "issued", "offer_definition_id": "OD_UNKNOWN"},
-            ]
-            offers = await svc.list_customer_offers(customer_id="CUST-1", state="issued")
-            assert len(offers) == 2
-            enriched = next(o for o in offers if o["offer_id"] == "OFF-1")
-            assert enriched["promotion"]["promotion_id"] == pid
-            assert enriched["promotion"]["label"] == "30% off"
-            unknown = next(o for o in offers if o["offer_id"] == "OFF-2")
-            assert unknown["promotion"] is None
+            svc = _svc(db_session, FakeLoyalty())
+            await _create_targeted(svc, pid, value="30")
+            await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-1"])
+            offers = await svc.list_customer_offers(customer_id="CUST-1")
+            assert len(offers) == 1
+            assert offers[0]["promotion"]["promotion_id"] == pid
+            assert offers[0]["promotion"]["label"] == "30% off"
+            # a different customer sees nothing
+            assert await svc.list_customer_offers(customer_id="CUST-OTHER") == []
         finally:
             await _cleanup(db_session, pid)

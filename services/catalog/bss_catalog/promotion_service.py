@@ -34,6 +34,7 @@ log = structlog.get_logger()
 
 _DISCOUNT_TYPES = {"percent", "absolute"}
 _DURATION_KINDS = {"single", "multi", "perpetual"}
+_AUDIENCES = {"public", "targeted"}
 # loyalty PromoCodeKind (verified against :8080/openapi.json).
 _PROMO_CODE_KINDS = {
     "single_use_unique_per_customer",
@@ -89,14 +90,17 @@ class PromotionService:
     ) -> list[Promotion]:
         return await self._repo.list(state=state, limit=limit, offset=offset)
 
-    async def validate_for_order(self, *, code: str, offering_id: str) -> dict:
+    async def validate_for_order(
+        self, *, code: str, offering_id: str, customer_id: str | None = None
+    ) -> dict:
         """Resolve a typed code against an offering and compose the effective price.
 
-        Pure read — never consumes the code (loyalty is the hard gate at claim,
-        Flow 2). Returns ``{valid, reason, offer_definition_id, discount_*,
-        duration_kind, periods_total, base, effective, label}``. ``valid=False``
-        with a ``reason`` instead of raising, so the portal can show an inline
-        error and the order proceeds at full price.
+        Pure read — never consumes the code (loyalty is the hard gate at claim).
+        A **targeted** code is gated on eligibility: it's only valid for a
+        customer with a ``promotion_eligibility`` row (so an unadvertised code
+        leaking doesn't let just anyone redeem it). Returns ``{valid, reason,
+        ...terms}``; ``valid=False`` with a ``reason`` rather than raising, so the
+        portal shows an inline note and the order proceeds at full price.
         """
         result: dict = {
             "valid": False,
@@ -134,7 +138,14 @@ class PromotionService:
             result["reason"] = "no_active_promotion"
             return result
 
-        # 3-5. applicability + window + compose (shared with assigned-offer path)
+        # 3. targeted codes are eligibility-gated (BSS is the gate; loyalty has
+        # no per-customer binding). Public codes skip this.
+        if promo.audience == "targeted":
+            if customer_id is None or not await self._repo.is_eligible(promo.id, customer_id):
+                result["reason"] = "not_eligible"
+                return result
+
+        # 4-6. applicability + window + compose
         composed = await self._compose(promo, offering_id)
         if composed.get("reason"):
             result["reason"] = composed["reason"]
@@ -181,45 +192,38 @@ class PromotionService:
             }
         }
 
-    async def resolve_assigned_offer(self, *, customer_id: str, offering_id: str) -> dict:
-        """Targeted path (Flow 3): pick the best applicable assigned offer.
+    async def resolve_eligible_promo(self, *, customer_id: str, offering_id: str) -> dict:
+        """Auto-apply path (v1.1.1): the best *targeted* promo this customer is
+        eligible for and that applies to ``offering_id``.
 
-        Scans the customer's ``issued``/``claimed`` loyalty offers, keeps those
-        whose promotion is active + applicable to ``offering_id`` + in-window,
-        and returns the one with the lowest effective price (most discount). No
-        consume — the entitlement is advanced/redeemed later at activation.
-        ``{valid: False, reason: "no_applicable_offer"}`` when none match.
+        Returns the promo's **code** (COM claims by code at activation, same as a
+        typed code) + the composed terms, picking the lowest effective price.
+        ``{valid: False, reason: "no_eligible_promo"}`` when none apply.
         """
-        rows: list[dict] = []
-        for state in ("issued", "claimed"):
-            resp = await self._loyalty.list_offers(customer_id=customer_id, state=state)
-            rows.extend(resp.get("rows", []))
-
         best: dict | None = None
-        for row in rows:
-            od_id = row.get("offer_definition_id")
-            if not od_id:
-                continue
-            promo = await self._repo.get_by_offer_definition_id(od_id)
-            if promo is None or promo.state != "active":
-                continue
+        for promo in await self._repo.list_eligible_promotions(customer_id):
             composed = await self._compose(promo, offering_id)
             if composed.get("reason"):
                 continue
             candidate = {
                 "valid": True,
-                "offer_id": row.get("offer_id"),
-                "offer_state": row.get("state"),
-                "offer_definition_id": od_id,
+                "code": promo.code,
+                "promotion_id": promo.id,
+                "offer_definition_id": promo.offer_definition_id,
                 **composed["terms"],
             }
             if best is None or candidate["effective"] < best["effective"]:
                 best = candidate
-        return best or {"valid": False, "reason": "no_applicable_offer"}
+        return best or {"valid": False, "reason": "no_eligible_promo"}
 
-    async def preview_promo(self, *, code: str, offering_id: str) -> dict:
-        """Portal-facing live preview — the display subset of validate_for_order."""
-        r = await self.validate_for_order(code=code, offering_id=offering_id)
+    async def preview_promo(
+        self, *, code: str, offering_id: str, customer_id: str | None = None
+    ) -> dict:
+        """Portal-facing live preview — the display subset of validate_for_order.
+        Passes customer_id so a targeted code is eligibility-gated in preview too."""
+        r = await self.validate_for_order(
+            code=code, offering_id=offering_id, customer_id=customer_id
+        )
         return {
             "valid": r["valid"],
             "code": code,
@@ -233,96 +237,85 @@ class PromotionService:
     async def list_customer_offers(
         self, *, customer_id: str, state: str | None = None
     ) -> list[dict]:
-        """Read-proxy over loyalty ``offer.list`` enriched with BSS money terms.
+        """Targeted promotions this customer is eligible for (dashboard 🎁 read).
 
-        Powers the account-dashboard "🎁 you have an offer" block. loyalty is the
-        assignment ledger; BSS attaches the discount label per offer's OD.
+        v1.1.1 — a pure BSS eligibility query; no loyalty call (targeted promos
+        are eligibility rows, not issued offers). ``state`` is accepted for
+        backwards compatibility and ignored.
         """
-        resp = await self._loyalty.list_offers(customer_id=customer_id, state=state)
         out: list[dict] = []
-        for row in resp.get("rows", []):
-            od_id = row.get("offer_definition_id")
-            promo = (
-                await self._repo.get_by_offer_definition_id(od_id) if od_id else None
-            )
-            entry: dict = {
-                "offer_id": row.get("offer_id"),
-                "state": row.get("state"),
-                "offer_definition_id": od_id,
-                "promotion": None,
-            }
-            if promo is not None:
-                entry["promotion"] = {
+        for promo in await self._repo.list_eligible_promotions(customer_id):
+            out.append(
+                {
                     "promotion_id": promo.id,
-                    "discount_type": promo.discount_type,
-                    "discount_value": str(promo.discount_value),
-                    "duration_kind": promo.duration_kind,
-                    "periods_total": promo.periods_total,
-                    "label": discount_label(
-                        promo.discount_type, promo.discount_value, promo.currency
-                    ),
+                    "code": promo.code,
+                    "offer_definition_id": promo.offer_definition_id,
+                    "state": "eligible",
+                    "promotion": {
+                        "promotion_id": promo.id,
+                        "discount_type": promo.discount_type,
+                        "discount_value": str(promo.discount_value),
+                        "duration_kind": promo.duration_kind,
+                        "periods_total": promo.periods_total,
+                        "label": discount_label(
+                            promo.discount_type, promo.discount_value, promo.currency
+                        ),
+                    },
                 }
-            out.append(entry)
+            )
         return out
 
-    # ── targeted assignment (the "simulator" loop) ─────────────────────────
+    # ── targeted assignment (eligibility list) ─────────────────────────────
 
     async def assign_targeted(
         self,
         *,
         promotion_id: str,
         customer_ids: list[str],
-        source: dict | None = None,
     ) -> dict:
-        """Issue a codeless offer to each chosen customer (Flow 3).
+        """Add customers to a targeted promotion's eligibility list (v1.1.1).
 
-        loyalty has no bulk tool — assignment is a per-customer ``offer.issue``
-        loop, and *this loop is the simulator*. Each offer id is deterministic
-        (``OFF_<promotion>_<customer>``) and doubles as the idempotency key, so
-        re-running the assignment is safe. A customer who already has the offer
-        is reported under ``skipped`` rather than failing the whole batch.
+        The promo's code then auto-applies for these customers at order time (and
+        a typed attempt by them validates). Idempotent — a customer already on the
+        list is reported under ``already`` rather than failing the batch.
         """
         _check_admin(self._actor)
         promo = await self._repo.get(promotion_id)
-        if promo is None or promo.state != "active" or not promo.offer_definition_id:
+        if promo is None or promo.state != "active" or promo.audience != "targeted":
             raise PolicyViolation(
-                rule="catalog.promotion.not_active",
-                message=f"Promotion {promotion_id} is not active/linked; cannot assign",
+                rule="catalog.promotion.not_targeted",
+                message=(
+                    f"Promotion {promotion_id} is not an active targeted promo; "
+                    "cannot add eligibility"
+                ),
                 context={
                     "promotion_id": promotion_id,
                     "state": promo.state if promo else None,
+                    "audience": promo.audience if promo else None,
                 },
             )
-        src = source or {"type": "gift", "issued_by": self._actor}
 
-        issued: list[str] = []
-        skipped: list[dict] = []
+        eligible: list[str] = []
+        already: list[str] = []
         for customer_id in customer_ids:
-            offer_id = f"OFF_{promotion_id}_{customer_id}"
-            try:
-                await self._loyalty.issue_offer(
-                    offer_id=offer_id,
-                    offer_definition_id=promo.offer_definition_id,
-                    customer_id=customer_id,
-                    source=src,
-                    idempotency_key=offer_id,
-                )
-                issued.append(customer_id)
-            except PolicyViolationFromServer as exc:
-                skipped.append({"customer_id": customer_id, "reason": exc.rule})
+            added = await self._repo.add_eligibility(
+                promotion_id=promotion_id, customer_id=customer_id, created_by=self._actor
+            )
+            (eligible if added else already).append(customer_id)
+        await self._session.commit()
 
         log.info(
-            "catalog.promotion.assigned",
+            "catalog.promotion.eligibility_added",
             promotion_id=promotion_id,
-            issued=len(issued),
-            skipped=len(skipped),
+            added=len(eligible),
+            already=len(already),
             actor=self._actor,
         )
         return {
             "promotion_id": promotion_id,
-            "offer_definition_id": promo.offer_definition_id,
-            "issued": issued,
-            "skipped": skipped,
+            "code": promo.code,
+            "eligible": eligible,
+            "already": already,
         }
 
     # ── create saga ────────────────────────────────────────────────────────
@@ -334,6 +327,7 @@ class PromotionService:
         discount_type: str,
         discount_value: Decimal,
         duration_kind: str,
+        audience: str = "public",
         currency: str = "SGD",
         code: str | None = None,
         promo_code_kind: str | None = None,
@@ -343,17 +337,29 @@ class PromotionService:
         valid_to: datetime | None = None,
         display_name: str | None = None,
     ) -> Promotion:
-        """Create money terms + register the loyalty entitlement (two-system saga).
+        """Create money terms + register the loyalty code (two-system saga).
 
-        ``code`` set = non-targeted (a typed, shared/multi-use code);
-        ``code`` None = codeless targeted promo (assigned later via offer.issue).
+        Both audiences register a real loyalty code (v1.1.1):
+        - ``public`` — advertised; anyone may type the code.
+        - ``targeted`` — not advertised; auto-applied only for customers added
+          via ``assign_targeted``. If no ``code`` is given, one is derived from
+          the promotion id (it's BSS-internal). Defaults to a one-per-customer
+          kind so each eligible customer can use it once.
         """
         _check_admin(self._actor)
+
+        # Targeted promos still need a loyalty code; derive sensible defaults so
+        # the operator doesn't have to invent an internal code/kind.
+        if audience == "targeted":
+            code = code or promotion_id
+            promo_code_kind = promo_code_kind or "single_use_unique_per_customer"
+
         self._validate(
             discount_type=discount_type,
             discount_value=discount_value,
             duration_kind=duration_kind,
             periods_total=periods_total,
+            audience=audience,
             code=code,
             promo_code_kind=promo_code_kind,
         )
@@ -379,6 +385,7 @@ class PromotionService:
             promo = Promotion(
                 id=promotion_id,
                 code=code,
+                audience=audience,
                 offer_definition_id=None,
                 discount_type=discount_type,
                 discount_value=discount_value,
@@ -449,9 +456,16 @@ class PromotionService:
         discount_value: Decimal,
         duration_kind: str,
         periods_total: int | None,
+        audience: str,
         code: str | None,
         promo_code_kind: str | None,
     ) -> None:
+        if audience not in _AUDIENCES:
+            raise PolicyViolation(
+                rule="catalog.promotion.invalid_audience",
+                message=f"audience must be one of {sorted(_AUDIENCES)}",
+                context={"audience": audience},
+            )
         if discount_type not in _DISCOUNT_TYPES:
             raise PolicyViolation(
                 rule="catalog.promotion.invalid_discount_type",
@@ -489,9 +503,16 @@ class PromotionService:
                 message=f"{duration_kind} promo must not set periods_total",
                 context={"duration_kind": duration_kind, "periods_total": periods_total},
             )
-        if code is not None and promo_code_kind not in _PROMO_CODE_KINDS:
+        # Every promotion (both audiences) registers a loyalty code now.
+        if not code:
+            raise PolicyViolation(
+                rule="catalog.promotion.requires_code",
+                message="a promotion requires a code (targeted codes are derived if omitted)",
+                context={"audience": audience},
+            )
+        if promo_code_kind not in _PROMO_CODE_KINDS:
             raise PolicyViolation(
                 rule="catalog.promotion.invalid_promo_code_kind",
-                message=f"a coded promo requires promo_code_kind in {sorted(_PROMO_CODE_KINDS)}",
+                message=f"promo_code_kind must be one of {sorted(_PROMO_CODE_KINDS)}",
                 context={"promo_code_kind": promo_code_kind},
             )

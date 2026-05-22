@@ -3286,3 +3286,41 @@ runbook + future work match shipped behaviour.
 **Lesson.** A fake that doesn't model the provider's idempotency semantics hides
 exactly this class of bug. The live smoke test (`bss promo create` → `/promo/validate`)
 is the gate that caught it; pytest with `FakeLoyalty` did not.
+
+## 2026-05-22 — v1.1.1 — Phase 0 amendment: targeted promos are eligibility-gated codes (reverses 2026-05-21 #6)
+
+**Context.** v1.1 shipped targeted promos as *codeless* loyalty offers
+(`offer.issue` per customer). In real use that's wrong: the operator workflow
+expects a **code** that exists in the loyalty system, pre-paired to an audience
+upfront — a codeless offer doesn't show up where codes are managed.
+
+**Decision.** A targeted promotion is **one real loyalty code + a BSS eligibility
+list**, auto-applied. Concretely:
+- The promotion registers a code in loyalty via `promo_code.register` exactly
+  like a public promo (so it's visible in `promo_code.list`).
+- `catalog.promotion.audience` = `public` | `targeted`. Public = advertised,
+  anyone may type it. Targeted = not advertised; only customers in
+  `catalog.promotion_eligibility` may use it, and it auto-applies for them.
+- loyalty's `promo_code` has no customer field, so the per-customer pairing
+  lives in `promotion_eligibility`. **BSS is the eligibility gate**: it
+  auto-applies a targeted code only for eligible customers and rejects a typed
+  targeted code from anyone without a row. loyalty still ships unmodified.
+- Consume collapses to ONE path for both audiences: `offer.claim(source=
+  promo_code)` at activation. The v1.1 `offer.issue` / `offer.advance_to_claimed`
+  targeting path is retired.
+
+**Alternatives.** Unique code per customer (true 1:1 pairing) — rejected: N codes
+per campaign with no added value over one code + an eligibility list, since
+loyalty can't enforce per-code ownership anyway (the gate is BSS either way).
+Keep codeless offers — rejected: the operator need is a managed code, per above.
+Modify loyalty to bind customer_id on `promo_code.register` — rejected: keeps the
+"loyalty ships unmodified" boundary (2026-05-21 #1).
+
+**Consequences.** New `promotion.audience` + `promotion_eligibility` table
+(migration 0025). `assign_targeted` writes eligibility rows instead of issuing
+offers. `validate_for_order` gates targeted codes on eligibility; the auto-apply
+discovery path (`resolve_assigned_offer`) becomes an eligibility lookup that
+returns the targeted promo's code. COM's consume simplifies to a single
+claim-by-code path. Dashboard "your offer" reads the eligibility join, not loyalty
+`offer.list`. loyalty `offer.issue`/`advance_to_claimed` remain in the client
+(valid ops) but are no longer wired by BSS.

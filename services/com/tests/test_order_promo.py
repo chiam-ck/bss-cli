@@ -1,7 +1,7 @@
 """v1.1 — promo discount intent stamped on the order item at create time.
 
 create_order resolves a discount through the catalog client (typed code →
-validate_promo; otherwise assigned-offer discovery → resolve_assigned_offer)
+validate_promo; otherwise eligible-promo discovery → resolve_eligible_promo)
 and stamps it as INTENT. An invalid/absent promo never blocks the order.
 """
 
@@ -53,14 +53,14 @@ class TestNonTargetedCode:
         assert item["discountCode"] is None
         assert item["discountType"] is None
 
-    async def test_invalid_code_falls_back_to_assigned_offer(self, client, mock_clients):
-        # a typo shouldn't cost the customer their auto-applied offer
+    async def test_invalid_code_falls_back_to_eligible_promo(self, client, mock_clients):
+        # a typo shouldn't cost the customer their auto-applied (eligible) promo
         mock_clients["catalog"].validate_promo = AsyncMock(
             return_value={"valid": False, "reason": "promo_code.not_found"}
         )
-        mock_clients["catalog"].resolve_assigned_offer = AsyncMock(
+        mock_clients["catalog"].resolve_eligible_promo = AsyncMock(
             return_value={
-                "valid": True, "offerId": "OFF-VIP", "offerDefinitionId": "OD_VIP",
+                "valid": True, "code": "VIP_DEMO", "offerDefinitionId": "OD_VIP",
                 "discountType": "percent", "discountValue": "15",
                 "discountPeriodsTotal": 1, "base": "25.00", "effective": "21.25",
             }
@@ -68,12 +68,12 @@ class TestNonTargetedCode:
         r = await _create(client, discountCode="TYPOO")
         assert r.status_code == 201
         item = r.json()["items"][0]
-        # fell back to the assigned offer: typed code NOT stamped, offer id is
-        assert item["discountCode"] is None
-        assert item["promoOfferId"] == "OFF-VIP"
+        # fell back to the eligible promo → its CODE is stamped (claimed at activation)
+        assert item["discountCode"] == "VIP_DEMO"
+        assert item["promoOfferId"] is None  # set at claim, not create
         assert item["discountType"] == "percent"
 
-    async def test_valid_code_overrides_assigned_offer(self, client, mock_clients):
+    async def test_valid_code_overrides_eligible_promo(self, client, mock_clients):
         mock_clients["catalog"].validate_promo = AsyncMock(
             return_value={
                 "valid": True, "offerDefinitionId": "OD_SUMMER",
@@ -81,27 +81,25 @@ class TestNonTargetedCode:
                 "discountPeriodsTotal": 1, "base": "25.00", "effective": "17.50",
             }
         )
-        # an assigned offer also exists, but the valid typed code wins
-        mock_clients["catalog"].resolve_assigned_offer = AsyncMock(
-            return_value={"valid": True, "offerId": "OFF-VIP", "discountType": "percent",
+        mock_clients["catalog"].resolve_eligible_promo = AsyncMock(
+            return_value={"valid": True, "code": "VIP", "discountType": "percent",
                           "discountValue": "15", "discountPeriodsTotal": 1}
         )
         r = await _create(client, discountCode="SUMMER")
         assert r.status_code == 201
         item = r.json()["items"][0]
         assert item["discountCode"] == "SUMMER"   # typed code stamped
-        assert item["promoOfferId"] is None        # not the assigned offer
-        # typed code won → assigned-offer discovery never consulted
-        mock_clients["catalog"].resolve_assigned_offer.assert_not_awaited()
+        # typed code won → eligibility discovery never consulted
+        mock_clients["catalog"].resolve_eligible_promo.assert_not_awaited()
 
 
-class TestTargetedAssignedOffer:
-    async def test_assigned_offer_stamps_offer_id(self, client, mock_clients):
-        mock_clients["catalog"].resolve_assigned_offer = AsyncMock(
+class TestTargetedEligiblePromo:
+    async def test_eligible_promo_stamps_its_code(self, client, mock_clients):
+        mock_clients["catalog"].resolve_eligible_promo = AsyncMock(
             return_value={
                 "valid": True,
-                "offerId": "OFF_PROMO_VIP_CUST-0001",
-                "offerState": "issued",
+                "code": "PROMO_VIP",
+                "promotionId": "PROMO_VIP",
                 "offerDefinitionId": "OD_PROMO_VIP",
                 "discountType": "percent",
                 "discountValue": "15",
@@ -113,12 +111,13 @@ class TestTargetedAssignedOffer:
                 "label": "15% off",
             }
         )
-        r = await _create(client)  # no typed code → discovery
+        r = await _create(client)  # no typed code → eligibility discovery
         assert r.status_code == 201, r.text
         item = r.json()["items"][0]
-        assert item["discountCode"] is None
-        assert item["promoOfferId"] == "OFF_PROMO_VIP_CUST-0001"
+        # the targeted promo's CODE is stamped (claimed at activation, same as typed)
+        assert item["discountCode"] == "PROMO_VIP"
         assert item["promoOfferDefinitionId"] == "OD_PROMO_VIP"
+        assert item["promoOfferId"] is None  # set at claim
         assert item["discountPeriodsTotal"] == 1
         # typed-code path must NOT be consulted when no code is supplied
         mock_clients["catalog"].validate_promo.assert_not_awaited()
@@ -126,10 +125,10 @@ class TestTargetedAssignedOffer:
 
 class TestOptOutOfAssignedOffer:
     async def test_skip_assigned_offer_ignores_auto_apply(self, client, mock_clients):
-        # customer HAS an applicable assigned offer...
-        mock_clients["catalog"].resolve_assigned_offer = AsyncMock(
+        # customer IS eligible for a targeted promo...
+        mock_clients["catalog"].resolve_eligible_promo = AsyncMock(
             return_value={
-                "valid": True, "offerId": "OFF-1", "offerDefinitionId": "OD_VIP",
+                "valid": True, "code": "VIP", "offerDefinitionId": "OD_VIP",
                 "discountType": "percent", "discountValue": "15",
                 "discountPeriodsTotal": 1, "base": "25.00", "effective": "21.25",
             }
@@ -139,15 +138,15 @@ class TestOptOutOfAssignedOffer:
         assert r.status_code == 201
         item = r.json()["items"][0]
         assert item["discountType"] is None
-        assert item["promoOfferId"] is None
-        mock_clients["catalog"].resolve_assigned_offer.assert_not_awaited()
+        assert item["discountCode"] is None
+        mock_clients["catalog"].resolve_eligible_promo.assert_not_awaited()
 
 
 class TestPromoNeverBlocksOrder:
     async def test_catalog_error_degrades_to_no_discount(self, client, mock_clients):
         from bss_clients import ServerError
 
-        mock_clients["catalog"].resolve_assigned_offer = AsyncMock(
+        mock_clients["catalog"].resolve_eligible_promo = AsyncMock(
             side_effect=ServerError(503, "catalog down")
         )
         r = await _create(client)

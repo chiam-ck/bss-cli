@@ -17,6 +17,7 @@ from ..types import (
     DiscountType,
     DurationKind,
     ProductOfferingId,
+    PromoAudience,
     PromoCodeKind,
     PromotionId,
 )
@@ -29,6 +30,7 @@ async def promo_create(
     discount_type: DiscountType,
     discount_value: str,
     duration_kind: DurationKind,
+    audience: PromoAudience = "public",
     currency: str = "SGD",
     code: str | None = None,
     promo_code_kind: PromoCodeKind | None = None,
@@ -38,10 +40,9 @@ async def promo_create(
     valid_to: str | None = None,
     display_name: str | None = None,
 ) -> dict[str, Any]:
-    """Create a promotion (two-system saga: BSS money terms + loyalty entitlement).
+    """Create a promotion (two-system saga: BSS money terms + loyalty code).
 
-    Operator/admin only. Writes the catalog money terms, registers the loyalty
-    OfferDefinition, and (for a typed code) the promo code — then flips active.
+    Operator/admin only. Both audiences register a real loyalty code.
 
     Args:
         promotion_id: Stable id, e.g. ``PROMO_SUMMER25``. Used as the loyalty
@@ -50,11 +51,15 @@ async def promo_create(
         discount_value: Amount as a string (Decimal-safe). Percent must be 0-100.
         duration_kind: ``single`` (activation period only), ``multi`` (N periods,
             requires ``periods_total`` >= 2), or ``perpetual`` (never reverts).
+        audience: ``public`` (advertised; anyone may type the code) or
+            ``targeted`` (not advertised; auto-applies only for customers added
+            via ``promo.assign``; a code is derived from the id if omitted).
         currency: ISO-4217 for absolute discounts. Default SGD.
-        code: Typed code for a NON-targeted promo. Omit for a codeless targeted
-            promo (assign later with ``promo.assign``).
-        promo_code_kind: Required when ``code`` is set —
-            ``single_use_shared`` | ``multi_use`` | ``single_use_unique_per_customer``.
+        code: The promo code. Required for ``public``; derived from the id for
+            ``targeted`` if omitted.
+        promo_code_kind: ``single_use_shared`` | ``multi_use`` |
+            ``single_use_unique_per_customer``. Defaults to one-per-customer for
+            targeted.
         applicable_offering_ids: Restrict to these plans. Omit = all sellable.
         periods_total: Required for ``multi`` (>= 2); omit otherwise.
         valid_from / valid_to: Optional ISO-8601 validity window.
@@ -66,7 +71,7 @@ async def promo_create(
     Raises:
         PolicyViolationFromServer:
             - ``catalog.promotion.already_exists`` / ``code_in_use``
-            - ``catalog.promotion.invalid_*`` (discount/duration/code validation)
+            - ``catalog.promotion.invalid_*`` / ``requires_code``
             - ``catalog.promotion.loyalty_refused`` (translated loyalty refusal)
     """
     return await get_clients().catalog.create_promotion(
@@ -74,6 +79,7 @@ async def promo_create(
         discount_type=discount_type,
         discount_value=discount_value,
         duration_kind=duration_kind,
+        audience=audience,
         currency=currency,
         code=code,
         promo_code_kind=promo_code_kind,
@@ -90,23 +96,23 @@ async def promo_assign(
     promotion_id: PromotionId,
     customer_ids: list[CustomerId],
 ) -> dict[str, Any]:
-    """Assign a codeless (targeted) promotion to specific customers.
+    """Add customers to a *targeted* promotion's eligibility list.
 
-    Operator/admin only — this is the targeting "simulator": one loyalty
-    ``offer.issue`` per customer. The offer auto-applies at the customer's next
-    order and shows on their dashboard; no code is typed. Re-runnable — a
-    customer who already has the offer is reported under ``skipped``.
+    Operator/admin only. The promotion's code then auto-applies for these
+    customers at their next order (and a typed attempt by them validates).
+    Re-runnable — a customer already eligible is reported under ``already``.
 
     Args:
-        promotion_id: An ``active`` promotion id (created via ``promo.create``).
+        promotion_id: An ``active`` ``targeted`` promotion id (from ``promo.create
+            audience=targeted``).
         customer_ids: The chosen audience (CUST- prefixed).
 
     Returns:
-        ``{promotionId, offerDefinitionId, issued: [...], skipped: [...]}``.
+        ``{promotionId, code, eligible: [...], already: [...]}``.
 
     Raises:
         PolicyViolationFromServer:
-            - ``catalog.promotion.not_active``: promotion missing or not linked.
+            - ``catalog.promotion.not_targeted``: missing, inactive, or public.
     """
     return await get_clients().catalog.assign_promotion(
         promotion_id, customer_ids=customer_ids

@@ -48,6 +48,10 @@ async def _cleanup(settings: Settings, *ids: str):
     engine = create_async_engine(settings.db_url)
     async with async_sessionmaker(engine, expire_on_commit=False)() as s:
         await s.execute(
+            text("DELETE FROM catalog.promotion_eligibility WHERE promotion_id = ANY(:ids)"),
+            {"ids": list(ids)},
+        )
+        await s.execute(
             text("DELETE FROM catalog.promotion WHERE id = ANY(:ids)"), {"ids": list(ids)}
         )
         await s.commit()
@@ -65,11 +69,14 @@ class TestCreateAndRead:
                     "discountType": "percent",
                     "discountValue": "20",
                     "durationKind": "single",
+                    "audience": "targeted",
                 },
             )
             assert r.status_code == 201, r.text
             body = r.json()
             assert body["state"] == "active"
+            assert body["audience"] == "targeted"
+            assert body["code"] == pid  # derived
             assert body["offerDefinitionId"] == f"OD_{pid}"
             assert body["@type"] == "Promotion"
 
@@ -111,6 +118,7 @@ class TestCreateAndRead:
                     "discountType": "percent",
                     "discountValue": "10",
                     "durationKind": "single",
+                    "audience": "targeted",
                 },
             )
             r = await client.get(f"{_TMF}/promotion", params={"state": "active"})
@@ -121,7 +129,7 @@ class TestCreateAndRead:
 
 
 class TestAssignRoute:
-    async def test_assign_returns_issued(self, client, settings):
+    async def test_assign_adds_eligibility(self, client, settings):
         pid = _pid()
         try:
             await client.post(
@@ -131,6 +139,7 @@ class TestAssignRoute:
                     "discountType": "percent",
                     "discountValue": "10",
                     "durationKind": "single",
+                    "audience": "targeted",
                 },
             )
             r = await client.post(
@@ -138,7 +147,7 @@ class TestAssignRoute:
                 json={"customerIds": ["CUST-1", "CUST-2"]},
             )
             assert r.status_code == 200, r.text
-            assert set(r.json()["issued"]) == {"CUST-1", "CUST-2"}
+            assert set(r.json()["eligible"]) == {"CUST-1", "CUST-2"}
         finally:
             await _cleanup(settings, pid)
 
@@ -204,55 +213,69 @@ class TestPortalReads:
         assert r.json()["valid"] is False
         assert r.json()["reason"] == "unknown_code"
 
-    async def test_resolve_assigned_returns_terms(self, client, loyalty, settings):
+    async def _create_targeted_and_assign(self, client, pid, value, customer):
+        await client.post(
+            f"{_TMF}/promotion",
+            json={
+                "promotionId": pid,
+                "discountType": "percent",
+                "discountValue": value,
+                "durationKind": "single",
+                "audience": "targeted",
+            },
+        )
+        await client.post(
+            f"{_TMF}/promotion/{pid}/assign", json={"customerIds": [customer]}
+        )
+
+    async def test_resolve_eligible_returns_code_and_terms(self, client, settings):
         pid = _pid()
         try:
-            await client.post(
-                f"{_TMF}/promotion",
-                json={
-                    "promotionId": pid,
-                    "discountType": "percent",
-                    "discountValue": "15",
-                    "durationKind": "single",
-                },
-            )
-            loyalty.list_rows = [
-                {"offer_id": "OFF-X", "state": "issued", "offer_definition_id": f"OD_{pid}"}
-            ]
+            await self._create_targeted_and_assign(client, pid, "15", "CUST-1")
             r = await client.get(
-                "/promo/resolve-assigned", params={"customerId": "CUST-1", "offering": "PLAN_M"}
+                "/promo/resolve-eligible", params={"customerId": "CUST-1", "offering": "PLAN_M"}
             )
             assert r.status_code == 200, r.text
             body = r.json()
             assert body["valid"] is True
-            assert body["offerId"] == "OFF-X"
+            assert body["code"] == pid  # COM claims by this code
+            assert body["promotionId"] == pid
             assert body["discountPeriodsTotal"] == 1
         finally:
             await _cleanup(settings, pid)
 
-    async def test_resolve_assigned_none(self, client, loyalty):
-        loyalty.list_rows = []
+    async def test_resolve_eligible_none_for_non_eligible(self, client):
         r = await client.get(
-            "/promo/resolve-assigned", params={"customerId": "CUST-NONE", "offering": "PLAN_M"}
+            "/promo/resolve-eligible", params={"customerId": "CUST-NONE", "offering": "PLAN_M"}
         )
         assert r.status_code == 200
         assert r.json()["valid"] is False
 
-    async def test_customer_offers_enriched(self, client, loyalty, settings):
+    async def test_targeted_code_rejected_for_non_eligible(self, client, settings):
+        # a leaked targeted code typed by a non-eligible customer → invalid
         pid = _pid()
         try:
-            await client.post(
-                f"{_TMF}/promotion",
-                json={
-                    "promotionId": pid,
-                    "discountType": "percent",
-                    "discountValue": "30",
-                    "durationKind": "single",
-                },
+            await self._create_targeted_and_assign(client, pid, "20", "CUST-1")
+            r = await client.get(
+                "/promo/validate",
+                params={"code": pid, "offering": "PLAN_M", "customerId": "CUST-OTHER"},
             )
-            loyalty.list_rows = [
-                {"offer_id": "OFF-1", "state": "issued", "offer_definition_id": f"OD_{pid}"}
-            ]
+            assert r.status_code == 200
+            assert r.json()["valid"] is False
+            assert r.json()["reason"] == "not_eligible"
+            # but valid for the eligible customer
+            r2 = await client.get(
+                "/promo/validate",
+                params={"code": pid, "offering": "PLAN_M", "customerId": "CUST-1"},
+            )
+            assert r2.json()["valid"] is True
+        finally:
+            await _cleanup(settings, pid)
+
+    async def test_customer_offers_lists_eligible(self, client, settings):
+        pid = _pid()
+        try:
+            await self._create_targeted_and_assign(client, pid, "30", "CUST-1")
             r = await client.get("/promo/customer-offers", params={"customerId": "CUST-1"})
             assert r.status_code == 200, r.text
             body = r.json()

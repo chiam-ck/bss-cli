@@ -43,9 +43,10 @@ class CreatePromotionRequest(_CamelBase):
     discount_type: str  # percent | absolute
     discount_value: Decimal
     duration_kind: str  # single | multi | perpetual
+    audience: str = "public"  # public | targeted (v1.1.1)
     currency: str = "SGD"
-    code: str | None = None
-    promo_code_kind: str | None = None  # required when code is set
+    code: str | None = None  # derived from id for targeted if omitted
+    promo_code_kind: str | None = None
     applicable_offering_ids: list[str] | None = None
     periods_total: int | None = None
     valid_from: datetime | None = None
@@ -55,7 +56,6 @@ class CreatePromotionRequest(_CamelBase):
 
 class AssignTargetedRequest(_CamelBase):
     customer_ids: list[str]
-    source: dict | None = None
 
 
 # ── response models ──────────────────────────────────────────────────────────
@@ -64,6 +64,7 @@ class AssignTargetedRequest(_CamelBase):
 class Tmf671Promotion(_CamelBase):
     id: str
     code: str | None
+    audience: str
     offer_definition_id: str | None
     discount_type: str
     discount_value: Decimal
@@ -81,6 +82,7 @@ def _to_tmf671(p: Promotion) -> Tmf671Promotion:
     return Tmf671Promotion(
         id=p.id,
         code=p.code,
+        audience=p.audience,
         offer_definition_id=p.offer_definition_id,
         discount_type=p.discount_type,
         discount_value=p.discount_value,
@@ -107,6 +109,7 @@ async def create_promotion(
         discount_type=body.discount_type,
         discount_value=body.discount_value,
         duration_kind=body.duration_kind,
+        audience=body.audience,
         currency=body.currency,
         code=body.code,
         promo_code_kind=body.promo_code_kind,
@@ -150,7 +153,6 @@ async def assign_targeted(
     return await svc.assign_targeted(
         promotion_id=promotion_id,
         customer_ids=body.customer_ids,
-        source=body.source,
     )
 
 
@@ -161,9 +163,10 @@ async def assign_targeted(
 async def preview_promo(
     code: str = Query(...),
     offering: str = Query(...),
+    customer_id: str | None = Query(default=None, alias="customerId"),
     svc: PromotionService = Depends(get_promotion_service),
 ) -> dict:
-    r = await svc.preview_promo(code=code, offering_id=offering)
+    r = await svc.preview_promo(code=code, offering_id=offering, customer_id=customer_id)
     # money as strings for stable display rendering
     return {
         "valid": r["valid"],
@@ -180,12 +183,13 @@ async def preview_promo(
 async def validate_promo(
     code: str = Query(...),
     offering: str = Query(...),
+    customer_id: str | None = Query(default=None, alias="customerId"),
     svc: PromotionService = Depends(get_promotion_service),
 ) -> dict:
     """Full order-time validation — returns the discount *terms* COM stamps onto
-    the order_item, not just the display subset preview returns. Money as strings.
+    the order_item. ``customerId`` gates a targeted code on eligibility.
     """
-    r = await svc.validate_for_order(code=code, offering_id=offering)
+    r = await svc.validate_for_order(code=code, offering_id=offering, customer_id=customer_id)
     return {
         "valid": r["valid"],
         "code": r["code"],
@@ -203,21 +207,22 @@ async def validate_promo(
     }
 
 
-@router.get("/promo/resolve-assigned")
-async def resolve_assigned(
+@router.get("/promo/resolve-eligible")
+async def resolve_eligible(
     customer_id: str = Query(..., alias="customerId"),
     offering: str = Query(...),
     svc: PromotionService = Depends(get_promotion_service),
 ) -> dict:
-    """Targeted-path order-time resolution: the best applicable assigned offer
-    for this customer + offering, with the loyalty offer id COM advances/redeems."""
-    r = await svc.resolve_assigned_offer(customer_id=customer_id, offering_id=offering)
+    """Targeted-path order-time resolution (v1.1.1): the best targeted promo this
+    customer is eligible for + applicable to the offering. Returns the promo's
+    **code** (COM claims by code at activation, same path as a typed code)."""
+    r = await svc.resolve_eligible_promo(customer_id=customer_id, offering_id=offering)
     if not r.get("valid"):
         return {"valid": False, "reason": r.get("reason")}
     return {
         "valid": True,
-        "offerId": r["offer_id"],
-        "offerState": r["offer_state"],
+        "code": r["code"],
+        "promotionId": r["promotion_id"],
         "offerDefinitionId": r["offer_definition_id"],
         "discountType": r["discount_type"],
         "discountValue": str(r["discount_value"]),

@@ -30,10 +30,10 @@ _VALID_CODE_TERMS = {
     "label": "20% off",
 }
 
-_VALID_ASSIGNED = {
+_VALID_ELIGIBLE = {
     "valid": True,
-    "offerId": "OFF_VIP_CUST-0001",
-    "offerState": "issued",
+    "code": "PROMO_VIP",  # v1.1.1 — targeted resolves to a CODE now
+    "promotionId": "PROMO_VIP",
     "offerDefinitionId": "OD_PROMO_VIP",
     "discountType": "percent",
     "discountValue": "15",
@@ -116,22 +116,19 @@ class TestNonTargetedConsume:
 
 class TestTargetedConsume:
     @pytest.mark.asyncio
-    async def test_advance_to_claimed_for_assigned_offer(
-        self, client, mock_clients, db_session
-    ):
-        mock_clients["catalog"].resolve_assigned_offer = AsyncMock(return_value=_VALID_ASSIGNED)
-        oid = await _inprogress_order(client)  # no typed code → discovery
+    async def test_targeted_claims_by_code(self, client, mock_clients, db_session):
+        # v1.1.1 — targeted resolves to a code; consume is the SAME claim-by-code
+        # path as a typed code (no offer.issue/advance anymore).
+        mock_clients["catalog"].resolve_eligible_promo = AsyncMock(return_value=_VALID_ELIGIBLE)
+        oid = await _inprogress_order(client)  # no typed code → eligibility discovery
 
         svc = _handler_service(db_session, mock_clients)
         await _complete(svc, oid)
 
-        # assigned offer advances, not claimed-from-code
-        mock_clients["loyalty"].advance_offer_to_claimed.assert_awaited_once()
-        assert (
-            mock_clients["loyalty"].advance_offer_to_claimed.await_args.kwargs["offer_id"]
-            == "OFF_VIP_CUST-0001"
-        )
-        mock_clients["loyalty"].claim_offer.assert_not_awaited()
+        claim = mock_clients["loyalty"].claim_offer
+        claim.assert_awaited_once()
+        # claimed by the targeted promo's code
+        assert claim.await_args.kwargs["source"] == {"type": "promo_code", "code": "PROMO_VIP"}
         mock_clients["loyalty"].redeem_offer.assert_awaited_once()
 
 
@@ -170,5 +167,4 @@ class TestNoPromoUnaffected:
         await _complete(svc, oid)
 
         mock_clients["loyalty"].claim_offer.assert_not_awaited()
-        mock_clients["loyalty"].advance_offer_to_claimed.assert_not_awaited()
         mock_clients["loyalty"].redeem_offer.assert_not_awaited()
