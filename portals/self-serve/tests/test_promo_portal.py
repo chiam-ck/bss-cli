@@ -257,6 +257,35 @@ async def test_promo_preview_valid_renders_discounted_price(seed_db, fake_client
 
 
 @pytest.mark.asyncio
+async def test_promo_preview_uses_form_promo_code_param(seed_db, fake_clients):
+    """The signup form's input is name="promo_code" (it must match the POST
+    /signup field), so HTMX's hx-include sends ``promo_code`` — NOT ``code``.
+    The earlier tests sent ``code`` directly and so missed that the live
+    preview never fired in a real browser. Pin the browser's actual param."""
+    async with seed_db() as db:
+        sess, _ = await create_test_session(
+            db, email="ada@example.sg", customer_id=None, verified=True
+        )
+        await db.commit()
+        sid = sess.id
+    fake_clients.catalog.promo_preview = {
+        "valid": True, "label": "10% off", "base": "25.00",
+        "effective": "22.50", "reason": None,
+    }
+    with patch("bss_self_serve.routes.signup.get_clients", return_value=fake_clients):
+        with TestClient(create_app(Settings())) as c:
+            c.cookies.set(PORTAL_SESSION_COOKIE, sid)
+            # Exactly what the form's hx-include emits: promo_code, not code.
+            resp = c.get(
+                "/signup/promo/preview",
+                params={"promo_code": "WELCOME10", "offering": "PLAN_M"},
+            )
+    assert resp.status_code == 200
+    assert "10% off" in resp.text
+    assert "SGD 22.50/mo" in resp.text
+
+
+@pytest.mark.asyncio
 async def test_promo_preview_invalid_renders_inline_note(seed_db, fake_clients):
     async with seed_db() as db:
         sess, _ = await create_test_session(

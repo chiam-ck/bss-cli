@@ -155,6 +155,12 @@ async def signup_promo_preview(
     request: Request,
     offering: str = Query(...),
     code: str = Query(default=""),
+    # The signup form's input is name="promo_code" (it must match the POST
+    # /signup field), so HTMX's hx-include sends ``promo_code``, not ``code``.
+    # Accept both; the form's param wins. (Without this the live preview never
+    # fired for typed codes — caught when the endpoint test sent ``code`` but
+    # the real browser sends ``promo_code``.)
+    promo_code: str = Query(default=""),
     has_offer: str = Query(default=""),  # "1" when an assigned offer is pre-applied
     identity: IdentityView = Depends(requires_verified_email),
 ) -> HTMLResponse:
@@ -165,7 +171,7 @@ async def signup_promo_preview(
     a benign note and never blocks signup. The portal holds no loyalty token —
     all promo knowledge comes through the catalog client.
     """
-    code = code.strip()
+    code = (promo_code or code).strip()
     if not code:
         return HTMLResponse("")  # nothing entered yet → clear the preview slot
     try:

@@ -33,6 +33,45 @@ The captures use a 1280×800 viewport, dark color scheme, headless
 chromium from `~/.cache/ms-playwright` (override via
 `PLAYWRIGHT_CHROMIUM_EXECUTABLE`).
 
+## Promo-code self-serve surfaces (v1.1)
+
+`capture_promo.py` shoots two authenticated self-serve surfaces that show
+the promo flow: the signup form's live discounted-price preview, and the
+dashboard line card with the applied discount. Both are behind the
+verified-email / session wall, and the signup funnel ends in KYC + payment,
+so the **stack must be in mock/dev provider mode** for the headless run
+(real Resend/Didit/Stripe can't be driven by Playwright).
+
+```bash
+# Temporarily flip 3 containers to mock providers (no .env edit), via an
+# override that sets: BSS_PORTAL_EMAIL_PROVIDER=logging (OTP → dev mailbox),
+# BSS_PORTAL_KYC_PROVIDER=prebaked, BSS_PAYMENT_PROVIDER=mock,
+# BSS_ENABLE_TEST_ENDPOINTS=true. In mock mode the funnel auto-advances
+# (prebaked KYC is synchronous; mock COF/order/poll fire on hx-trigger=load).
+docker compose -f docker-compose.yml -f docker-compose.screenshots.yml \
+  up -d portal-self-serve payment crm
+
+# A multi-use public promo the demo customer can redeem cleanly:
+uv run bss promo create --id PROMO_DEMO15 --type percent --value 15 \
+  --duration multi --periods 3 --audience public --code DEMO15 \
+  --code-kind multi_use --name "Launch 15%"
+
+# Capture (pass a fresh available MSISDN; SOM doesn't fall back if the
+# preferred number is already reserved):
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/snap/bin/chromium \
+  PROMO_MSISDN=<fresh> PROMO_CODE=DEMO15 \
+  uv run python docs/screenshots/capture_promo.py
+
+# Restore real providers:
+make up
+```
+
+Writes `portal_self_serve_signup_promo_v1_1.png` and
+`portal_self_serve_dashboard_promo_v1_1.png`. On this host Playwright
+can't download its own chromium (unsupported platform); point
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE` at a system chromium (snap chromium needs
+the `--no-sandbox` args the script already passes).
+
 ## Trace swimlane (terminal `bss trace`)
 
 ```bash
