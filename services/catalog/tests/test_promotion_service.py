@@ -115,8 +115,9 @@ class TestCreatePromotionTargeted:
             # targeted = codeless → OD registered, but NO promo code
             assert len(loyalty.called("register_offer_definition")) == 1
             assert loyalty.called("register_promo_code") == []
-            # saga step 2 idempotency key is the promotion id
-            assert loyalty.called("register_offer_definition")[0]["idempotency_key"] == pid
+            # per-step idempotency key (loyalty dedupes on (actor,key) without
+            # the tool name, so OD + code registration need distinct keys)
+            assert loyalty.called("register_offer_definition")[0]["idempotency_key"] == f"{pid}:od"
         finally:
             await _cleanup(db_session, pid)
 
@@ -144,6 +145,11 @@ class TestCreatePromotionNonTargeted:
             assert reg[0]["code"] == code
             assert reg[0]["offer_definition_id"] == f"OD_{pid}"
             assert reg[0]["kind"] == "multi_use"
+            # regression guard: OD-register and code-register must use DISTINCT
+            # idempotency keys (loyalty dedupes on (actor,key) without the tool
+            # name; a shared key replays the OD result and silently skips the code).
+            od_key = loyalty.called("register_offer_definition")[0]["idempotency_key"]
+            assert reg[0]["idempotency_key"] != od_key
         finally:
             await _cleanup(db_session, pid)
 

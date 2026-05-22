@@ -399,18 +399,22 @@ class PromotionService:
 
         # ── steps 2-3: register the loyalty entitlement ─────────────────
         od_id = _offer_definition_id_for(promotion_id)
+        # loyalty's idempotency cache dedupes on (actor, Idempotency-Key) WITHOUT
+        # the tool name — so each saga step needs its own key, or the second
+        # call replays the first's cached result. Suffix per step; a retried
+        # saga still replays each step correctly.
         try:
             await self._loyalty.register_offer_definition(
                 definition_id=od_id,
                 display_name=display_name or promotion_id,
-                idempotency_key=promotion_id,
+                idempotency_key=f"{promotion_id}:od",
             )
             if code is not None:
                 await self._loyalty.register_promo_code(
                     code=code,
                     offer_definition_id=od_id,
                     kind=promo_code_kind,
-                    idempotency_key=promotion_id,
+                    idempotency_key=f"{promotion_id}:code",
                 )
         except PolicyViolationFromServer as exc:
             # Leave the row pending_link (harmless — no live entitlement points

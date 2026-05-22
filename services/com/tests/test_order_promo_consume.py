@@ -99,7 +99,7 @@ class TestNonTargetedConsume:
         claim = mock_clients["loyalty"].claim_offer
         claim.assert_awaited_once()
         assert claim.await_args.kwargs["source"] == {"type": "promo_code", "code": "SUMMER"}
-        assert claim.await_args.kwargs["idempotency_key"] == oid
+        assert claim.await_args.kwargs["idempotency_key"] == f"{oid}:claim"
         # discount terms forwarded to subscription.create
         snap = mock_clients["subscription"].create.await_args.kwargs["price_snapshot"]
         assert snap["discountType"] == "percent"
@@ -108,6 +108,10 @@ class TestNonTargetedConsume:
         # redeemed on success, not revoked
         mock_clients["loyalty"].redeem_offer.assert_awaited_once()
         mock_clients["loyalty"].revoke_offer.assert_not_awaited()
+        # regression guard: claim + redeem must use DISTINCT idempotency keys
+        # (loyalty dedupes on (actor,key) without the tool name).
+        redeem_key = mock_clients["loyalty"].redeem_offer.await_args.kwargs["idempotency_key"]
+        assert redeem_key != claim.await_args.kwargs["idempotency_key"]
 
 
 class TestTargetedConsume:

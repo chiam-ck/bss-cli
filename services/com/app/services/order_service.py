@@ -194,17 +194,21 @@ class OrderService:
         """
         if item is None or not item.discount_type or self._loyalty is None:
             return None
+        # loyalty dedupes idempotency on (actor, key) WITHOUT the tool name, so
+        # claim/advance/redeem/revoke for one order each need a distinct key —
+        # otherwise redeem would replay claim's cached result. Suffix per op; a
+        # redelivered completion event still replays the same op correctly.
         if item.discount_code:
             result = await self._loyalty.claim_offer(
                 customer_id=order.customer_id,
                 source={"type": "promo_code", "code": item.discount_code},
-                idempotency_key=order.id,
+                idempotency_key=f"{order.id}:claim",
             )
             return result.get("offer_id")
         if item.promo_offer_id:
             await self._loyalty.advance_offer_to_claimed(
                 offer_id=item.promo_offer_id,
-                idempotency_key=order.id,
+                idempotency_key=f"{order.id}:advance",
                 order_ref=order.id,
             )
             return item.promo_offer_id
@@ -215,7 +219,7 @@ class OrderService:
         the subscription already exists, so a redeem hiccup is logged, not fatal."""
         try:
             await self._loyalty.redeem_offer(
-                offer_id=offer_id, order_ref=order_id, idempotency_key=order_id
+                offer_id=offer_id, order_ref=order_id, idempotency_key=f"{order_id}:redeem"
             )
         except ClientError:
             log.warning("order.promo.redeem_failed", offer_id=offer_id, exc_info=True)
@@ -228,7 +232,7 @@ class OrderService:
             await self._loyalty.revoke_offer(
                 offer_id=offer_id,
                 reason="order_cancelled",
-                idempotency_key=order_id,
+                idempotency_key=f"{order_id}:revoke",
                 order_ref=order_id,
             )
         except ClientError:
