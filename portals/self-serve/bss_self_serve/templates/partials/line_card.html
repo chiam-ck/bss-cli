@@ -67,6 +67,20 @@
     </p>
   {% endif %}
 
+  {% if line.discount and line.discount.active %}
+    {# v1.1 — applied promo discount, read off the subscription row. #}
+    <p class="line-card-discount">
+      🏷️ <strong>{{ line.discount.label }}</strong> · paying
+      <strong>SGD {{ line.discount.effective_amount }}/mo</strong>
+      {% if line.discount.perpetual %}
+        (ongoing)
+      {% else %}
+        · {{ line.discount.periods_remaining }} more renewal{{ '' if line.discount.periods_remaining == 1 else 's' }}
+        at this price, then SGD {{ line.discount.base_amount }}/mo
+      {% endif %}
+    </p>
+  {% endif %}
+
   <div class="line-card-cta-row">
     {% if line.cta_branch == 'blocked' %}
       <a class="line-card-cta line-card-cta--primary"

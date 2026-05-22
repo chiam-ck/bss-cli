@@ -27,6 +27,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import structlog
+from bss_models import discount_label
 from bss_portal_auth import IdentityView, SessionView
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -34,6 +36,8 @@ from fastapi.responses import HTMLResponse
 from ..clients import get_clients
 from ..security import requires_session
 from ..templating import templates
+
+log = structlog.get_logger(__name__)
 
 router = APIRouter()
 
@@ -155,6 +159,24 @@ async def _line_view(
         or b.get("total", 0) > 0
         or b.get("remaining", 0) > 0
     ]
+    # v1.1 — applied promo discount, read straight off the subscription row
+    # (authoritative for what's actually charged this period). Rendered as a
+    # badge on the line card. remaining == -1 → perpetual.
+    discount = None
+    if sub.get("discountType"):
+        remaining = sub.get("discountPeriodsRemaining", 0)
+        discount = {
+            "label": discount_label(
+                sub.get("discountType"),
+                sub.get("discountValue") or 0,
+                sub.get("priceCurrency", "SGD"),
+            ),
+            "effective_amount": sub.get("effectiveAmount"),
+            "base_amount": sub.get("priceAmount"),
+            "periods_remaining": remaining,
+            "perpetual": remaining == -1,
+            "active": remaining != 0,
+        }
     return {
         "id": sub["id"],
         "msisdn": sub.get("msisdn", ""),
@@ -170,6 +192,7 @@ async def _line_view(
         "pending_effective_at": sub.get("pendingEffectiveAt"),
         "cta_branch": _cta_for(state, has_pending),
         "bars": bars,
+        "discount": discount,
     }
 
 
@@ -251,6 +274,22 @@ async def dashboard(
                 pending_id, pending_id
             )
 
+    # v1.1 — targeted offers issued to this customer but not yet used. Shown
+    # once at the customer level ("applies to your next order"), since an
+    # issued offer is not bound to a specific line. Best-effort: a catalog/
+    # loyalty hiccup just hides the block, never breaks the dashboard. The
+    # portal holds no loyalty token — this goes through the catalog client.
+    assigned_offers: list[dict[str, Any]] = []
+    try:
+        offers_resp = await clients.catalog.list_customer_offers(
+            customer_id=customer_id, state="issued"
+        )
+        assigned_offers = [
+            o for o in offers_resp.get("offers", []) if o.get("promotion")
+        ]
+    except Exception:  # noqa: BLE001 — entitlement display is non-critical
+        log.warning("dashboard.assigned_offers.failed", exc_info=True)
+
     return templates.TemplateResponse(
         request,
         "dashboard.html",
@@ -258,5 +297,6 @@ async def dashboard(
             "email": identity.email,
             "customer_id": customer_id,
             "lines": lines,
+            "assigned_offers": assigned_offers,
         },
     )

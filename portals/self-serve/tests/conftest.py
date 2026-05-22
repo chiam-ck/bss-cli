@@ -69,6 +69,13 @@ def _force_mock_payment_provider_for_tests():
 class FakeCatalog:
     offerings: list[dict[str, Any]] = field(default_factory=list)
     vas_offerings: list[dict[str, Any]] = field(default_factory=list)
+    # v1.1 — promo preview/entitlement reads. Tests seed these.
+    promo_preview: dict[str, Any] = field(
+        default_factory=lambda: {"valid": False, "reason": None}
+    )
+    customer_offers: dict[str, Any] = field(
+        default_factory=lambda: {"offers": []}
+    )
 
     async def list_offerings(self) -> list[dict[str, Any]]:
         return list(self.offerings)
@@ -79,6 +86,14 @@ class FakeCatalog:
     async def list_active_offerings(self, *, at: Any = None) -> list[dict[str, Any]]:
         # v0.7 active-as-of query — for tests, return everything seeded.
         return list(self.offerings)
+
+    async def preview_promo(self, *, code: str, offering: str) -> dict[str, Any]:
+        return dict(self.promo_preview)
+
+    async def list_customer_offers(
+        self, *, customer_id: str, state: str | None = None
+    ) -> dict[str, Any]:
+        return dict(self.customer_offers)
 
 
 @dataclass
@@ -247,6 +262,7 @@ class FakeCOM:
         offering_id: str,
         msisdn_preference: str | None = None,
         notes: str | None = None,
+        discount_code: str | None = None,
     ) -> dict[str, Any]:
         if self.next_error is not None:
             err = self.next_error
@@ -256,6 +272,7 @@ class FakeCOM:
             "customer_id": customer_id,
             "offering_id": offering_id,
             "msisdn_preference": msisdn_preference,
+            "discount_code": discount_code,
         }
         self.create_calls.append(record)
         new_id = f"ORD-{len(self.create_calls):04d}"

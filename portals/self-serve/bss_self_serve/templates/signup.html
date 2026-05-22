@@ -84,6 +84,23 @@
   </fieldset>
   {% endif %}
 
+  <fieldset>
+    <legend>Promo code <span class="form-optional">(optional)</span></legend>
+    <label>Have a promo code?
+      <input type="text" name="promo_code" id="promo_code" autocomplete="off"
+             inputmode="text" placeholder="SUMMER25"
+             hx-get="/signup/promo/preview"
+             hx-trigger="change, keyup[key=='Enter']"
+             hx-include="#promo_code"
+             hx-vals='{"offering": "{{ plan.id }}"}'
+             hx-target="#promo-preview"
+             hx-swap="innerHTML" />
+    </label>
+    {# Live discounted-price preview swapped in here on blur / Enter. An
+       invalid code shows an inline note and never blocks signup. #}
+    <div id="promo-preview" class="promo-preview" aria-live="polite"></div>
+  </fieldset>
+
   <button class="form-submit" type="submit">{% if is_returning %}Add line on {{ plan.id }}{% else %}Activate {{ plan.id }}{% endif %}</button>
 </form>
 {% endblock %}
