@@ -168,3 +168,47 @@ class TestNoPromoUnaffected:
 
         mock_clients["loyalty"].claim_offer.assert_not_awaited()
         mock_clients["loyalty"].redeem_offer.assert_not_awaited()
+
+
+class TestClaimFailureDegradesToFullPrice:
+    """v1.1.3 regression — an exhausted/refused promo code must NOT brick an
+    order that has already cleared KYC + payment. The claim raises
+    ``promo_code.consume.illegal_state`` (e.g. an exhausted shared code); the
+    order must still complete, at FULL price, with the discount dropped from the
+    snapshot and nothing left to redeem/revoke. Previously this propagated and
+    left the order stuck ``in_progress`` forever (no subscription)."""
+
+    @pytest.mark.asyncio
+    async def test_exhausted_code_claim_refusal_completes_at_full_price(
+        self, client, mock_clients, db_session
+    ):
+        mock_clients["catalog"].validate_promo = AsyncMock(return_value=_VALID_CODE_TERMS)
+        oid = await _inprogress_order(client, discountCode="SUMMER")
+
+        # The loyalty offer is already exhausted → claim refused at activation.
+        mock_clients["loyalty"].claim_offer = AsyncMock(
+            side_effect=PolicyViolationFromServer(
+                rule="promo_code.consume.illegal_state",
+                message="Illegal transition exhausted -> exhausted",
+            )
+        )
+
+        svc = _handler_service(db_session, mock_clients)
+        # Must NOT raise — the order completes despite the promo failure.
+        await _complete(svc, oid)
+
+        # Subscription created (order proceeded) at FULL price: no discount terms
+        # rode onto the snapshot because nothing was claimed.
+        create = mock_clients["subscription"].create
+        create.assert_awaited_once()
+        snap = create.await_args.kwargs.get("price_snapshot") or {}
+        assert "discountType" not in snap
+        assert "promoCode" not in snap
+
+        # Nothing was claimed → nothing to redeem or revoke.
+        mock_clients["loyalty"].redeem_offer.assert_not_awaited()
+        mock_clients["loyalty"].revoke_offer.assert_not_awaited()
+
+        # The order reached a terminal completed state (not stranded in_progress).
+        order = await OrderRepository(db_session).get(oid)
+        assert order.state == "completed"

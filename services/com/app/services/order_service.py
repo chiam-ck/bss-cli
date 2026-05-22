@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
-from bss_clients import ClientError
+from bss_clients import ClientError, PolicyViolationFromServer
 from bss_clock import now as clock_now
 from bss_telemetry import semconv, tracer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -389,8 +389,42 @@ class OrderService:
             # burns the code; only a payment decline can (→ revoke below). The
             # discount terms then ride on the snapshot so subscription charges
             # the effective price for period 1.
-            offer_id = await self._claim_entitlement(order, item)
-            if item is not None and item.discount_type and price_snapshot is not None:
+            #
+            # v1.1.3 — a promo failure must NOT brick an order that has already
+            # cleared KYC + payment. If the claim is refused (exhausted code,
+            # loyalty policy refusal) or loyalty is unreachable, degrade to full
+            # price: drop the discount from the snapshot, emit a signal, and let
+            # activation proceed. Mirrors the create-time "loyalty error → full
+            # price, never block the order" rule. The discount only rides on the
+            # snapshot when the entitlement was actually claimed.
+            offer_id = None
+            promo_claimed = False
+            try:
+                offer_id = await self._claim_entitlement(order, item)
+                promo_claimed = offer_id is not None
+            except (PolicyViolationFromServer, ClientError) as exc:
+                log.warning(
+                    "order.promo.claim_failed_degrade_to_full_price",
+                    commercial_order_id=order.id,
+                    customer_id=customer_id,
+                    promo_code=item.discount_code if item is not None else None,
+                    error=str(exc),
+                )
+                await publish(
+                    self._session,
+                    event_type="order.promo_not_applied",
+                    aggregate_type="ProductOrder",
+                    aggregate_id=order.id,
+                    payload={
+                        "commercialOrderId": order.id,
+                        "customerId": customer_id,
+                        "promoCode": item.discount_code if item is not None else None,
+                        "reason": "claim_refused",
+                    },
+                    exchange=self._exchange,
+                )
+
+            if promo_claimed and item is not None and price_snapshot is not None:
                 price_snapshot = {
                     **price_snapshot,
                     "discountType": item.discount_type,
