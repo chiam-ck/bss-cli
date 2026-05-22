@@ -271,4 +271,16 @@ class CatalogClient(BSSClient):
         resp = await self._request("GET", "/promo/customer-offers", params=params)
         return resp.json()
 
+    async def resolve_assigned_offer(
+        self, *, customer_id: str, offering: str
+    ) -> dict[str, Any]:
+        """Targeted order-time resolution: best applicable assigned offer +
+        terms + the loyalty offer id COM advances/redeems. {valid: False} if none."""
+        resp = await self._request(
+            "GET",
+            "/promo/resolve-assigned",
+            params={"customerId": customer_id, "offering": offering},
+        )
+        return resp.json()
+
 

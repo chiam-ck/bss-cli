@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
+from bss_clients import ClientError
 from bss_clock import now as clock_now
 from bss_telemetry import semconv, tracer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,12 +54,19 @@ class OrderService:
         offering_id: str,
         msisdn_preference: str | None = None,
         notes: str | None = None,
+        discount_code: str | None = None,
     ) -> ProductOrder:
         """Create a new order (acknowledged) and stamp the price snapshot.
 
         v0.7 — the active price row at this moment is captured on the order
         item so renewal will charge what the customer signed up for, even if
         the catalog row is later retired or repriced.
+
+        v1.1 — resolve a promo discount and stamp it as INTENT on the order item
+        (the entitlement is not consumed until activation, Flow 2/3). A typed
+        ``discount_code`` is validated; otherwise the customer's assigned offers
+        are checked for one applicable to this offering. An invalid/absent promo
+        never blocks the order — it simply proceeds at full price.
         """
         await check_customer_exists(customer_id, self._crm)
         _, active_price = await check_offering_currently_sellable(offering_id, self._catalog)
@@ -68,6 +76,10 @@ class OrderService:
         price_amount = Decimal(str(active_price["price"]["taxIncludedAmount"]["value"]))
         price_currency = active_price["price"]["taxIncludedAmount"].get("unit", "SGD")
         price_offering_price_id = active_price["id"]
+
+        discount = await self._resolve_discount(
+            customer_id=customer_id, offering_id=offering_id, discount_code=discount_code
+        )
 
         order_id = await self._repo.next_order_id()
         item_id = await self._repo.next_item_id()
@@ -89,6 +101,15 @@ class OrderService:
             price_amount=price_amount,
             price_currency=price_currency,
             price_offering_price_id=price_offering_price_id,
+            # v1.1 — discount INTENT (not yet claimed). promo_offer_id is set
+            # now only for an assigned offer (it already exists); a typed code's
+            # offer is created at claim time in handle_service_order_completed.
+            discount_code=discount.get("discount_code"),
+            promo_offer_definition_id=discount.get("offer_definition_id"),
+            discount_type=discount.get("discount_type"),
+            discount_value=discount.get("discount_value"),
+            discount_periods_total=discount.get("discount_periods_total"),
+            promo_offer_id=discount.get("promo_offer_id"),
         )
         self._session.add(item)
         await self._repo.create(order)
@@ -115,6 +136,50 @@ class OrderService:
 
         await self._session.commit()
         return await self._repo.get(order_id)
+
+    async def _resolve_discount(
+        self, *, customer_id: str, offering_id: str, discount_code: str | None
+    ) -> dict:
+        """Resolve a promo to stamp as INTENT on the order item.
+
+        Returns the discount fields, or ``{}`` for no/invalid promo. Catalog
+        owns all promo logic (loyalty link, applicability, effective price); COM
+        just records the terms. A catalog/loyalty hiccup must never block the
+        order, so transport errors degrade to "no discount" with a warning.
+        """
+        try:
+            if discount_code:
+                res = await self._catalog.validate_promo(
+                    code=discount_code, offering=offering_id
+                )
+                if not res.get("valid"):
+                    log.info(
+                        "order.promo.code_invalid",
+                        code=discount_code,
+                        reason=res.get("reason"),
+                    )
+                    return {}
+                offer_id = None  # a typed code's offer is created at claim
+            else:
+                res = await self._catalog.resolve_assigned_offer(
+                    customer_id=customer_id, offering=offering_id
+                )
+                if not res.get("valid"):
+                    return {}
+                offer_id = res.get("offerId")  # assigned offer already exists
+        except ClientError:
+            log.warning("order.promo.resolve_failed", code=discount_code, exc_info=True)
+            return {}
+
+        raw_value = res.get("discountValue")
+        return {
+            "discount_code": discount_code if discount_code else None,
+            "offer_definition_id": res.get("offerDefinitionId"),
+            "discount_type": res.get("discountType"),
+            "discount_value": Decimal(raw_value) if raw_value is not None else None,
+            "discount_periods_total": res.get("discountPeriodsTotal"),
+            "promo_offer_id": offer_id,
+        }
 
     async def submit_order(self, order_id: str) -> ProductOrder:
         """Submit an order (acknowledged -> in_progress), publish to MQ."""

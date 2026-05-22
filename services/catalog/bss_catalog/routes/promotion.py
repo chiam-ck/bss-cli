@@ -196,8 +196,36 @@ async def validate_promo(
         "discountValue": str(r["discount_value"]) if r["discount_value"] is not None else None,
         "durationKind": r["duration_kind"],
         "periodsTotal": r["periods_total"],
+        "discountPeriodsTotal": r["discount_periods_total"],
         "base": str(r["base"]) if r["base"] is not None else None,
         "effective": str(r["effective"]) if r["effective"] is not None else None,
+        "label": r["label"],
+    }
+
+
+@router.get("/promo/resolve-assigned")
+async def resolve_assigned(
+    customer_id: str = Query(..., alias="customerId"),
+    offering: str = Query(...),
+    svc: PromotionService = Depends(get_promotion_service),
+) -> dict:
+    """Targeted-path order-time resolution: the best applicable assigned offer
+    for this customer + offering, with the loyalty offer id COM advances/redeems."""
+    r = await svc.resolve_assigned_offer(customer_id=customer_id, offering_id=offering)
+    if not r.get("valid"):
+        return {"valid": False, "reason": r.get("reason")}
+    return {
+        "valid": True,
+        "offerId": r["offer_id"],
+        "offerState": r["offer_state"],
+        "offerDefinitionId": r["offer_definition_id"],
+        "discountType": r["discount_type"],
+        "discountValue": str(r["discount_value"]),
+        "durationKind": r["duration_kind"],
+        "periodsTotal": r["periods_total"],
+        "discountPeriodsTotal": r["discount_periods_total"],
+        "base": str(r["base"]),
+        "effective": str(r["effective"]),
         "label": r["label"],
     }
 

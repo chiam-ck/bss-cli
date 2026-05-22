@@ -18,6 +18,8 @@ class CreateOrderRequest(BaseModel):
     offering_id: str
     msisdn_preference: str | None = None
     notes: str | None = None
+    # v1.1 — optional typed promo code. Absent → assigned-offer discovery still runs.
+    discount_code: str | None = None
 
 
 class OrderItemResponse(BaseModel):
@@ -32,6 +34,13 @@ class OrderItemResponse(BaseModel):
     price_amount: Decimal | None = None
     price_currency: str | None = None
     price_offering_price_id: str | None = None
+    # v1.1 — promo discount intent stamped at create (NULL when no promo applies).
+    discount_code: str | None = None
+    promo_offer_definition_id: str | None = None
+    discount_type: str | None = None
+    discount_value: Decimal | None = None
+    discount_periods_total: int | None = None
+    promo_offer_id: str | None = None
 
 
 class ProductOrderResponse(BaseModel):
@@ -60,6 +69,12 @@ def to_order_item_response(item: OrderItem) -> OrderItemResponse:
         price_amount=item.price_amount,
         price_currency=item.price_currency,
         price_offering_price_id=item.price_offering_price_id,
+        discount_code=item.discount_code,
+        promo_offer_definition_id=item.promo_offer_definition_id,
+        discount_type=item.discount_type,
+        discount_value=item.discount_value,
+        discount_periods_total=item.discount_periods_total,
+        promo_offer_id=item.promo_offer_id,
     )
 
 

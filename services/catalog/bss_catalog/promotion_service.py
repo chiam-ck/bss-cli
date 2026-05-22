@@ -49,6 +49,20 @@ def _offer_definition_id_for(promotion_id: str) -> str:
     return f"OD_{promotion_id}"
 
 
+def _discount_periods_total(duration_kind: str, periods_total: int | None) -> int:
+    """Number of periods the discount applies, as the subscription counter sees it.
+
+    single = 1 (activation period only); multi = N; perpetual = -1 (sentinel,
+    never decrements). The renewal loop decrements while > 0 and treats -1 as
+    "always discounted".
+    """
+    if duration_kind == "perpetual":
+        return -1
+    if duration_kind == "multi":
+        return periods_total or 0
+    return 1  # single
+
+
 class PromotionService:
     def __init__(
         self,
@@ -94,6 +108,7 @@ class PromotionService:
             "discount_value": None,
             "duration_kind": None,
             "periods_total": None,
+            "discount_periods_total": None,
             "base": None,
             "effective": None,
             "label": None,
@@ -119,40 +134,88 @@ class PromotionService:
             result["reason"] = "no_active_promotion"
             return result
 
-        # 3. applicable to this offering? (NULL list = all sellable)
-        if promo.applicable_offering_ids and offering_id not in promo.applicable_offering_ids:
-            result["reason"] = "not_applicable_to_offering"
+        # 3-5. applicability + window + compose (shared with assigned-offer path)
+        composed = await self._compose(promo, offering_id)
+        if composed.get("reason"):
+            result["reason"] = composed["reason"]
             return result
+        result.update(valid=True, offer_definition_id=od_id, **composed["terms"])
+        return result
 
-        # 4. validity window
+    async def _compose(self, promo: Promotion, offering_id: str) -> dict:
+        """Apply a promotion's discount to an offering's lowest-active base.
+
+        Returns ``{"reason": <str>}`` when the promo can't apply (not applicable
+        to the offering, outside its window, or the offering has no active
+        price), else ``{"terms": {...}}`` with the composed money + display terms.
+        Shared by the typed-code (validate_for_order) and assigned-offer paths.
+        """
+        if promo.applicable_offering_ids and offering_id not in promo.applicable_offering_ids:
+            return {"reason": "not_applicable_to_offering"}
         now = clock_now()
         if promo.valid_from and now < promo.valid_from:
-            result["reason"] = "not_yet_valid"
-            return result
+            return {"reason": "not_yet_valid"}
         if promo.valid_to and now >= promo.valid_to:
-            result["reason"] = "expired"
-            return result
-
-        # 5. compose: lowest-active base snapshot, then apply the discount
+            return {"reason": "expired"}
         try:
             price = await CatalogRepository(self._session).get_active_price(offering_id, at=now)
         except PolicyViolation:
-            result["reason"] = "offering_not_priced"
-            return result
+            return {"reason": "offering_not_priced"}
         base = Decimal(price.amount)
+        return {
+            "terms": {
+                "discount_type": promo.discount_type,
+                "discount_value": promo.discount_value,
+                "duration_kind": promo.duration_kind,
+                "periods_total": promo.periods_total,
+                # Discounted-period count the subscription counter starts at:
+                # single = 1 (activation only), multi = N, perpetual = -1 sentinel.
+                "discount_periods_total": _discount_periods_total(
+                    promo.duration_kind, promo.periods_total
+                ),
+                "base": base,
+                "effective": apply_discount(promo.discount_type, promo.discount_value, base),
+                "label": discount_label(
+                    promo.discount_type, promo.discount_value, promo.currency
+                ),
+            }
+        }
 
-        result.update(
-            valid=True,
-            offer_definition_id=od_id,
-            discount_type=promo.discount_type,
-            discount_value=promo.discount_value,
-            duration_kind=promo.duration_kind,
-            periods_total=promo.periods_total,
-            base=base,
-            effective=apply_discount(promo.discount_type, promo.discount_value, base),
-            label=discount_label(promo.discount_type, promo.discount_value, promo.currency),
-        )
-        return result
+    async def resolve_assigned_offer(self, *, customer_id: str, offering_id: str) -> dict:
+        """Targeted path (Flow 3): pick the best applicable assigned offer.
+
+        Scans the customer's ``issued``/``claimed`` loyalty offers, keeps those
+        whose promotion is active + applicable to ``offering_id`` + in-window,
+        and returns the one with the lowest effective price (most discount). No
+        consume — the entitlement is advanced/redeemed later at activation.
+        ``{valid: False, reason: "no_applicable_offer"}`` when none match.
+        """
+        rows: list[dict] = []
+        for state in ("issued", "claimed"):
+            resp = await self._loyalty.list_offers(customer_id=customer_id, state=state)
+            rows.extend(resp.get("rows", []))
+
+        best: dict | None = None
+        for row in rows:
+            od_id = row.get("offer_definition_id")
+            if not od_id:
+                continue
+            promo = await self._repo.get_by_offer_definition_id(od_id)
+            if promo is None or promo.state != "active":
+                continue
+            composed = await self._compose(promo, offering_id)
+            if composed.get("reason"):
+                continue
+            candidate = {
+                "valid": True,
+                "offer_id": row.get("offer_id"),
+                "offer_state": row.get("state"),
+                "offer_definition_id": od_id,
+                **composed["terms"],
+            }
+            if best is None or candidate["effective"] < best["effective"]:
+                best = candidate
+        return best or {"valid": False, "reason": "no_applicable_offer"}
 
     async def preview_promo(self, *, code: str, offering_id: str) -> dict:
         """Portal-facing live preview — the display subset of validate_for_order."""

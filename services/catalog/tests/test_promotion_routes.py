@@ -204,6 +204,40 @@ class TestPortalReads:
         assert r.json()["valid"] is False
         assert r.json()["reason"] == "unknown_code"
 
+    async def test_resolve_assigned_returns_terms(self, client, loyalty, settings):
+        pid = _pid()
+        try:
+            await client.post(
+                f"{_TMF}/promotion",
+                json={
+                    "promotionId": pid,
+                    "discountType": "percent",
+                    "discountValue": "15",
+                    "durationKind": "single",
+                },
+            )
+            loyalty.list_rows = [
+                {"offer_id": "OFF-X", "state": "issued", "offer_definition_id": f"OD_{pid}"}
+            ]
+            r = await client.get(
+                "/promo/resolve-assigned", params={"customerId": "CUST-1", "offering": "PLAN_M"}
+            )
+            assert r.status_code == 200, r.text
+            body = r.json()
+            assert body["valid"] is True
+            assert body["offerId"] == "OFF-X"
+            assert body["discountPeriodsTotal"] == 1
+        finally:
+            await _cleanup(settings, pid)
+
+    async def test_resolve_assigned_none(self, client, loyalty):
+        loyalty.list_rows = []
+        r = await client.get(
+            "/promo/resolve-assigned", params={"customerId": "CUST-NONE", "offering": "PLAN_M"}
+        )
+        assert r.status_code == 200
+        assert r.json()["valid"] is False
+
     async def test_customer_offers_enriched(self, client, loyalty, settings):
         pid = _pid()
         try:

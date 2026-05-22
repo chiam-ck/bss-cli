@@ -72,7 +72,13 @@ class FakeLoyalty:
 
     async def list_offers(self, **kwargs):
         self.calls.append(("list_offers", kwargs))
-        return {"rows": self.list_rows, "limit": 50, "offset": 0, "has_more": False}
+        state = kwargs.get("state")
+        rows = (
+            [r for r in self.list_rows if r.get("state") == state]
+            if state is not None
+            else self.list_rows
+        )
+        return {"rows": rows, "limit": 50, "offset": 0, "has_more": False}
 
     def called(self, name: str) -> list[dict]:
         return [args for n, args in self.calls if n == name]
@@ -403,6 +409,43 @@ class TestAssignTargeted:
                 promotion_id=_pid("PROMO_GHOST"), customer_ids=["CUST-1"]
             )
         assert exc.value.rule == "catalog.promotion.not_active"
+
+
+class TestResolveAssignedOffer:
+    async def test_picks_best_applicable_offer(self, db_session: AsyncSession):
+        # two active promos assigned to the customer; lowest effective wins
+        pid_lo, pid_hi = _pid("PROMO_LO"), _pid("PROMO_HI")
+        loyalty = FakeLoyalty()
+        try:
+            svc = _svc(db_session, loyalty)
+            await svc.create_promotion(
+                promotion_id=pid_lo, discount_type="percent",
+                discount_value=Decimal("40"), duration_kind="single",
+            )
+            await svc.create_promotion(
+                promotion_id=pid_hi, discount_type="percent",
+                discount_value=Decimal("10"), duration_kind="single",
+            )
+            loyalty.list_rows = [
+                {"offer_id": "OFF-HI", "state": "issued", "offer_definition_id": f"OD_{pid_hi}"},
+                {"offer_id": "OFF-LO", "state": "issued", "offer_definition_id": f"OD_{pid_lo}"},
+            ]
+            r = await svc.resolve_assigned_offer(customer_id="CUST-1", offering_id="PLAN_M")
+            assert r["valid"] is True
+            # 40% off beats 10% off → lower effective price
+            assert r["offer_id"] == "OFF-LO"
+            assert r["discount_periods_total"] == 1
+        finally:
+            await _cleanup(db_session, pid_lo, pid_hi)
+
+    async def test_no_applicable_offer(self, db_session: AsyncSession):
+        loyalty = FakeLoyalty()
+        loyalty.list_rows = []
+        r = await _svc(db_session, loyalty).resolve_assigned_offer(
+            customer_id="CUST-NONE", offering_id="PLAN_M"
+        )
+        assert r["valid"] is False
+        assert r["reason"] == "no_applicable_offer"
 
 
 class TestListCustomerOffers:
