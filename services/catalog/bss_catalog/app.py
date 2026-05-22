@@ -12,6 +12,7 @@ from bss_catalog.routes import (
     product_offering,
     product_offering_price,
     product_specification,
+    promotion,
     vas,
 )
 
@@ -45,6 +46,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(vas.router, prefix="/vas")
     app.include_router(admin.router)
+    # v1.1 — promotion routes carry absolute paths (TMF671 + portal-facing reads).
+    app.include_router(promotion.router)
     # v0.7 — catalog now reads the scenario clock for active-window resolution.
     app.include_router(clock_admin_router(), prefix="/admin-api/v1")
 

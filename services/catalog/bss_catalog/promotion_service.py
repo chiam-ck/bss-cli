@@ -19,12 +19,15 @@ from datetime import datetime
 from decimal import Decimal
 
 import structlog
-from bss_clients import LoyaltyClient, PolicyViolationFromServer
+from bss_clients import LoyaltyClient, NotFound, PolicyViolationFromServer
+from bss_clock import now as clock_now
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bss_catalog.policies import PolicyViolation
 from bss_catalog.promotion_repository import PromotionRepository
+from bss_catalog.repository import CatalogRepository
 from bss_catalog.services import _check_admin
+from bss_models import apply_discount, discount_label
 from bss_models.catalog import Promotion
 
 log = structlog.get_logger()
@@ -66,6 +69,198 @@ class PromotionService:
 
     async def get_by_offer_definition_id(self, offer_definition_id: str) -> Promotion | None:
         return await self._repo.get_by_offer_definition_id(offer_definition_id)
+
+    async def list_promotions(
+        self, *, state: str | None = None, limit: int = 50, offset: int = 0
+    ) -> list[Promotion]:
+        return await self._repo.list(state=state, limit=limit, offset=offset)
+
+    async def validate_for_order(self, *, code: str, offering_id: str) -> dict:
+        """Resolve a typed code against an offering and compose the effective price.
+
+        Pure read — never consumes the code (loyalty is the hard gate at claim,
+        Flow 2). Returns ``{valid, reason, offer_definition_id, discount_*,
+        duration_kind, periods_total, base, effective, label}``. ``valid=False``
+        with a ``reason`` instead of raising, so the portal can show an inline
+        error and the order proceeds at full price.
+        """
+        result: dict = {
+            "valid": False,
+            "code": code,
+            "offering_id": offering_id,
+            "reason": None,
+            "offer_definition_id": None,
+            "discount_type": None,
+            "discount_value": None,
+            "duration_kind": None,
+            "periods_total": None,
+            "base": None,
+            "effective": None,
+            "label": None,
+        }
+
+        # 1. resolve code → OfferDefinition (loyalty read; no consume)
+        try:
+            shown = await self._loyalty.show_promo_code(code)
+        except NotFound:
+            result["reason"] = "unknown_code"
+            return result
+        except PolicyViolationFromServer as exc:
+            result["reason"] = exc.rule
+            return result
+        od_id = shown.get("offer_definition_id")
+        if not od_id:
+            result["reason"] = "unlinked_code"
+            return result
+
+        # 2. money terms by OD
+        promo = await self._repo.get_by_offer_definition_id(od_id)
+        if promo is None or promo.state != "active":
+            result["reason"] = "no_active_promotion"
+            return result
+
+        # 3. applicable to this offering? (NULL list = all sellable)
+        if promo.applicable_offering_ids and offering_id not in promo.applicable_offering_ids:
+            result["reason"] = "not_applicable_to_offering"
+            return result
+
+        # 4. validity window
+        now = clock_now()
+        if promo.valid_from and now < promo.valid_from:
+            result["reason"] = "not_yet_valid"
+            return result
+        if promo.valid_to and now >= promo.valid_to:
+            result["reason"] = "expired"
+            return result
+
+        # 5. compose: lowest-active base snapshot, then apply the discount
+        try:
+            price = await CatalogRepository(self._session).get_active_price(offering_id, at=now)
+        except PolicyViolation:
+            result["reason"] = "offering_not_priced"
+            return result
+        base = Decimal(price.amount)
+
+        result.update(
+            valid=True,
+            offer_definition_id=od_id,
+            discount_type=promo.discount_type,
+            discount_value=promo.discount_value,
+            duration_kind=promo.duration_kind,
+            periods_total=promo.periods_total,
+            base=base,
+            effective=apply_discount(promo.discount_type, promo.discount_value, base),
+            label=discount_label(promo.discount_type, promo.discount_value, promo.currency),
+        )
+        return result
+
+    async def preview_promo(self, *, code: str, offering_id: str) -> dict:
+        """Portal-facing live preview — the display subset of validate_for_order."""
+        r = await self.validate_for_order(code=code, offering_id=offering_id)
+        return {
+            "valid": r["valid"],
+            "code": code,
+            "offering_id": offering_id,
+            "label": r["label"],
+            "base": r["base"],
+            "effective": r["effective"],
+            "reason": r["reason"],
+        }
+
+    async def list_customer_offers(
+        self, *, customer_id: str, state: str | None = None
+    ) -> list[dict]:
+        """Read-proxy over loyalty ``offer.list`` enriched with BSS money terms.
+
+        Powers the account-dashboard "🎁 you have an offer" block. loyalty is the
+        assignment ledger; BSS attaches the discount label per offer's OD.
+        """
+        resp = await self._loyalty.list_offers(customer_id=customer_id, state=state)
+        out: list[dict] = []
+        for row in resp.get("rows", []):
+            od_id = row.get("offer_definition_id")
+            promo = (
+                await self._repo.get_by_offer_definition_id(od_id) if od_id else None
+            )
+            entry: dict = {
+                "offer_id": row.get("offer_id"),
+                "state": row.get("state"),
+                "offer_definition_id": od_id,
+                "promotion": None,
+            }
+            if promo is not None:
+                entry["promotion"] = {
+                    "promotion_id": promo.id,
+                    "discount_type": promo.discount_type,
+                    "discount_value": str(promo.discount_value),
+                    "duration_kind": promo.duration_kind,
+                    "periods_total": promo.periods_total,
+                    "label": discount_label(
+                        promo.discount_type, promo.discount_value, promo.currency
+                    ),
+                }
+            out.append(entry)
+        return out
+
+    # ── targeted assignment (the "simulator" loop) ─────────────────────────
+
+    async def assign_targeted(
+        self,
+        *,
+        promotion_id: str,
+        customer_ids: list[str],
+        source: dict | None = None,
+    ) -> dict:
+        """Issue a codeless offer to each chosen customer (Flow 3).
+
+        loyalty has no bulk tool — assignment is a per-customer ``offer.issue``
+        loop, and *this loop is the simulator*. Each offer id is deterministic
+        (``OFF_<promotion>_<customer>``) and doubles as the idempotency key, so
+        re-running the assignment is safe. A customer who already has the offer
+        is reported under ``skipped`` rather than failing the whole batch.
+        """
+        _check_admin(self._actor)
+        promo = await self._repo.get(promotion_id)
+        if promo is None or promo.state != "active" or not promo.offer_definition_id:
+            raise PolicyViolation(
+                rule="catalog.promotion.not_active",
+                message=f"Promotion {promotion_id} is not active/linked; cannot assign",
+                context={
+                    "promotion_id": promotion_id,
+                    "state": promo.state if promo else None,
+                },
+            )
+        src = source or {"type": "gift", "issued_by": self._actor}
+
+        issued: list[str] = []
+        skipped: list[dict] = []
+        for customer_id in customer_ids:
+            offer_id = f"OFF_{promotion_id}_{customer_id}"
+            try:
+                await self._loyalty.issue_offer(
+                    offer_id=offer_id,
+                    offer_definition_id=promo.offer_definition_id,
+                    customer_id=customer_id,
+                    source=src,
+                    idempotency_key=offer_id,
+                )
+                issued.append(customer_id)
+            except PolicyViolationFromServer as exc:
+                skipped.append({"customer_id": customer_id, "reason": exc.rule})
+
+        log.info(
+            "catalog.promotion.assigned",
+            promotion_id=promotion_id,
+            issued=len(issued),
+            skipped=len(skipped),
+            actor=self._actor,
+        )
+        return {
+            "promotion_id": promotion_id,
+            "offer_definition_id": promo.offer_definition_id,
+            "issued": issued,
+            "skipped": skipped,
+        }
 
     # ── create saga ────────────────────────────────────────────────────────
 

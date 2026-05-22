@@ -7,10 +7,11 @@ pollution) — the LoyaltyClient's own contract is covered in bss-clients.
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from bss_clients import PolicyViolationFromServer
+from bss_clients import NotFound, PolicyViolationFromServer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,11 +25,19 @@ def _pid(prefix: str = "PROMO") -> str:
 
 
 class FakeLoyalty:
-    """Records calls; optionally raises a refusal on the first OD register."""
+    """In-memory stand-in for the loyalty-cli HTTP surface.
 
-    def __init__(self, *, refuse: bool = False):
+    Remembers registered codes→OD so show_promo_code resolves like the real
+    service. ``refuse`` makes the first OD register raise; ``issue_refuse_for``
+    is a set of customer ids whose offer.issue is refused (already-issued sim).
+    """
+
+    def __init__(self, *, refuse: bool = False, issue_refuse_for: set[str] | None = None):
         self.calls: list[tuple[str, dict]] = []
         self._refuse = refuse
+        self._issue_refuse_for = issue_refuse_for or set()
+        self.codes: dict[str, str] = {}  # code -> offer_definition_id
+        self.list_rows: list[dict] = []
 
     async def register_offer_definition(self, **kwargs):
         self.calls.append(("register_offer_definition", kwargs))
@@ -42,7 +51,28 @@ class FakeLoyalty:
 
     async def register_promo_code(self, **kwargs):
         self.calls.append(("register_promo_code", kwargs))
+        self.codes[kwargs["code"]] = kwargs["offer_definition_id"]
         return {"code": kwargs["code"]}
+
+    async def show_promo_code(self, code: str):
+        self.calls.append(("show_promo_code", {"code": code}))
+        if code not in self.codes:
+            raise NotFound(f"no such code {code}")
+        return {"offer_definition_id": self.codes[code], "state": "active"}
+
+    async def issue_offer(self, **kwargs):
+        self.calls.append(("issue_offer", kwargs))
+        if kwargs["customer_id"] in self._issue_refuse_for:
+            raise PolicyViolationFromServer(
+                rule="offer.issue.already_issued",
+                message="customer already has this offer",
+                context={"source": "loyalty"},
+            )
+        return {"offer_id": kwargs["offer_id"], "state": "issued"}
+
+    async def list_offers(self, **kwargs):
+        self.calls.append(("list_offers", kwargs))
+        return {"rows": self.list_rows, "limit": 50, "offset": 0, "has_more": False}
 
     def called(self, name: str) -> list[dict]:
         return [args for n, args in self.calls if n == name]
@@ -243,3 +273,161 @@ class TestCreatePromotionGuards:
                 duration_kind="single",
             )
         assert exc.value.rule == "catalog.admin_only"
+
+
+class TestValidateForOrder:
+    async def test_valid_percent_composes_on_base(self, db_session: AsyncSession):
+        pid = _pid("PROMO_VAL_OK")
+        code = f"OK_{uuid.uuid4().hex[:6].upper()}"
+        loyalty = FakeLoyalty()
+        try:
+            svc = _svc(db_session, loyalty)
+            await svc.create_promotion(
+                promotion_id=pid,
+                discount_type="percent",
+                discount_value=Decimal("20"),
+                duration_kind="single",
+                code=code,
+                promo_code_kind="multi_use",
+            )
+            r = await svc.validate_for_order(code=code, offering_id="PLAN_M")
+            assert r["valid"] is True
+            assert r["offer_definition_id"] == f"OD_{pid}"
+            assert r["base"] > 0
+            # effective = 20% off the base the catalog actually returned
+            assert r["effective"] == (r["base"] * Decimal("0.80")).quantize(Decimal("0.01"))
+            assert r["label"] == "20% off"
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_unknown_code(self, db_session: AsyncSession):
+        r = await _svc(db_session, FakeLoyalty()).validate_for_order(
+            code="NOPE", offering_id="PLAN_M"
+        )
+        assert r["valid"] is False
+        assert r["reason"] == "unknown_code"
+
+    async def test_not_applicable_to_offering(self, db_session: AsyncSession):
+        pid = _pid("PROMO_VAL_NA")
+        code = f"NA_{uuid.uuid4().hex[:6].upper()}"
+        loyalty = FakeLoyalty()
+        try:
+            svc = _svc(db_session, loyalty)
+            await svc.create_promotion(
+                promotion_id=pid,
+                discount_type="percent",
+                discount_value=Decimal("20"),
+                duration_kind="single",
+                applicable_offering_ids=["PLAN_S"],
+                code=code,
+                promo_code_kind="multi_use",
+            )
+            r = await svc.validate_for_order(code=code, offering_id="PLAN_M")
+            assert r["valid"] is False
+            assert r["reason"] == "not_applicable_to_offering"
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_expired_window(self, db_session: AsyncSession):
+        pid = _pid("PROMO_VAL_EXP")
+        code = f"EXP_{uuid.uuid4().hex[:6].upper()}"
+        loyalty = FakeLoyalty()
+        try:
+            svc = _svc(db_session, loyalty)
+            await svc.create_promotion(
+                promotion_id=pid,
+                discount_type="percent",
+                discount_value=Decimal("20"),
+                duration_kind="single",
+                valid_to=datetime.now(timezone.utc) - timedelta(days=1),
+                code=code,
+                promo_code_kind="multi_use",
+            )
+            r = await svc.validate_for_order(code=code, offering_id="PLAN_M")
+            assert r["valid"] is False
+            assert r["reason"] == "expired"
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_preview_returns_display_subset(self, db_session: AsyncSession):
+        pid = _pid("PROMO_PREVIEW")
+        code = f"PV_{uuid.uuid4().hex[:6].upper()}"
+        loyalty = FakeLoyalty()
+        try:
+            svc = _svc(db_session, loyalty)
+            await svc.create_promotion(
+                promotion_id=pid,
+                discount_type="absolute",
+                discount_value=Decimal("5.00"),
+                duration_kind="single",
+                code=code,
+                promo_code_kind="multi_use",
+            )
+            p = await svc.preview_promo(code=code, offering_id="PLAN_M")
+            assert set(p) == {"valid", "code", "offering_id", "label", "base", "effective", "reason"}
+            assert p["valid"] is True
+            assert p["label"] == "SGD 5.00 off"
+            assert p["effective"] == p["base"] - Decimal("5.00")
+        finally:
+            await _cleanup(db_session, pid)
+
+
+class TestAssignTargeted:
+    async def test_issues_to_each_customer_skipping_duplicates(self, db_session: AsyncSession):
+        pid = _pid("PROMO_ASSIGN")
+        loyalty = FakeLoyalty(issue_refuse_for={"CUST-DUP"})
+        try:
+            svc = _svc(db_session, loyalty)
+            await svc.create_promotion(  # codeless = targeted
+                promotion_id=pid,
+                discount_type="percent",
+                discount_value=Decimal("10"),
+                duration_kind="single",
+            )
+            res = await svc.assign_targeted(
+                promotion_id=pid, customer_ids=["CUST-1", "CUST-2", "CUST-DUP"]
+            )
+            assert set(res["issued"]) == {"CUST-1", "CUST-2"}
+            assert [s["customer_id"] for s in res["skipped"]] == ["CUST-DUP"]
+            issues = loyalty.called("issue_offer")
+            assert len(issues) == 3
+            # deterministic offer id == idempotency key (re-runnable)
+            assert all(i["offer_id"] == i["idempotency_key"] for i in issues)
+            assert issues[0]["offer_definition_id"] == f"OD_{pid}"
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_requires_active_promotion(self, db_session: AsyncSession):
+        with pytest.raises(PolicyViolation) as exc:
+            await _svc(db_session, FakeLoyalty()).assign_targeted(
+                promotion_id=_pid("PROMO_GHOST"), customer_ids=["CUST-1"]
+            )
+        assert exc.value.rule == "catalog.promotion.not_active"
+
+
+class TestListCustomerOffers:
+    async def test_enriches_offers_with_promotion_terms(self, db_session: AsyncSession):
+        pid = _pid("PROMO_LIST")
+        loyalty = FakeLoyalty()
+        try:
+            svc = _svc(db_session, loyalty)
+            await svc.create_promotion(
+                promotion_id=pid,
+                discount_type="percent",
+                discount_value=Decimal("30"),
+                duration_kind="single",
+            )
+            od = f"OD_{pid}"
+            loyalty.list_rows = [
+                {"offer_id": "OFF-1", "state": "issued", "offer_definition_id": od},
+                {"offer_id": "OFF-2", "state": "issued", "offer_definition_id": "OD_UNKNOWN"},
+            ]
+            offers = await svc.list_customer_offers(customer_id="CUST-1", state="issued")
+            assert len(offers) == 2
+            enriched = next(o for o in offers if o["offer_id"] == "OFF-1")
+            assert enriched["promotion"]["promotion_id"] == pid
+            assert enriched["promotion"]["label"] == "30% off"
+            unknown = next(o for o in offers if o["offer_id"] == "OFF-2")
+            assert unknown["promotion"] is None
+        finally:
+            await _cleanup(db_session, pid)

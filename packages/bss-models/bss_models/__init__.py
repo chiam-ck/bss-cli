@@ -94,9 +94,14 @@ from .portal_auth import (
     StepUpPendingAction,
 )
 
+# Promo discount math — pure helpers shared across services (v1.1)
+from .discount import apply_discount, discount_label
+
 __all__ = [
     "BSS_RELEASE",
     "Base",
+    "apply_discount",
+    "discount_label",
     "TenantMixin",
     "TimestampMixin",
     # CRM
