@@ -60,6 +60,13 @@ class DomainEvent(Base):
     published_to_mq: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # v1.2 — outbox relay bookkeeping. The relay (bss_events.relay) increments
+    # published_attempts on each delivery try and records last_publish_error, so a
+    # row that won't publish is visible to triage instead of silently stuck.
+    published_attempts: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    last_publish_error: Mapped[str | None] = mapped_column(Text)
 
 
 class ChatUsage(Base):

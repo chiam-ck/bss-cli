@@ -22,6 +22,10 @@ class Subscription(Base, TenantMixin, TimestampMixin):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     customer_id: Mapped[str] = mapped_column(Text, nullable=False)
     offering_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # v1.2 — the originating commercial order. Idempotency key for create():
+    # a redelivered service_order.completed returns the existing subscription
+    # instead of charging the card-on-file a second time. Unique (partial) index.
+    commercial_order_id: Mapped[str | None] = mapped_column(Text)
     msisdn: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     iccid: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     cfs_service_id: Mapped[str | None] = mapped_column(Text)

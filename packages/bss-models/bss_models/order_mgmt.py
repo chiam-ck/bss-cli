@@ -26,6 +26,9 @@ class ProductOrder(Base, TenantMixin, TimestampMixin):
     completed_date: Mapped[datetime | None] = mapped_column(TZDateTime)
     msisdn_preference: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
+    # v1.2 — set by the reconciliation sweeper when it emits order.stuck for an
+    # order left in_progress past the threshold, so the signal fires at most once.
+    stuck_flagged_at: Mapped[datetime | None] = mapped_column(TZDateTime)
 
     items: Mapped[list["OrderItem"]] = relationship(back_populates="order")
     state_history: Mapped[list["OrderStateHistory"]] = relationship(back_populates="order")
