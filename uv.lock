@@ -376,6 +376,7 @@ name = "bss-events"
 version = "0.1.0"
 source = { editable = "packages/bss-events" }
 dependencies = [
+    { name = "aio-pika" },
     { name = "fastapi" },
     { name = "sqlalchemy" },
     { name = "structlog" },
@@ -390,6 +391,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "aio-pika", specifier = ">=9.0" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "structlog", specifier = ">=24.0" },

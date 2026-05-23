@@ -11,6 +11,14 @@ derivable from a normal read path; nothing mutates. Phase 12 will add
 RBAC scoping — for v0.1 any caller may read the full window.
 """
 
+from .consumer import bind_consumer, declare_retry_exchange
+from .relay import Relay, start_relay
 from .router import audit_events_router
 
-__all__ = ["audit_events_router"]
+__all__ = [
+    "audit_events_router",
+    "bind_consumer",
+    "declare_retry_exchange",
+    "Relay",
+    "start_relay",
+]
