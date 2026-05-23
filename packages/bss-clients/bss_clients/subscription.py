@@ -29,12 +29,17 @@ class SubscriptionClient(BSSClient):
         iccid: str,
         payment_method_id: str,
         price_snapshot: dict | None = None,
+        commercial_order_id: str | None = None,
     ) -> dict[str, Any]:
         """POST /subscription-api/v1/subscription — create and activate.
 
         v0.7 — `price_snapshot` carries the active price row captured at
         order-creation time. Required by COM in steady state; legacy direct
         callers can omit it and the service falls back to the catalog.
+
+        v1.2 — `commercial_order_id` is the idempotency key. When supplied, a
+        repeat call for the same order returns the existing subscription without
+        charging the card-on-file again (protects against MQ redelivery).
         """
         body: dict[str, Any] = {
             "customerId": customer_id,
@@ -45,6 +50,8 @@ class SubscriptionClient(BSSClient):
         }
         if price_snapshot is not None:
             body["priceSnapshot"] = price_snapshot
+        if commercial_order_id is not None:
+            body["commercialOrderId"] = commercial_order_id
         resp = await self._request(
             "POST",
             "/subscription-api/v1/subscription",
