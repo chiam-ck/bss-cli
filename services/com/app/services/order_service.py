@@ -436,13 +436,16 @@ class OrderService:
                     "promoOfferDefinitionId": item.promo_offer_definition_id,
                 }
 
-            # Create subscription
+            # Create subscription. v1.2 — pass the commercial order id as the
+            # idempotency key: a redelivered service_order.completed returns the
+            # existing subscription instead of charging the card-on-file twice.
             create_kwargs = {
                 "customer_id": customer_id,
                 "offering_id": offering_id,
                 "msisdn": msisdn,
                 "iccid": iccid,
                 "payment_method_id": payment_method_id,
+                "commercial_order_id": commercial_order_id,
             }
             if price_snapshot is not None:
                 create_kwargs["price_snapshot"] = price_snapshot

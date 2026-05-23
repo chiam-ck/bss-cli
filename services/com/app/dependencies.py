@@ -1,5 +1,7 @@
 """Dependencies — lifespan, session factory, DI providers."""
 
+import asyncio
+import contextlib
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -15,6 +17,7 @@ from bss_clients import (
     SubscriptionClient,
     TokenAuthProvider,
 )
+from bss_events import start_relay
 from bss_middleware import api_token, validate_api_token_present
 from bss_telemetry import configure_telemetry
 from fastapi import Depends, FastAPI, Request
@@ -23,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.events.consumer import setup_consumer
 from app.repositories.order_repo import OrderRepository
 from app.services.order_service import OrderService
+from app.workers.reconciliation import reconciliation_tick_loop
 
 log = structlog.get_logger()
 
@@ -84,11 +88,36 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.warning("mq.consumer.setup_failed", exc_info=True)
 
+    # v1.2 — outbox relay: the single publisher. Drains staged audit rows to MQ.
+    app.state.outbox_relay = None
+    try:
+        app.state.outbox_relay = await start_relay(
+            mq_url=settings.mq_url,
+            session_factory=app.state.session_factory,
+            interval_ms=settings.outbox_relay_interval_ms,
+            batch_size=settings.outbox_relay_batch_size,
+        )
+    except Exception:
+        log.warning("outbox.relay.setup_failed", exc_info=True)
+
+    # v1.2 — reconciliation sweeper (stuck-order backstop). 0 disables (tests).
+    app.state.reconciliation_task = None
+    if settings.reconciliation_interval_seconds > 0:
+        app.state.reconciliation_task = asyncio.create_task(
+            reconciliation_tick_loop(app, settings.reconciliation_interval_seconds)
+        )
+
     log.info("service.starting", service=settings.service_name)
     yield
     log.info("service.stopping", service=settings.service_name)
 
     # Teardown
+    if app.state.reconciliation_task is not None:
+        app.state.reconciliation_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await app.state.reconciliation_task
+    if app.state.outbox_relay is not None:
+        await app.state.outbox_relay.stop()
     if app.state.mq_connection:
         try:
             await app.state.mq_connection.close()

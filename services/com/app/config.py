@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     loyalty_base_url: str = "http://loyalty-http:8080"
     loyalty_api_token: str = ""
 
+    # v1.2 — resilient pipeline knobs.
+    mq_max_retries: int = 5
+    mq_retry_backoff_ms: int = 5000
+    outbox_relay_interval_ms: int = 250
+    outbox_relay_batch_size: int = 100
+    # Reconciliation sweeper: an order in_progress longer than this is flagged
+    # order.stuck. Default 15 min.
+    order_stuck_threshold_seconds: int = 900
+    reconciliation_interval_seconds: int = 60
+
     model_config = SettingsConfigDict(
         env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",
