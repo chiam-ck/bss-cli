@@ -326,6 +326,37 @@ doctrine-check: check-clock
 		exit 1; \
 	fi; \
 	echo "✓ phases/V0_*.md stays out of the knowledge index"
+	@# v1.2 — for services on the resilient pipeline (com, som, subscription)
+	@# the outbox relay is the SINGLE publisher: their event publishers only
+	@# stage the audit.domain_event row and must NOT call exchange.publish
+	@# (the publish-before-commit hazard the relay removes). The only
+	@# legitimate exchange.publish lives in bss_events/relay.py. Other services
+	@# still inline-publish (best-effort) until they're migrated; expand this
+	@# list as each converts.
+	@hits=$$(grep -rn 'exchange\.publish' \
+		services/com/app/events/publisher.py \
+		services/som/app/events/publisher.py \
+		services/subscription/app/events/publisher.py 2>/dev/null \
+		| grep -v 'default_exchange\.publish' \
+		|| true); \
+	if [ -n "$$hits" ]; then \
+		echo "✗ a converted publisher calls exchange.publish — stage only; the outbox relay publishes:"; \
+		echo "$$hits"; \
+		exit 1; \
+	fi; \
+	echo "✓ outbox relay is the single publisher for com/som/subscription (stage only)"
+	@# v1.2 — COM/SOM consumers must go through bss_events.bind_consumer
+	@# (retry + DLQ + inbox dedup). A bare `message.process()` is the old
+	@# drop-on-exception pattern that stranded paid orders (v1.1.3).
+	@hits=$$(grep -rn 'message\.process(' \
+		services/com/app/events/ services/som/app/events/ 2>/dev/null \
+		|| true); \
+	if [ -n "$$hits" ]; then \
+		echo "✗ COM/SOM consumer uses bare message.process() — use bss_events.bind_consumer (retry+DLQ+inbox):"; \
+		echo "$$hits"; \
+		exit 1; \
+	fi; \
+	echo "✓ COM/SOM consumers go through the safe bind_consumer helper"
 
 fmt:
 	uv run ruff format .
