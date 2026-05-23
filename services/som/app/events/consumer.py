@@ -1,14 +1,35 @@
-"""RabbitMQ consumer for SOM — order.in_progress + provisioning task events."""
+"""RabbitMQ consumer for SOM — order.in_progress + provisioning task events.
 
-import json
+v1.2 — built on ``bss_events.bind_consumer``: every queue (order.in_progress,
+provisioning.task.completed/failed/stuck) has a retry + dead-letter (parked)
+path and is deduped via the ``service_inventory.processed_event`` inbox keyed on
+the relay's ``message_id`` (= the durable ``event_id``). A handler exception
+retries with backoff and finally parks instead of dropping the work. The helper
+owns the session commit; handlers must not commit.
+"""
 
 import aio_pika
 import structlog
+from bss_events import bind_consumer, declare_retry_exchange
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.service_order_repo import ServiceOrderRepository
 from app.repositories.service_repo import ServiceRepository
+from app.services.som_service import SOMService
 
 log = structlog.get_logger()
+
+INBOX_SCHEMA = "service_inventory"
+
+
+def _build_service(app, session: AsyncSession) -> SOMService:
+    return SOMService(
+        session=session,
+        so_repo=ServiceOrderRepository(session),
+        svc_repo=ServiceRepository(session),
+        inventory_client=app.state.inventory_client,
+        exchange=None,  # publisher stages events; no inline publish
+    )
 
 
 async def setup_consumer(app) -> None:
@@ -24,147 +45,68 @@ async def setup_consumer(app) -> None:
     exchange = await channel.declare_exchange(
         "bss.events", aio_pika.ExchangeType.TOPIC, durable=True,
     )
+    retry_exchange = await declare_retry_exchange(channel)
 
     app.state.mq_connection = connection
     app.state.mq_exchange = exchange
 
-    # ── Queue: order.in_progress ─────────────────────────────────────
-    q_order = await channel.declare_queue("som.order.in_progress", durable=True)
-    await q_order.bind(exchange, "order.in_progress")
+    max_retries = getattr(settings, "mq_max_retries", 5)
+    retry_backoff_ms = getattr(settings, "mq_retry_backoff_ms", 5000)
 
-    async def on_order_in_progress(message: aio_pika.abc.AbstractIncomingMessage):
-        async with message.process():
-            body = json.loads(message.body)
-            log.info(
-                "mq.order.in_progress.received",
-                commercial_order_id=body.get("commercialOrderId"),
-            )
-            async with app.state.session_factory() as session:
-                from app.services.som_service import SOMService
+    async def on_order_in_progress(session: AsyncSession, body: dict) -> None:
+        svc = _build_service(app, session)
+        await svc.decompose(
+            commercial_order_id=body["commercialOrderId"],
+            customer_id=body["customerId"],
+            offering_id=body["offeringId"],
+            msisdn_preference=body.get("msisdnPreference"),
+            payment_method_id=body["paymentMethodId"],
+            price_snapshot=body.get("priceSnapshot"),
+        )
 
-                so_repo = ServiceOrderRepository(session)
-                svc_repo = ServiceRepository(session)
-                svc = SOMService(
-                    session=session,
-                    so_repo=so_repo,
-                    svc_repo=svc_repo,
-                    inventory_client=app.state.inventory_client,
-                    exchange=exchange,
-                )
-                await svc.decompose(
-                    commercial_order_id=body["commercialOrderId"],
-                    customer_id=body["customerId"],
-                    offering_id=body["offeringId"],
-                    msisdn_preference=body.get("msisdnPreference"),
-                    payment_method_id=body["paymentMethodId"],
-                    price_snapshot=body.get("priceSnapshot"),
-                )
-                await session.commit()
+    async def on_task_completed(session: AsyncSession, body: dict) -> None:
+        svc = _build_service(app, session)
+        await svc.handle_task_completed(
+            service_id=body["serviceId"],
+            task_type=body["taskType"],
+            service_order_id=body["serviceOrderId"],
+            commercial_order_id=body.get("commercialOrderId", ""),
+        )
 
-    await q_order.consume(on_order_in_progress)
-    log.info("mq.consumer.started", queue="som.order.in_progress")
+    async def on_task_failed(session: AsyncSession, body: dict) -> None:
+        svc = _build_service(app, session)
+        await svc.handle_task_failed(
+            service_id=body["serviceId"],
+            task_type=body["taskType"],
+            service_order_id=body["serviceOrderId"],
+            commercial_order_id=body.get("commercialOrderId", ""),
+            permanent=body.get("permanent", True),
+        )
 
-    # ── Queue: provisioning.task.completed ────────────────────────────
-    q_completed = await channel.declare_queue("som.provisioning.task.completed", durable=True)
-    await q_completed.bind(exchange, "provisioning.task.completed")
+    async def on_task_stuck(session: AsyncSession, body: dict) -> None:
+        svc = _build_service(app, session)
+        await svc.handle_task_stuck(
+            service_id=body["serviceId"],
+            task_type=body["taskType"],
+            service_order_id=body["serviceOrderId"],
+        )
 
-    async def on_task_completed(message: aio_pika.abc.AbstractIncomingMessage):
-        async with message.process():
-            body = json.loads(message.body)
-            log.info(
-                "mq.task.completed.received",
-                service_id=body.get("serviceId"),
-                task_type=body.get("taskType"),
-            )
-            async with app.state.session_factory() as session:
-                from app.services.som_service import SOMService
-
-                so_repo = ServiceOrderRepository(session)
-                svc_repo = ServiceRepository(session)
-                svc = SOMService(
-                    session=session,
-                    so_repo=so_repo,
-                    svc_repo=svc_repo,
-                    inventory_client=app.state.inventory_client,
-                    exchange=exchange,
-                )
-                await svc.handle_task_completed(
-                    service_id=body["serviceId"],
-                    task_type=body["taskType"],
-                    service_order_id=body["serviceOrderId"],
-                    commercial_order_id=body.get("commercialOrderId", ""),
-                )
-                await session.commit()
-
-    await q_completed.consume(on_task_completed)
-    log.info("mq.consumer.started", queue="som.provisioning.task.completed")
-
-    # ── Queue: provisioning.task.failed ───────────────────────────────
-    q_failed = await channel.declare_queue("som.provisioning.task.failed", durable=True)
-    await q_failed.bind(exchange, "provisioning.task.failed")
-
-    async def on_task_failed(message: aio_pika.abc.AbstractIncomingMessage):
-        async with message.process():
-            body = json.loads(message.body)
-            log.info(
-                "mq.task.failed.received",
-                service_id=body.get("serviceId"),
-                task_type=body.get("taskType"),
-            )
-            async with app.state.session_factory() as session:
-                from app.services.som_service import SOMService
-
-                so_repo = ServiceOrderRepository(session)
-                svc_repo = ServiceRepository(session)
-                svc = SOMService(
-                    session=session,
-                    so_repo=so_repo,
-                    svc_repo=svc_repo,
-                    inventory_client=app.state.inventory_client,
-                    exchange=exchange,
-                )
-                await svc.handle_task_failed(
-                    service_id=body["serviceId"],
-                    task_type=body["taskType"],
-                    service_order_id=body["serviceOrderId"],
-                    commercial_order_id=body.get("commercialOrderId", ""),
-                    permanent=body.get("permanent", True),
-                )
-                await session.commit()
-
-    await q_failed.consume(on_task_failed)
-    log.info("mq.consumer.started", queue="som.provisioning.task.failed")
-
-    # ── Queue: provisioning.task.stuck ────────────────────────────────
-    q_stuck = await channel.declare_queue("som.provisioning.task.stuck", durable=True)
-    await q_stuck.bind(exchange, "provisioning.task.stuck")
-
-    async def on_task_stuck(message: aio_pika.abc.AbstractIncomingMessage):
-        async with message.process():
-            body = json.loads(message.body)
-            log.info(
-                "mq.task.stuck.received",
-                service_id=body.get("serviceId"),
-                task_type=body.get("taskType"),
-            )
-            async with app.state.session_factory() as session:
-                from app.services.som_service import SOMService
-
-                so_repo = ServiceOrderRepository(session)
-                svc_repo = ServiceRepository(session)
-                svc = SOMService(
-                    session=session,
-                    so_repo=so_repo,
-                    svc_repo=svc_repo,
-                    inventory_client=app.state.inventory_client,
-                    exchange=exchange,
-                )
-                await svc.handle_task_stuck(
-                    service_id=body["serviceId"],
-                    task_type=body["taskType"],
-                    service_order_id=body["serviceOrderId"],
-                )
-                await session.commit()
-
-    await q_stuck.consume(on_task_stuck)
-    log.info("mq.consumer.started", queue="som.provisioning.task.stuck")
+    queues = [
+        ("som.order.in_progress", "order.in_progress", on_order_in_progress),
+        ("som.provisioning.task.completed", "provisioning.task.completed", on_task_completed),
+        ("som.provisioning.task.failed", "provisioning.task.failed", on_task_failed),
+        ("som.provisioning.task.stuck", "provisioning.task.stuck", on_task_stuck),
+    ]
+    for queue_name, routing_key, handler in queues:
+        await bind_consumer(
+            channel=channel,
+            exchange=exchange,
+            retry_exchange=retry_exchange,
+            queue_name=queue_name,
+            routing_key=routing_key,
+            handler=handler,
+            session_factory=app.state.session_factory,
+            inbox_schema=INBOX_SCHEMA,
+            max_retries=max_retries,
+            retry_backoff_ms=retry_backoff_ms,
+        )

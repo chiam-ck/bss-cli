@@ -1,10 +1,13 @@
-"""Event publisher — audit row in same txn, best-effort MQ publish."""
+"""Event publisher — stages the audit row; the outbox relay delivers it (v1.2).
 
-import json
-from datetime import datetime, timezone
+Stages the audit.domain_event row in the caller's transaction
+(published_to_mq = false) and returns. bss_events.relay is the single publisher,
+draining staged rows after commit — no more publish-before-commit, no more lost
+publishes. The `exchange` kwarg is accepted-but-ignored for call-site compat.
+"""
+
 from uuid import uuid4
 
-import aio_pika
 import structlog
 from bss_clock import now as clock_now
 from bss_telemetry import current_trace_id
@@ -24,9 +27,9 @@ async def publish(
     aggregate_type: str,
     aggregate_id: str,
     payload: dict | None = None,
-    exchange: aio_pika.abc.AbstractExchange | None = None,
+    exchange=None,  # v1.2 — ignored; the outbox relay is the only publisher.
 ) -> None:
-    """Write DomainEvent audit row and best-effort publish to MQ."""
+    """Stage a DomainEvent row in the current transaction (relay delivers it)."""
     ctx = auth_context.current()
 
     event = DomainEvent(
@@ -45,15 +48,9 @@ async def publish(
         published_to_mq=False,
     )
     session.add(event)
-
-    if exchange:
-        try:
-            msg = aio_pika.Message(
-                body=json.dumps(payload or {}).encode(),
-                content_type="application/json",
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            )
-            await exchange.publish(msg, routing_key=event_type)
-            event.published_to_mq = True
-        except Exception:
-            log.warning("mq.publish.failed", event_type=event_type)
+    log.info(
+        "event.staged",
+        event_type=event_type,
+        aggregate_type=aggregate_type,
+        aggregate_id=aggregate_id,
+    )

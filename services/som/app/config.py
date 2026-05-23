@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     env: str = "development"
     tenant_default: str = "DEFAULT"
 
+    # v1.2 — outbox relay knobs + safe-consumer retry budget.
+    outbox_relay_interval_ms: int = 250
+    outbox_relay_batch_size: int = 100
+    mq_max_retries: int = 5
+    mq_retry_backoff_ms: int = 5000
+
     model_config = SettingsConfigDict(
         env_file=_REPO_ROOT / ".env",
         env_file_encoding="utf-8",
