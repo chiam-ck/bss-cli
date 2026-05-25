@@ -451,6 +451,61 @@ class TestAssignTargeted:
         finally:
             await _cleanup(db_session, pid)
 
+    async def test_mints_loyalty_offer_upfront_v130(self, db_session: AsyncSession):
+        """v1.3.0 — assign_targeted issues the loyalty offer upfront so the
+        customer↔offer pairing exists in loyalty immediately. The deterministic
+        offer id is stored on the eligibility row, and at activation COM picks
+        it up via resolve_eligible_promo's ``loyaltyOfferId`` to advance."""
+        pid = _pid("PROMO_PAIR")
+        try:
+            loy = FakeLoyalty()
+            svc = _svc(db_session, loy)
+            await _create_targeted(svc, pid)
+            await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-101"])
+            # FakeLoyalty saw an offer.issue call for that customer
+            issues = loy.called("issue_offer")
+            assert len(issues) == 1
+            call = issues[0]
+            assert call["customer_id"] == "CUST-101"
+            assert call["offer_id"] == f"OFF-CUST-101-{pid}"
+            assert call["offer_definition_id"]  # set from the promo's OD
+            assert call["source"]["type"] == "campaign"
+            assert call["source"]["campaign_id"] == pid
+            # Deterministic offer id doubles as the idempotency key — re-runs are
+            # no-ops on loyalty.
+            assert call["idempotency_key"] == call["offer_id"]
+            # The eligibility row stamped the loyalty_offer_id (carried into
+            # resolve_eligible_promo so COM can advance_to_claimed).
+            offer_id = await svc._repo.get_loyalty_offer_id(
+                promotion_id=pid, customer_id="CUST-101"
+            )
+            assert offer_id == f"OFF-CUST-101-{pid}"
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_loyalty_issue_failure_degrades_to_claim_by_code(
+        self, db_session: AsyncSession
+    ):
+        """v1.3.0 — if loyalty refuses the upfront ``offer.issue`` (outage or
+        policy refusal), the eligibility is still written with
+        ``loyalty_offer_id=NULL`` and COM transparently falls back to
+        claim-by-code at activation. We never block the assignment on loyalty."""
+        pid = _pid("PROMO_PAIR_FAIL")
+        try:
+            loy = FakeLoyalty(issue_refuse_for={"CUST-202"})
+            svc = _svc(db_session, loy)
+            await _create_targeted(svc, pid)
+            res = await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-202"])
+            # eligibility still recorded
+            assert res["eligible"] == ["CUST-202"]
+            # ...but with no loyalty_offer_id (the degrade signal)
+            offer_id = await svc._repo.get_loyalty_offer_id(
+                promotion_id=pid, customer_id="CUST-202"
+            )
+            assert offer_id is None
+        finally:
+            await _cleanup(db_session, pid)
+
     async def test_rejects_public_or_missing_promo(self, db_session: AsyncSession):
         # missing promo
         with pytest.raises(PolicyViolation) as exc:

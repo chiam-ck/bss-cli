@@ -55,10 +55,22 @@ class PromotionRepository:
     # ── eligibility (v1.1.1 — targeted = code + eligibility list) ─────────
 
     async def add_eligibility(
-        self, *, promotion_id: str, customer_id: str, created_by: str
+        self,
+        *,
+        promotion_id: str,
+        customer_id: str,
+        created_by: str,
+        loyalty_offer_id: str | None = None,
     ) -> bool:
         """Add a (promotion, customer) eligibility row. Idempotent — returns
-        False if it already existed (so a re-run reports it as 'already')."""
+        False if it already existed (so a re-run reports it as 'already').
+
+        v1.3.0 — ``loyalty_offer_id`` is the upfront-minted loyalty offer (the
+        ``offer.issue`` saga step at assign time) so the customer↔offer pairing
+        exists in loyalty immediately. COM uses it at activation via
+        ``advance_to_claimed`` (targeted path); public typed codes still
+        claim-by-code and never reach this column.
+        """
         existing = await self._session.execute(
             select(PromotionEligibility.id).where(
                 PromotionEligibility.promotion_id == promotion_id,
@@ -72,9 +84,27 @@ class PromotionRepository:
                 promotion_id=promotion_id,
                 customer_id=customer_id,
                 created_by=created_by,
+                loyalty_offer_id=loyalty_offer_id,
             )
         )
         return True
+
+    async def get_loyalty_offer_id(
+        self, *, promotion_id: str, customer_id: str
+    ) -> str | None:
+        """Look up the upfront-minted loyalty offer id for (promo, customer).
+
+        Returns None for rows written before v1.3.0; consume falls back to
+        claim-by-code in that case (a transparent backstop, not a doctrine
+        path).
+        """
+        r = await self._session.execute(
+            select(PromotionEligibility.loyalty_offer_id).where(
+                PromotionEligibility.promotion_id == promotion_id,
+                PromotionEligibility.customer_id == customer_id,
+            )
+        )
+        return r.scalar_one_or_none()
 
     async def is_eligible(self, promotion_id: str, customer_id: str) -> bool:
         r = await self._session.execute(

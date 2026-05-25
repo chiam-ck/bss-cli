@@ -182,6 +182,13 @@ class PromotionEligibility(Base, TenantMixin, TimestampMixin):
         Text, ForeignKey(f"{SCHEMA}.promotion.id"), nullable=False
     )
     customer_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # v1.3.0 — the loyalty offer minted upfront at assign time (``offer.issue``).
+    # Visibility & audit win: the customer↔offer pairing exists in loyalty the
+    # moment the operator assigns, not on the customer's first order. NULL only
+    # for rows written before v1.3.0; the assign path populates it now. At
+    # claim-at-activation COM uses ``advance_to_claimed`` against this id
+    # (targeted path); public typed codes still claim-by-code.
+    loyalty_offer_id: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[str] = mapped_column(Text, nullable=False)
 
 

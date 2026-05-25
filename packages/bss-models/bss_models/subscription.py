@@ -7,7 +7,7 @@ from datetime import datetime
 
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Computed, ForeignKey, Numeric, SmallInteger, Text, func
+from sqlalchemy import BigInteger, Computed, ForeignKey, Index, Numeric, SmallInteger, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TZDateTime, TenantMixin, TimestampMixin
@@ -17,7 +17,25 @@ SCHEMA = "subscription"
 
 class Subscription(Base, TenantMixin, TimestampMixin):
     __tablename__ = "subscription"
-    __table_args__ = {"schema": SCHEMA}
+    # v1.2.1 — msisdn/iccid uniqueness is PARTIAL (excludes terminated rows).
+    # A terminated subscription retains its number for audit but must not
+    # block a recycled number from being assigned to a new customer once
+    # inventory releases it. Two ACTIVE subs still can't share a number.
+    __table_args__ = (
+        Index(
+            "uq_subscription_msisdn",
+            "msisdn",
+            unique=True,
+            postgresql_where=text("state <> 'terminated'"),
+        ),
+        Index(
+            "uq_subscription_iccid",
+            "iccid",
+            unique=True,
+            postgresql_where=text("state <> 'terminated'"),
+        ),
+        {"schema": SCHEMA},
+    )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     customer_id: Mapped[str] = mapped_column(Text, nullable=False)
@@ -26,8 +44,8 @@ class Subscription(Base, TenantMixin, TimestampMixin):
     # a redelivered service_order.completed returns the existing subscription
     # instead of charging the card-on-file a second time. Unique (partial) index.
     commercial_order_id: Mapped[str | None] = mapped_column(Text)
-    msisdn: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
-    iccid: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    msisdn: Mapped[str] = mapped_column(Text, nullable=False)
+    iccid: Mapped[str] = mapped_column(Text, nullable=False)
     cfs_service_id: Mapped[str | None] = mapped_column(Text)
     state: Mapped[str] = mapped_column(Text, nullable=False, default="pending")
     state_reason: Mapped[str | None] = mapped_column(Text)

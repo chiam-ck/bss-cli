@@ -3369,3 +3369,54 @@ correct here. SOM and the portals never hold a loyalty client.
 **Consequences.** A BSS-CLI deployment with no loyalty is fully functional minus
 promotions. Turning promotions on is purely: set the two env vars + restart
 catalog/COM/CRM. No migration, no code change.
+
+## 2026-05-25 — v1.3.0 — Customer↔offer pairing minted in loyalty at assign time (reverses v1.1.1 collapse to claim-by-code)
+
+**Context.** v1.1.1 collapsed promo consume to **one path** — `offer.claim` by
+code — and retired `offer.issue` / `offer.advance_to_claimed`. In operation
+the cost became clear: `bss promo assign` wrote a BSS eligibility row but
+loyalty had no idea which customers were paired with a targeted promo until
+they actually placed an order. Loyalty's per-customer offer views and
+campaign-roster screens showed empty slots that BSS thought were full —
+auditability gap, reconciliation cost. CK called it out 2026-05-25:
+*"I need the pairing to be done upfront."*
+
+**Decision.** Restore upfront pairing **for the targeted lane only**. At
+`bss promo assign` we now also call `loyalty.offer.issue(...)` with a
+deterministic offer id `OFF-<customer_id>-<promotion_id>` (doubles as the
+idempotency key) and stamp the id on the new
+`catalog.promotion_eligibility.loyalty_offer_id` column. At
+service_order.completed, COM's `_claim_entitlement` branches: if the order
+item carries a `promo_offer_id` (targeted, pre-paired) it calls
+`offer.advance_to_claimed`; otherwise (public typed code, or a v1.3.0
+targeted row where issue degraded at assign time) it falls back to
+`offer.claim(source=promo_code)`. Public typed codes are unaffected —
+they never had upfront pairing and continue mint-and-claim by code.
+
+**Alternatives.**
+- Keep claim-by-code only and accept the visibility gap (status quo from
+  v1.1.1) — rejected: ongoing audit/reconciliation cost, operator surprise.
+- Mint a "preview" issued offer purely for visibility but keep claim-by-code
+  as the activation path (hybrid B in the V1_3_0.md sketch) — rejected:
+  loyalty would then carry two offers per customer per promo at activation
+  (the preview-issued one plus a fresh claim-minted one). Doesn't actually
+  give us the audit alignment we wanted.
+- Issue a unique code per customer at assign (true 1:1 code↔customer) —
+  rejected for the same reason as in 2026-05-22 #1 (loyalty can't enforce
+  per-code ownership; the gate is BSS either way; N codes per campaign for
+  no added value).
+
+**Consequences.**
+- `offer.advance_to_claimed` (retired in v1.1.1) is back in the wire — but
+  only for the targeted lane. Public codes never hit it.
+- Saga semantics on assign: BSS eligibility writes regardless of loyalty
+  outcome (degrade pattern with a logged warning + NULL `loyalty_offer_id`).
+  At activation a NULL `promo_offer_id` triggers transparent fallback to
+  claim-by-code — same behaviour as a pre-v1.3.0 row.
+- Un-assign (when we add it) must `offer.revoke` in loyalty to keep parity.
+  Cheap "delete eligibility row" stops being enough.
+- Migration 0029 adds the column; pre-v1.3.0 rows stay NULL with no data
+  migration needed (the fallback path handles them).
+- v1.1.1 amendment in DECISIONS (2026-05-22 #1) is explicitly *partially*
+  reversed: claim-by-code as the SOLE path is retired; it remains the
+  default for public codes only.

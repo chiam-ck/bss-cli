@@ -32,9 +32,12 @@ _VALID_CODE_TERMS = {
 
 _VALID_ELIGIBLE = {
     "valid": True,
-    "code": "PROMO_VIP",  # v1.1.1 — targeted resolves to a CODE now
+    "code": "PROMO_VIP",  # carried through; not used for the advance path
     "promotionId": "PROMO_VIP",
     "offerDefinitionId": "OD_PROMO_VIP",
+    # v1.3.0 — the loyalty offer is pre-paired at assign time, so resolve
+    # returns the upfront-minted offer id. COM uses ``advance_to_claimed``.
+    "loyaltyOfferId": "OFF-CUST-0001-PROMO_VIP",
     "discountType": "percent",
     "discountValue": "15",
     "durationKind": "single",
@@ -43,6 +46,13 @@ _VALID_ELIGIBLE = {
     "base": "25.00",
     "effective": "21.25",
     "label": "15% off",
+}
+
+# A v1.3.0 row where ``offer.issue`` degraded at assign time (or a pre-v1.3.0
+# row): no loyaltyOfferId → COM falls back to claim-by-code transparently.
+_VALID_ELIGIBLE_PRE_V130 = {
+    **_VALID_ELIGIBLE,
+    "loyaltyOfferId": None,
 }
 
 
@@ -116,19 +126,54 @@ class TestNonTargetedConsume:
 
 class TestTargetedConsume:
     @pytest.mark.asyncio
-    async def test_targeted_claims_by_code(self, client, mock_clients, db_session):
-        # v1.1.1 — targeted resolves to a code; consume is the SAME claim-by-code
-        # path as a typed code (no offer.issue/advance anymore).
+    async def test_targeted_advances_pre_paired_offer_v130(
+        self, client, mock_clients, db_session
+    ):
+        """v1.3.0 — when the loyalty offer was pre-paired at ``bss promo assign``
+        time, resolve_eligible_promo carries the loyaltyOfferId through to
+        order_item.promo_offer_id. At activation COM uses
+        ``advance_to_claimed`` (not ``claim_offer``) on that id."""
         mock_clients["catalog"].resolve_eligible_promo = AsyncMock(return_value=_VALID_ELIGIBLE)
         oid = await _inprogress_order(client)  # no typed code → eligibility discovery
 
         svc = _handler_service(db_session, mock_clients)
         await _complete(svc, oid)
 
+        # advance_to_claimed was called against the pre-paired offer id.
+        adv = mock_clients["loyalty"].advance_offer_to_claimed
+        adv.assert_awaited_once()
+        assert adv.await_args.kwargs["offer_id"] == "OFF-CUST-0001-PROMO_VIP"
+        assert adv.await_args.kwargs["idempotency_key"] == f"{oid}:claim"
+        assert adv.await_args.kwargs["order_ref"] == oid
+        # claim-by-code was NOT used for this targeted path.
+        mock_clients["loyalty"].claim_offer.assert_not_awaited()
+        # redeem still fires on success, against the pre-paired offer id.
+        mock_clients["loyalty"].redeem_offer.assert_awaited_once()
+        assert (
+            mock_clients["loyalty"].redeem_offer.await_args.kwargs["offer_id"]
+            == "OFF-CUST-0001-PROMO_VIP"
+        )
+
+    @pytest.mark.asyncio
+    async def test_targeted_pre_v130_row_falls_back_to_claim_by_code(
+        self, client, mock_clients, db_session
+    ):
+        """A v1.3.0 row where ``offer.issue`` degraded at assign time (or a row
+        from before v1.3.0 shipped) has no loyaltyOfferId — COM transparently
+        falls back to mint-and-claim by code. The eligibility-side gate still
+        holds; only the activation path differs."""
+        mock_clients["catalog"].resolve_eligible_promo = AsyncMock(
+            return_value=_VALID_ELIGIBLE_PRE_V130
+        )
+        oid = await _inprogress_order(client)
+
+        svc = _handler_service(db_session, mock_clients)
+        await _complete(svc, oid)
+
         claim = mock_clients["loyalty"].claim_offer
         claim.assert_awaited_once()
-        # claimed by the targeted promo's code
         assert claim.await_args.kwargs["source"] == {"type": "promo_code", "code": "PROMO_VIP"}
+        mock_clients["loyalty"].advance_offer_to_claimed.assert_not_awaited()
         mock_clients["loyalty"].redeem_offer.assert_awaited_once()
 
 
