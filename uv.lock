@@ -612,6 +612,7 @@ version = "0.1.0"
 source = { editable = "packages/bss-seed" }
 dependencies = [
     { name = "asyncpg" },
+    { name = "bss-clients" },
     { name = "bss-models" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
@@ -619,6 +620,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.29" },
+    { name = "bss-clients", editable = "packages/bss-clients" },
     { name = "bss-models", editable = "packages/bss-models" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0" },
 ]
