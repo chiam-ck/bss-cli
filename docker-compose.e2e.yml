@@ -61,3 +61,21 @@ services:
   provisioning-sim:
     environment:
       BSS_ESIM_PROVIDER: sim
+
+  # v1.4.1 — Cockpit LLM determinism via a fixture file. When
+  # BSS_LLM_FIXTURE_PATH is set, orchestrator/bss_orchestrator/llm.py
+  # returns the MockChatModel instead of constructing a real ChatOpenAI
+  # client. The mock reads scripted responses keyed by user-message
+  # substring; tools still execute against the real services. The
+  # cockpit specs (test_cockpit_*.py) rely on this to assert on
+  # tool-call rendering + the destructive-gate + the hallucination
+  # fallback without burning OpenRouter quota or flaking on output.
+  portal-csr:
+    environment:
+      BSS_LLM_FIXTURE_PATH: /fixtures/cockpit_e2e.json
+    volumes:
+      - ./packages/bss-e2e/fixtures:/fixtures:ro
+      # Preserve the .bss-cli mount from docker-compose.yml — compose
+      # merges volume lists per-service, so the cockpit-state mount
+      # below is in addition to the one in the base file, not a
+      # replacement. (See docker compose merge rules for arrays.)

@@ -1,0 +1,58 @@
+{
+  "_comment": "v1.4.1 — scripted LLM responses for the cockpit e2e specs. The fixture is bind-mounted into portal-csr via docker-compose.e2e.yml and selected by BSS_LLM_FIXTURE_PATH. orchestrator/bss_orchestrator/llm_mock.py owns the read + match logic. Match strings are case-insensitive substring searches against the latest user message.",
+
+  "responses": [
+    {
+      "name": "tool-roundtrip-customer-list",
+      "_comment": "Spec test_cockpit_tool_roundtrip — exercises the LLM → tool → render loop. customer.list against a name_contains filter is the cheapest read tool that returns a stable rendering, and it doesn't require a known customer_id (the e2e spec just needs SOMETHING to come back; the seeded demo customers cover this when make demo-restore has run).",
+      "match": "list customers",
+      "steps": [
+        {
+          "tool_calls": [
+            {
+              "name": "customer.list",
+              "args": {"name_contains": "Demo"}
+            }
+          ]
+        },
+        {
+          "content": "Here are the customers matching 'Demo'."
+        }
+      ]
+    },
+
+    {
+      "name": "propose-then-confirm-destructive",
+      "_comment": "Spec test_cockpit_propose_then_confirm — verifies the destructive-tool gate proposes (doesn't execute) until /confirm fires. provisioning.set_fault_injection is in DESTRUCTIVE_TOOLS but has the cheapest blast radius (single config row in a sim service). The args target a non-existent service so /confirm executes against the real provisioning-sim and returns an error — but the spec only asserts the proposal UI appeared and was consumed by /confirm, not the tool's success.",
+      "match": "set fault injection",
+      "steps": [
+        {
+          "tool_calls": [
+            {
+              "name": "provisioning.set_fault_injection",
+              "args": {
+                "task_type": "create_msisdn",
+                "fault_kind": "fail",
+                "probability": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "content": "Fault-injection applied (or attempt completed)."
+        }
+      ]
+    },
+
+    {
+      "name": "knowledge-uncited-fallback",
+      "_comment": "Spec test_cockpit_knowledge_citation_or_fallback — the cockpit's hallucination guard (_RE_KNOWLEDGE_CLAIM) replaces uncited handbook claims with the canonical fallback string. Mock returns a single content message with the trigger phrase 'per the handbook' and NO knowledge.* tool call. The guard fires; the spec asserts the fallback text is present.",
+      "match": "refund policy",
+      "steps": [
+        {
+          "content": "Per the handbook, refunds are issued at the operator's discretion within 30 days of purchase."
+        }
+      ]
+    }
+  ]
+}

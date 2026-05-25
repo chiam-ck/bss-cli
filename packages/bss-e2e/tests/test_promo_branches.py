@@ -5,12 +5,15 @@
 * **Targeted on dashboard** — assign ``PROMO_E2E_TARGETED`` to a fresh
   customer upfront via ``bss-clients``, then walk the signup funnel. The
   signup form pre-applies the targeted offer (``apply_offer`` checkbox).
-* **Exhausted-code degrades** — DEFERRED to v1.4.1. Exhausting a multi-use
-  code at seed time requires admin tooling we don't expose yet (the
-  catalog ``create_promotion`` API has no ``max_uses`` knob, and direct
-  loyalty manipulation violates write-through doctrine). The v1.1.3 fix
-  is covered by the catalog service tests; this UI-level spec is
-  scaffolded as xfail until an admin "exhaust" verb lands.
+* **Exhausted-code at signup** — v1.4.1 ships the admin
+  ``catalog.exhaust_promotion`` verb. The spec exhausts the public e2e
+  promo, walks signup with the now-exhausted code, asserts the order
+  completes (no discount applied, no parked state). This tests the
+  catalog-side validate rejection path; the COM ``_claim_entitlement``
+  degrade-after-loyalty-refusal path that v1.1.3 protected has different
+  timing semantics (in-flight order whose discount snapshot survives an
+  exhaust between order create and service_order complete) and is left
+  to a future spec that can stage that race.
 """
 
 from __future__ import annotations
@@ -23,6 +26,8 @@ from playwright.sync_api import expect
 from bss_clients import CatalogClient, TokenAuthProvider
 from bss_e2e.helpers.otp import wait_for_otp
 from bss_e2e.helpers.seed import (
+    PROMO_EXHAUSTED_CODE,
+    PROMO_EXHAUSTED_ID,
     PROMO_PUBLIC_CODE,
     PROMO_TARGETED_ID,
     ensure_e2e_customer,
@@ -184,21 +189,58 @@ def test_targeted_promo_visible_on_dashboard(
     )
 
 
-# ── Spec 4: exhausted code degrades to full price (DEFERRED) ────────────────
+# ── Spec 4: exhausted code at signup → order completes at full price ────────
 
 
 @pytest.mark.self_serve
-@pytest.mark.xfail(
-    reason=(
-        "v1.4.1 follow-up: needs an admin `catalog promotion exhaust` verb "
-        "to deterministically zero a code's loyalty supply at seed time. "
-        "The v1.1.3 graceful-degrade path is covered by catalog service "
-        "tests; this UI-level spec waits on the missing admin API."
-    ),
-    strict=False,
-)
 def test_exhausted_promo_degrades_to_full_price(
     page, base_urls, mailbox_path, e2e_customer_email, available_msisdn
 ):
-    """Exhausted code at signup — order completes at full price (v1.1.3 fix)."""
-    pytest.skip("blocked on admin exhaust tooling — see xfail reason")
+    """Exhausted code at signup — order completes (no discount applied).
+
+    v1.4.1 adds the ``catalog.exhaust_promotion`` admin verb. Spec setup:
+      1. Ensure the three e2e promos exist.
+      2. Exhaust ``PROMO_E2E_EXHAUSTED`` via the catalog API.
+
+    Then the spec walks a normal signup with the now-exhausted code typed
+    into the promo field. ``validate_for_order`` rejects the code (state
+    != "active") and the order proceeds at full price — no parked state,
+    no degrade signal, just no discount.
+
+    Re-runs are safe: ``exhaust_promotion`` is idempotent on already-
+    exhausted rows. The spec doesn't need to reset state between runs."""
+    base = base_urls["self_serve"]
+    _run_async_in_thread(ensure_e2e_promos())
+
+    async def _exhaust() -> None:
+        catalog = CatalogClient(
+            base_url=os.environ.get("BSS_CATALOG_URL", "http://localhost:8001"),
+            auth_provider=TokenAuthProvider(os.environ["BSS_API_TOKEN"]),
+        )
+        try:
+            await catalog.exhaust_promotion(PROMO_EXHAUSTED_ID)
+        finally:
+            await catalog.close()
+
+    _run_async_in_thread(_exhaust())
+
+    _login(page, base, e2e_customer_email, mailbox_path)
+    page.goto(f"{base}/signup/{PROMO_PLAN}?msisdn={available_msisdn}")
+    page.wait_for_selector("form.signup-form", timeout=10_000)
+    page.fill("input[name=name]", "E2E Exhausted Promo")
+    page.fill("input[name=phone]", "+65 9000 0003")
+
+    # Type the now-exhausted code. The preview should reject it — but the
+    # spec doesn't assert on preview text (template-controlled phrasing
+    # varies); we just confirm the order completes.
+    promo_input = page.locator("#promo_code")
+    promo_input.click()
+    page.keyboard.type(PROMO_EXHAUSTED_CODE, delay=20)
+    page.keyboard.press("Tab")
+
+    # Submit. With the code rejected at validate, no discount snapshot
+    # lands on the order, and the funnel walks normally to /confirmation
+    # at full price.
+    page.click("button.form-submit")
+    page.wait_for_url("**/confirmation/**", timeout=45_000)
+    expect(page.locator("#lpa-code")).to_be_visible()

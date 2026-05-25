@@ -261,6 +261,17 @@ class CatalogClient(BSSClient):
         resp = await self._request("POST", f"{self._PROMO}/{promotion_id}/unassign", json=body)
         return resp.json()
 
+    async def exhaust_promotion(self, promotion_id: str) -> dict[str, Any]:
+        """v1.4.1 — operator-initiated terminal stop. Flips an ``active``
+        promotion to ``exhausted``; the validate/resolve paths then reject
+        the code so new orders proceed at full price. Idempotent (re-call
+        on an already-exhausted row returns the row unchanged). Raises
+        ``NotFound`` if the promo doesn't exist."""
+        resp = await self._request(
+            "POST", f"{self._PROMO}/{promotion_id}/exhaust"
+        )
+        return resp.json()
+
     async def preview_promo(
         self, *, code: str, offering: str, customer_id: str | None = None
     ) -> dict[str, Any]:

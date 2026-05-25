@@ -152,6 +152,35 @@ def unassign(
     _run_safely(_do())
 
 
+@app.command("exhaust")
+def exhaust(
+    promotion_id: Annotated[str, typer.Argument(help="Promotion id to exhaust.")],
+) -> None:
+    """Terminal-stop a promotion (v1.4.1). Flips ``active → exhausted``;
+    new orders see no discount and proceed at full price. The row stays
+    for audit; no archive. Idempotent — re-running on an already-exhausted
+    promo is a no-op.
+
+    Use this when an operator decides a promo is over but the row should
+    remain visible for reporting (e.g. campaign ended, fraud-driven kill,
+    one-off close after manual review)."""
+    async def _do() -> None:
+        promo = await get_clients().catalog.exhaust_promotion(promotion_id)
+        state = promo.get("state", "?")
+        if state == "exhausted":
+            rprint(
+                f"[green]✓[/] [bold]{promotion_id}[/] is now [yellow]exhausted[/] "
+                f"(was active). New orders will see no discount."
+            )
+        else:
+            rprint(
+                f"[yellow]![/] [bold]{promotion_id}[/] state: {state} "
+                f"(unexpected; check `bss promo show`)"
+            )
+
+    _run_safely(_do())
+
+
 @app.command("show")
 def show(
     promotion_id: Annotated[str, typer.Argument(help="Promotion id.")],

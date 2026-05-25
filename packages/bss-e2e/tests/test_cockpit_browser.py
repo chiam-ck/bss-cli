@@ -4,21 +4,79 @@ The cockpit at ``localhost:9002`` is a thin veneer over the same
 ``Conversation`` store the REPL uses (v0.13). No login wall —
 single-operator-by-design behind a secure perimeter.
 
-**Determinism vs LLM behaviour.** Three of the five specs in the v1.4
-phase doc are LLM-driven (tool roundtrip, propose-then-confirm,
-knowledge citation). Real LLM responses vary turn-to-turn; verifying
-exact tool-call shape from a Playwright assertion is flakey by
-construction and burns OpenRouter quota on every run. v1.4.0 ships the
-deterministic three (sessions index, slash-command parity, message
-post + render); the three LLM-driven specs are scaffolded as xfail
-with a v1.4.1 follow-up to either record LLM fixtures for playback
-or mock the orchestrator at the seam.
+**v1.4.1 — mock-orchestrator seam.** Three of these specs are LLM-driven.
+Real LLM output varies turn-to-turn and burns OpenRouter quota. v1.4.1
+added an ``orchestrator.llm_mock.MockChatModel`` that returns scripted
+responses from ``packages/bss-e2e/fixtures/cockpit_e2e.json`` when the
+``BSS_LLM_FIXTURE_PATH`` env var is set (the e2e compose override does
+exactly that on portal-csr). Tools still execute against the real
+services, so the assertions test the cockpit's full rendering pipeline,
+not just LLM output.
 """
 
 from __future__ import annotations
 
+import asyncio
+import os
+import threading
+
+import asyncpg
 import pytest
 from playwright.sync_api import expect
+
+
+def _run_async_in_thread(coro):
+    """Same isolation trick as conftest.available_msisdn."""
+    box: list = []
+    err: list = []
+
+    def _runner() -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            box.append(loop.run_until_complete(coro))
+        except BaseException as exc:  # noqa: BLE001
+            err.append(exc)
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if err:
+        raise err[0]
+    return box[0]
+
+
+def _open_new_conversation(page, base_url: str) -> str:
+    """Click "+ New conversation" on the sessions index, return the
+    session_id from the URL."""
+    page.goto(base_url + "/")
+    page.locator("button.cockpit-link-btn").first.click()
+    page.wait_for_url("**/cockpit/**", timeout=10_000)
+    # URL is /cockpit/<session_id> — the suffix path is the session id.
+    return page.url.rstrip("/").split("/")[-1]
+
+
+def _send_message(page, message: str) -> None:
+    """Type into the thread compose box and submit. After submit the page
+    redirects to /cockpit/<id>?turn=N which auto-attaches the SSE stream."""
+    page.locator("textarea[name=message]").fill(message)
+    page.locator("form#thread-compose button[type=submit]").click()
+
+
+def _wait_for_turn_done(page, timeout_ms: int = 15_000) -> None:
+    """Wait for the SSE ``thread-stream-status`` element to flip to
+    ``done`` (or ``error``). The cockpit emits the status frame as the
+    last SSE event of every turn."""
+    page.wait_for_function(
+        "() => {"
+        "  const s = document.querySelector('.thread-stream-status');"
+        "  if (!s) return false;"
+        "  const t = s.innerText.toLowerCase();"
+        "  return t.includes('done') || t.includes('error');"
+        "}",
+        timeout=timeout_ms,
+    )
 
 
 # ── Spec 6: sessions index opens ────────────────────────────────────────────
@@ -29,109 +87,148 @@ def test_cockpit_sessions_index_opens(page, base_urls):
     """``/`` renders the sessions index + new-conversation CTA."""
     base = base_urls["cockpit"]
     page.goto(base + "/")
-    # The page renders with no login wall — single-operator-by-design
-    # (v0.13). New-conversation CTA is the doctrine target.
     expect(page.locator("button.cockpit-link-btn")).to_be_visible()
     expect(page.locator("button.cockpit-link-btn")).to_contain_text("New conversation")
 
 
-# ── Spec 10: slash-command parity (deterministic, no LLM) ───────────────────
+# ── Spec 7: tool roundtrip (LLM → customer.list → render) ──────────────────
+
+
+@pytest.mark.cockpit
+def test_cockpit_tool_roundtrip(page, base_urls):
+    """The mocked LLM calls ``customer.list(name_contains="Demo")``; the
+    real CRM returns the demo customers; the cockpit renders a tool block
+    + an assistant bubble. The spec asserts both surfaces appeared."""
+    base = base_urls["cockpit"]
+    _open_new_conversation(page, base)
+
+    # "list customers" matches the fixture's tool-roundtrip-customer-list
+    # entry, which scripts customer.list(name_contains="Demo").
+    _send_message(page, "list customers — show me the demo ones")
+    _wait_for_turn_done(page)
+
+    # Tool pill emitted via render_tool_pill — `.chat-tool-name` carries
+    # the dotted tool name verbatim. That's our "tool fired" assertion.
+    expect(page.locator(".chat-tool-name").first).to_contain_text("customer.list")
+    # Assistant final bubble must appear too (the mock's step 1 content).
+    expect(page.locator(".chat-bubble-assistant").last).to_be_visible()
+
+
+# ── Spec 8: propose-then-confirm (destructive gate) ─────────────────────────
+
+
+@pytest.mark.cockpit
+def test_cockpit_propose_then_confirm(page, base_urls):
+    """Destructive tool call from the LLM is gated by
+    ``safety.DESTRUCTIVE_TOOLS``. The cockpit stages a
+    ``pending_destructive`` row in the DB instead of executing; POST
+    ``/cockpit/<id>/confirm`` is the operator's acknowledgement marker.
+
+    Spec asserts:
+      * After first turn — ``cockpit.pending_destructive`` row exists
+        for the session, naming ``provisioning.set_fault_injection``.
+      * ``POST /cockpit/<id>/confirm`` returns 303 (parity with the
+        REPL ``/confirm`` slash command).
+    """
+    base = base_urls["cockpit"]
+    session_id = _open_new_conversation(page, base)
+
+    # Match the fixture's propose-then-confirm-destructive entry.
+    _send_message(
+        page, "please set fault injection on the msisdn task"
+    )
+    _wait_for_turn_done(page)
+
+    # Pending-destructive row should now exist for this session. Read
+    # directly from cockpit schema — there's no UI banner for this state
+    # (the /confirm button is always visible; the contract is on the
+    # DB row).
+    db_url = os.environ["BSS_DB_URL"].replace(
+        "postgresql+asyncpg://", "postgresql://"
+    )
+
+    async def _check_pending() -> dict | None:
+        conn = await asyncpg.connect(db_url)
+        try:
+            row = await conn.fetchrow(
+                "SELECT tool_name, tool_args_json::text AS args "
+                "FROM cockpit.pending_destructive WHERE session_id = $1",
+                session_id,
+            )
+            return dict(row) if row else None
+        finally:
+            await conn.close()
+
+    pending = _run_async_in_thread(_check_pending())
+    assert pending is not None, (
+        "expected a cockpit.pending_destructive row for the session; none found"
+    )
+    assert pending["tool_name"] == "provisioning.set_fault_injection", (
+        f"expected pending tool to be provisioning.set_fault_injection; "
+        f"got {pending['tool_name']!r}"
+    )
+
+    # POST /confirm must accept (303 to /cockpit/<id>). The contract is
+    # "the operator has a button to press, parity with REPL /confirm";
+    # the actual destructive execution would fire on the NEXT astream
+    # turn (an operator-typed follow-up message), which is a different
+    # spec to write cleanly without race-y multi-turn assertions.
+    response = page.request.post(
+        f"{base}/cockpit/{session_id}/confirm",
+        max_redirects=0,
+    )
+    assert response.status == 303, (
+        f"expected 303 from /cockpit/<id>/confirm; got {response.status}"
+    )
+
+
+# ── Spec 9: knowledge citation OR fallback (hallucination guard) ───────────
+
+
+@pytest.mark.cockpit
+def test_cockpit_knowledge_citation_or_fallback(page, base_urls):
+    """The cockpit's hallucination guard replaces uncited handbook claims
+    with the canonical fallback string. Mock returns ``"Per the handbook,
+    refunds..."`` with NO knowledge.* tool call; the guard fires; the
+    fallback text replaces the bubble before render."""
+    base = base_urls["cockpit"]
+    _open_new_conversation(page, base)
+
+    # Match the fixture's knowledge-uncited-fallback entry.
+    _send_message(page, "what's our refund policy?")
+    _wait_for_turn_done(page)
+
+    # The fallback string is canonical (defined in
+    # portals/csr/bss_csr/routes/cockpit.py:_KNOWLEDGE_HALLUCINATION_FALLBACK).
+    # Asserting on a fragment so a future minor rewording doesn't break
+    # the spec.
+    expect(page.locator(".chat-bubble-assistant").last).to_contain_text(
+        "I don't have a citation for that"
+    )
+
+
+# ── Spec 10: slash-command parity (/focus) ──────────────────────────────────
 
 
 @pytest.mark.cockpit
 def test_cockpit_slash_command_parity(page, base_urls):
-    """Open a new conversation, set the customer focus via the dedicated
-    focus form, then clear it. The cockpit pins the operator's attention
-    server-side (POST ``/cockpit/<id>/focus``) — no LLM hop, fully
-    deterministic.
-
-    REPL parity: ``/focus CUST-NNN`` in the REPL hits the same path
-    against the same ``Conversation`` store; the browser veneer's form
-    is just another caller. Verifying focus set + cleared closes the
-    parity-doctrine loop for the simplest cockpit verb.
-    """
+    """Set the customer focus via the dedicated form, then clear it.
+    ``/focus`` is server-side (no LLM hop), deterministic in both
+    surfaces."""
     base = base_urls["cockpit"]
-
-    # 1) Land on the sessions index, hit "+ New conversation".
     page.goto(base + "/")
     page.locator("button.cockpit-link-btn").first.click()
-    # New-conversation POST returns 303 to /cockpit/<session_id>.
     page.wait_for_url("**/cockpit/**", timeout=10_000)
 
-    # 2) Set focus via the dedicated focus form (Pin button). Customer
-    #    needn't exist — the cockpit treats this as an attention pointer
-    #    and renders the label even when the lookup misses.
     focus_form = page.locator("form.thread-focus-form")
     focus_form.locator("input[name=customer_id]").fill("CUST-E2EFOCUS")
     focus_form.locator("button[type=submit]").click()
-
-    # 3) Page reloads on /cockpit/<id>; the focus banner now renders.
     page.wait_for_load_state("networkidle")
     expect(page.locator(".thread-focus")).to_be_visible(timeout=10_000)
     expect(page.locator(".thread-focus")).to_contain_text("CUST-E2EFOCUS")
 
-    # 4) Clear focus by submitting empty customer_id (REPL parity:
-    #    ``/focus`` with no arg).
     focus_form_after = page.locator("form.thread-focus-form")
     focus_form_after.locator("input[name=customer_id]").fill("")
     focus_form_after.locator("button[type=submit]").click()
     page.wait_for_load_state("networkidle")
-    # Banner is conditional on `focus_label`; with no focus the div
-    # disappears.
     expect(page.locator(".thread-focus")).to_have_count(0)
-
-
-# ── Spec 7: tool roundtrip (LLM-driven — DEFERRED) ──────────────────────────
-
-
-@pytest.mark.cockpit
-@pytest.mark.xfail(
-    reason=(
-        "v1.4.1 follow-up: LLM response shape is non-deterministic and "
-        "asserting on tool-call rendering needs recorded fixtures or a "
-        "mock-orchestrator seam. The slash-command-parity spec exercises "
-        "the same message-post + render pipeline deterministically."
-    ),
-    strict=False,
-)
-def test_cockpit_tool_roundtrip(page, base_urls):
-    """Ask for a customer, see a rendered ``customer.get`` row."""
-    pytest.skip("LLM-driven; deferred to v1.4.1")
-
-
-# ── Spec 8: propose-then-confirm (LLM-driven — DEFERRED) ────────────────────
-
-
-@pytest.mark.cockpit
-@pytest.mark.xfail(
-    reason=(
-        "v1.4.1 follow-up: needs the LLM to consistently propose a "
-        "destructive tool call. The `/confirm` slash command + the "
-        "POST /cockpit/<id>/confirm route are covered by bss-cockpit "
-        "unit tests; the e2e UI layer waits on a deterministic prompt "
-        "fixture."
-    ),
-    strict=False,
-)
-def test_cockpit_propose_then_confirm(page, base_urls):
-    """Destructive proposal pends; ``/confirm`` clears + executes."""
-    pytest.skip("LLM-driven; deferred to v1.4.1")
-
-
-# ── Spec 9: knowledge citation (LLM + knowledge index — DEFERRED) ───────────
-
-
-@pytest.mark.cockpit
-@pytest.mark.xfail(
-    reason=(
-        "v1.4.1 follow-up: needs the doc corpus reindexed against the "
-        "e2e DB plus an LLM that consistently quotes/cites. The "
-        "hallucination guard regex (`_RE_KNOWLEDGE_CLAIM`) is covered "
-        "by bss-cockpit unit tests; the UI assertion needs a stable "
-        "LLM response."
-    ),
-    strict=False,
-)
-def test_cockpit_knowledge_citation_or_fallback(page, base_urls):
-    """Doctrine question — citation OR the canonical fallback."""
-    pytest.skip("LLM-driven + knowledge index; deferred to v1.4.1")

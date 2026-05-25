@@ -539,6 +539,70 @@ class PromotionService:
             "not_eligible": not_eligible,
         }
 
+    # ── exhaust (operator-initiated terminal stop) ─────────────────────────
+
+    async def exhaust_promotion(self, *, promotion_id: str) -> Promotion:
+        """Flip an ``active`` promotion to ``exhausted`` — terminal for new
+        orders, leaves the row in place for audit (v1.4.1).
+
+        ``validate_for_order`` and ``resolve_eligible_promo`` already reject
+        non-``active`` rows (line 143, 363 above), so a code that hits the
+        signup funnel after exhaustion is silently treated as no-discount and
+        the order proceeds at full price. No loyalty-side call — loyalty's
+        ``offer_definition`` doesn't have a "deactivate" verb, and the BSS
+        state gate is sufficient at the validate seam.
+
+        **Note on the v1.1.3 graceful-degrade path:** that fix protects
+        against loyalty refusing a claim at ``service_order.completed`` for
+        an order whose discount snapshot was already in flight. Exhausting
+        a promo via this verb stops new orders from picking up the discount
+        but does NOT retroactively poison in-flight orders — those still
+        claim normally against loyalty. The v1.1.3 fix and this verb cover
+        different timing windows of the same "promo is no longer good"
+        concern.
+
+        Idempotent: re-calling on an already-exhausted promo returns the
+        row unchanged. Refuses to flip pending_link / retired rows since
+        those represent half-built / archived states with different
+        semantics.
+        """
+        _check_admin(self._actor)
+        promo = await self._repo.get(promotion_id)
+        if promo is None:
+            # The route handler returns 404 for None to keep the verb's
+            # surface symmetric with GET /promotion/{id}. We raise a
+            # marker PolicyViolation so the service-layer contract stays
+            # "mutations raise, reads return None" — the route catches
+            # this specific rule and re-maps to HTTPException(404).
+            raise PolicyViolation(
+                rule="catalog.promotion.not_found",
+                message=f"Promotion {promotion_id} not found",
+                context={"promotion_id": promotion_id},
+            )
+        if promo.state == "exhausted":
+            # Idempotent — operator can re-run without surprise.
+            return promo
+        if promo.state != "active":
+            raise PolicyViolation(
+                rule="catalog.promotion.exhaust.not_active",
+                message=(
+                    f"Promotion {promotion_id} is in state {promo.state!r}; "
+                    "only ``active`` promos can be exhausted."
+                ),
+                context={
+                    "promotion_id": promotion_id,
+                    "state": promo.state,
+                },
+            )
+        promo.state = "exhausted"
+        await self._session.commit()
+        log.info(
+            "catalog.promotion.exhausted",
+            promotion_id=promotion_id,
+            actor=self._actor,
+        )
+        return promo
+
     # ── create saga ────────────────────────────────────────────────────────
 
     async def create_promotion(
