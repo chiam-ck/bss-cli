@@ -201,25 +201,47 @@ class OrderService:
             "discount_type": res.get("discountType"),
             "discount_value": Decimal(raw_value) if raw_value is not None else None,
             "discount_periods_total": res.get("discountPeriodsTotal"),
-            # v1.1.1: both paths claim by code at activation; the loyalty offer id
-            # is captured then, not at create.
-            "promo_offer_id": None,
+            # v1.3.0 — targeted promos are pre-paired in loyalty at assign time,
+            # so the loyalty offer id is known at create. Public typed codes
+            # carry NULL here (mint-and-claimed by code at activation). At
+            # claim-at-activation COM uses ``advance_to_claimed`` if this is set,
+            # else falls back to ``claim_offer(source=promo_code)``.
+            "promo_offer_id": res.get("loyaltyOfferId"),
         }
 
     async def _claim_entitlement(self, order: ProductOrder, item) -> str | None:
         """Consume the promo entitlement at activation (the gate).
 
-        v1.1.1 — ONE path for both audiences: ``offer.claim(source=promo_code)``
-        on the code stamped at order create (a typed code, or a targeted promo's
-        code resolved via eligibility). loyalty dedupes idempotency on
-        (actor, key) WITHOUT the tool name, so claim/redeem/revoke each use a
-        distinct ``{order_id}:<op>`` key. Returns the loyalty offer id to
-        redeem/revoke, or None when there's no promo.
+        v1.3.0 — TWO paths, picked by whether the offer was pre-paired at
+        assign time (targeted) vs. minted now from a typed code (public):
+
+        * **Targeted** (``item.promo_offer_id`` is set): the loyalty offer was
+          ``offer.issue``-d at ``bss promo assign`` time. Move it to ``claimed``
+          via ``advance_to_claimed`` — the path retired in v1.1.1 is back, but
+          ONLY for this lane (visibility/audit win on assignment).
+        * **Public typed** (no ``promo_offer_id`` set): mint-and-claim by code
+          via ``offer.claim(source=promo_code)`` (the v1.1.1 path, unchanged).
+        * **Backstop**: a v1.3.0 targeted row where ``offer.issue`` degraded at
+          assign time also has no ``promo_offer_id`` — it transparently falls
+          through to claim-by-code, exact same behaviour as a pre-v1.3.0 row.
+
+        loyalty dedupes idempotency on (actor, key) WITHOUT the tool name, so
+        each op gets a distinct ``{order_id}:<op>`` key. Returns the loyalty
+        offer id to redeem/revoke, or None when there's no promo.
         """
         if item is None or not item.discount_type or not item.discount_code:
             return None
         if self._loyalty is None:
             return None
+        # Targeted path: pre-paired offer → advance it.
+        if item.promo_offer_id:
+            await self._loyalty.advance_offer_to_claimed(
+                offer_id=item.promo_offer_id,
+                order_ref=order.id,
+                idempotency_key=f"{order.id}:claim",
+            )
+            return item.promo_offer_id
+        # Public typed path: mint-and-claim by code.
         result = await self._loyalty.claim_offer(
             customer_id=order.customer_id,
             source={"type": "promo_code", "code": item.discount_code},

@@ -200,6 +200,9 @@ async def validate_promo(
         "reason": r["reason"],
         "name": r.get("name"),
         "offerDefinitionId": r["offer_definition_id"],
+        # v1.3.0 — the upfront-minted loyalty offer id for a targeted code; NULL
+        # for public typed codes (no upfront mint there) or pre-v1.3.0 rows.
+        "loyaltyOfferId": r.get("loyalty_offer_id"),
         "discountType": r["discount_type"],
         "discountValue": str(r["discount_value"]) if r["discount_value"] is not None else None,
         "durationKind": r["duration_kind"],
@@ -229,6 +232,9 @@ async def resolve_eligible(
         "promotionId": r["promotion_id"],
         "name": r.get("name"),
         "offerDefinitionId": r["offer_definition_id"],
+        # v1.3.0 — upfront-minted loyalty offer id; NULL for pre-v1.3.0 rows
+        # (consume then falls back to claim-by-code).
+        "loyaltyOfferId": r.get("loyalty_offer_id"),
         "discountType": r["discount_type"],
         "discountValue": str(r["discount_value"]),
         "durationKind": r["duration_kind"],

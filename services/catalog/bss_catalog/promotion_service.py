@@ -146,17 +146,28 @@ class PromotionService:
 
         # 3. targeted codes are eligibility-gated (BSS is the gate; loyalty has
         # no per-customer binding). Public codes skip this.
+        # v1.3.0 — when eligible, also pull the upfront-minted loyalty offer id
+        # so COM can advance_to_claimed at activation instead of mint-and-claim.
+        loyalty_offer_id: str | None = None
         if promo.audience == "targeted":
             if customer_id is None or not await self._repo.is_eligible(promo.id, customer_id):
                 result["reason"] = "not_eligible"
                 return result
+            loyalty_offer_id = await self._repo.get_loyalty_offer_id(
+                promotion_id=promo.id, customer_id=customer_id
+            )
 
         # 4-6. applicability + window + compose
         composed = await self._compose(promo, offering_id)
         if composed.get("reason"):
             result["reason"] = composed["reason"]
             return result
-        result.update(valid=True, offer_definition_id=od_id, **composed["terms"])
+        result.update(
+            valid=True,
+            offer_definition_id=od_id,
+            loyalty_offer_id=loyalty_offer_id,
+            **composed["terms"],
+        )
         return result
 
     async def _compose(self, promo: Promotion, offering_id: str) -> dict:
@@ -244,11 +255,18 @@ class PromotionService:
             composed = await self._compose(promo, offering_id)
             if composed.get("reason"):
                 continue
+            # v1.3.0 — carry the upfront-minted loyalty offer id so COM can use
+            # ``advance_to_claimed`` at activation. NULL for pre-v1.3.0 rows; COM
+            # then falls back to claim-by-code transparently.
+            loyalty_offer_id = await self._repo.get_loyalty_offer_id(
+                promotion_id=promo.id, customer_id=customer_id
+            )
             candidate = {
                 "valid": True,
                 "code": promo.code,
                 "promotion_id": promo.id,
                 "offer_definition_id": promo.offer_definition_id,
+                "loyalty_offer_id": loyalty_offer_id,
                 **composed["terms"],
             }
             if best is None or candidate["effective"] < best["effective"]:
@@ -319,11 +337,26 @@ class PromotionService:
         promotion_id: str,
         customer_ids: list[str],
     ) -> dict:
-        """Add customers to a targeted promotion's eligibility list (v1.1.1).
+        """Add customers to a targeted promotion's eligibility list.
 
-        The promo's code then auto-applies for these customers at order time (and
-        a typed attempt by them validates). Idempotent — a customer already on the
-        list is reported under ``already`` rather than failing the batch.
+        v1.3.0 — *also* mints the customer↔offer pairing in loyalty upfront
+        (``offer.issue``), so loyalty's per-customer views reflect the
+        assignment immediately. The loyalty offer id is stamped on the BSS
+        eligibility row; COM uses it at activation via
+        ``advance_to_claimed`` (the path retired in v1.1.1 is restored for the
+        targeted lane only). Public typed codes are unaffected — they're
+        mint-and-claimed by code at activation.
+
+        Idempotent across both sides: a customer already on the eligibility list
+        is reported under ``already`` and loyalty is not re-called; the loyalty
+        ``offer.issue`` itself is keyed by the deterministic offer id so re-runs
+        are no-ops on loyalty's side too.
+
+        Loyalty refusal / outage at issue time DOES NOT block the eligibility
+        write — the BSS row is added with ``loyalty_offer_id=NULL`` and an
+        ``catalog.promotion.loyalty_issue_failed_degrade`` warning is logged.
+        At activation COM falls back to claim-by-code for that row (transparent
+        backstop, same as a pre-v1.3.0 row).
         """
         _check_admin(self._actor)
         promo = await self._repo.get(promotion_id)
@@ -344,10 +377,43 @@ class PromotionService:
         eligible: list[str] = []
         already: list[str] = []
         for customer_id in customer_ids:
-            added = await self._repo.add_eligibility(
-                promotion_id=promotion_id, customer_id=customer_id, created_by=self._actor
+            if await self._repo.is_eligible(promotion_id, customer_id):
+                already.append(customer_id)
+                continue
+
+            # v1.3.0 — mint the loyalty offer upfront. Deterministic id doubles
+            # as the idempotency key so re-runs are safe on loyalty's side.
+            offer_id = f"OFF-{customer_id}-{promotion_id}"
+            loyalty_offer_id: str | None = None
+            if self._loyalty is not None and promo.offer_definition_id:
+                try:
+                    await self._loyalty.issue_offer(
+                        offer_id=offer_id,
+                        offer_definition_id=promo.offer_definition_id,
+                        customer_id=customer_id,
+                        source={"type": "campaign", "campaign_id": promotion_id},
+                        idempotency_key=offer_id,
+                    )
+                    loyalty_offer_id = offer_id
+                except (ClientError, PolicyViolationFromServer) as exc:
+                    # Degrade: row goes in without loyalty_offer_id; COM falls back
+                    # to claim-by-code at activation. The eligibility is still
+                    # honoured BSS-side; we just lose the upfront visibility win.
+                    log.warning(
+                        "catalog.promotion.loyalty_issue_failed_degrade",
+                        promotion_id=promotion_id,
+                        customer_id=customer_id,
+                        offer_id=offer_id,
+                        error=str(exc),
+                    )
+
+            await self._repo.add_eligibility(
+                promotion_id=promotion_id,
+                customer_id=customer_id,
+                created_by=self._actor,
+                loyalty_offer_id=loyalty_offer_id,
             )
-            (eligible if added else already).append(customer_id)
+            eligible.append(customer_id)
         await self._session.commit()
 
         log.info(
