@@ -390,6 +390,29 @@ seed-demo:
 seed-demo-reset:
 	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.demo reset
 
+# v1.3.1 — full wipe of loyalty's data (TRUNCATE loyalty.* + audit.* schemas,
+# re-stamp alembic head). Reads LOYALTY_DB_URL from env, or peeks into the
+# running loyalty-http container's env. Companion to `make reset-db` on the
+# BSS side.
+loyalty-reset:
+	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.demo loyalty-wipe
+
+# THE single button: full clean slate on BOTH systems + the synced demo seed
+# repopulated. Use after a demo session that left messy test data, or any time
+# you want to return to a known-good golden state. Order matters:
+#   1. `make reset-db`       — BSS schemas dropped + re-migrated + `make seed` (refdata)
+#   2. `make loyalty-reset`  — loyalty + audit schemas TRUNCATEd, alembic re-stamped
+#   3. `make seed-demo`      — 3 demo customers, 1 public + 1 targeted promo,
+#                              2 customers assigned to the targeted (upfront
+#                              pairing minted in loyalty per v1.3.0)
+# After this both systems are in lockstep with a small, coherent demo dataset.
+demo-restore:
+	@$(ENV_SOURCE); $(MAKE) reset-db
+	@$(ENV_SOURCE); $(MAKE) loyalty-reset
+	@$(ENV_SOURCE); $(MAKE) seed-demo
+	@echo
+	@echo "✓ demo restored. BSS + loyalty in sync; 3 customers, 2 promos, 2 VIP assignments."
+
 # v0.20+ — operator-driven doc-corpus reindex into knowledge.doc_chunk.
 # Runs on-demand (no file-watcher in containers). Idempotent —
 # unchanged sections skip via mtime + content_hash dedup.

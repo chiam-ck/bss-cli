@@ -370,15 +370,127 @@ async def reset(*, verbose: bool = True) -> dict[str, int]:
     return summary
 
 
+async def wipe_loyalty(*, verbose: bool = True) -> dict[str, int]:
+    """Full wipe of loyalty's data (truncate ``loyalty.*`` + ``audit.*`` schemas,
+    then re-stamp ``alembic_version`` to the migration head).
+
+    Companion to ``make reset-db`` on the BSS side — these two together restore
+    a clean slate across both systems. Used by ``make demo-restore``.
+
+    Resolves the loyalty DB url from (in order):
+      1. ``LOYALTY_DB_URL`` env var (explicit operator-supplied).
+      2. The ``LOYALTY_DB_URL`` env on the running ``loyalty-http`` container.
+    Fails clearly if neither is available — no silent guessing about which DB
+    to nuke.
+
+    Re-stamps alembic from the latest migration file's ``revision: str = "..."``
+    line (path: ``~/claude/loyalty-cli/packages/loyalty-store-postgres/migrations/versions/``
+    by default; override with ``LOYALTY_MIGRATIONS_DIR``). Falls back to leaving
+    the version table empty (loyalty still boots; ``loyalty doctor`` will say
+    ``no alembic_version row``) when the migrations dir isn't reachable.
+    """
+    import re
+    import subprocess
+    from pathlib import Path
+
+    def _log(line: str) -> None:
+        if verbose:
+            print(line)
+
+    db_url = os.environ.get("LOYALTY_DB_URL")
+    if not db_url:
+        try:
+            out = subprocess.run(
+                [
+                    "docker", "inspect", "loyalty-http",
+                    "--format",
+                    "{{range .Config.Env}}{{println .}}{{end}}",
+                ],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            for line in out.splitlines():
+                if line.startswith("LOYALTY_DB_URL="):
+                    db_url = line.split("=", 1)[1]
+                    break
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+    if not db_url:
+        print(
+            "ERROR: LOYALTY_DB_URL not set and `docker inspect loyalty-http` "
+            "couldn't read it. Set it explicitly or start loyalty first.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    summary = {"tables_truncated": 0, "alembic_stamped": 0}
+
+    _log("── loyalty wipe (truncate loyalty + audit schemas) ──")
+    conn = await asyncpg.connect(db_url)
+    try:
+        rows = await conn.fetch(
+            "SELECT table_schema, table_name FROM information_schema.tables "
+            "WHERE table_schema IN ('loyalty','audit')"
+        )
+        if not rows:
+            _log("  (no tables in loyalty/audit schemas — loyalty not migrated?)")
+            return summary
+        tables = ", ".join(
+            f'"{r["table_schema"]}"."{r["table_name"]}"' for r in rows
+        )
+        await conn.execute(f"TRUNCATE {tables} RESTART IDENTITY CASCADE")
+        summary["tables_truncated"] = len(rows)
+        _log(f"  - truncated {len(rows)} tables across loyalty + audit")
+
+        # Re-stamp alembic head from the latest migration file's revision id.
+        migrations_dir = Path(
+            os.environ.get(
+                "LOYALTY_MIGRATIONS_DIR",
+                str(Path.home() / "claude/loyalty-cli/packages/loyalty-store-postgres/migrations/versions"),
+            )
+        )
+        head_rev: str | None = None
+        if migrations_dir.is_dir():
+            migration_files = sorted(p for p in migrations_dir.glob("*.py") if not p.name.startswith("_"))
+            if migration_files:
+                text = migration_files[-1].read_text(encoding="utf-8")
+                m = re.search(r'^revision(?:\s*:\s*\w+)?\s*=\s*[\'"]([^\'"]+)[\'"]', text, re.M)
+                if m:
+                    head_rev = m.group(1)
+        if head_rev:
+            await conn.execute(
+                "INSERT INTO loyalty.alembic_version (version_num) VALUES ($1)", head_rev
+            )
+            summary["alembic_stamped"] = 1
+            _log(f"  - stamped alembic head: {head_rev}")
+        else:
+            _log(
+                f"  · couldn't resolve head revision from {migrations_dir} — "
+                "leaving alembic_version empty (loyalty doctor will flag)"
+            )
+    finally:
+        await conn.close()
+
+    if verbose:
+        print("\ndone:")
+        for k, v in summary.items():
+            print(f"  {k}: {v}")
+    return summary
+
+
 def _cli() -> None:
-    """Entry points: ``python -m bss_seed.demo seed | reset``."""
+    """Entry points: ``python -m bss_seed.demo seed | reset | loyalty-wipe``."""
     cmd = sys.argv[1] if len(sys.argv) > 1 else "seed"
     if cmd == "seed":
         asyncio.run(seed())
     elif cmd == "reset":
         asyncio.run(reset())
+    elif cmd == "loyalty-wipe":
+        asyncio.run(wipe_loyalty())
     else:
-        print(f"unknown subcommand {cmd!r}; use seed | reset", file=sys.stderr)
+        print(
+            f"unknown subcommand {cmd!r}; use seed | reset | loyalty-wipe",
+            file=sys.stderr,
+        )
         sys.exit(2)
 
 
