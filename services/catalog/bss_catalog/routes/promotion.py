@@ -158,6 +158,20 @@ async def assign_targeted(
     )
 
 
+@router.post(f"{_TMF}/promotion/{{promotion_id}}/unassign")
+async def unassign_targeted(
+    promotion_id: str,
+    body: AssignTargetedRequest,  # same shape: a list of customer ids
+    svc: PromotionService = Depends(get_promotion_service),
+) -> dict:
+    """v1.3.1 — remove customers from a targeted promo's eligibility list AND
+    ``offer.revoke`` the upfront-minted loyalty offer. Idempotent."""
+    return await svc.unassign_targeted(
+        promotion_id=promotion_id,
+        customer_ids=body.customer_ids,
+    )
+
+
 # ── portal-facing reads ───────────────────────────────────────────────────
 
 
