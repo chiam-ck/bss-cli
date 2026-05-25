@@ -106,6 +106,33 @@ class PromotionRepository:
         )
         return r.scalar_one_or_none()
 
+    async def remove_eligibility(
+        self, *, promotion_id: str, customer_id: str
+    ) -> str | None:
+        """Remove a (promotion, customer) eligibility row.
+
+        Returns the row's ``loyalty_offer_id`` (which may be ``None`` for a
+        pre-v1.3.0 row, or for a v1.3.0 row where ``offer.issue`` had degraded)
+        so the service layer can ``offer.revoke`` against it. Returns the
+        sentinel ``__not_found__`` if there was no row to remove (so the
+        service can report it under ``not_eligible`` — idempotent unassign).
+        """
+        from sqlalchemy import delete as sa_delete
+
+        r = await self._session.execute(
+            select(PromotionEligibility.id, PromotionEligibility.loyalty_offer_id).where(
+                PromotionEligibility.promotion_id == promotion_id,
+                PromotionEligibility.customer_id == customer_id,
+            )
+        )
+        row = r.first()
+        if row is None:
+            return "__not_found__"
+        await self._session.execute(
+            sa_delete(PromotionEligibility).where(PromotionEligibility.id == row.id)
+        )
+        return row.loyalty_offer_id
+
     async def is_eligible(self, promotion_id: str, customer_id: str) -> bool:
         r = await self._session.execute(
             select(PromotionEligibility.id)

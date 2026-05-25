@@ -4,12 +4,14 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "bss-models",
+    "bss-clients",
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.29",
 ]
 
 [tool.uv.sources]
 bss-models = { workspace = true }
+bss-clients = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

@@ -376,6 +376,20 @@ migrate:
 seed:
 	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.main
 
+# v1.3.1 — synced demo seed. Creates a small coherent demo dataset across
+# BSS (customers, promotions, eligibility) and loyalty-cli (registered
+# customers, OD/promo_code, upfront-issued offers). Idempotent. Without
+# BSS_LOYALTY_API_TOKEN set, the customer half still runs; the promo lane
+# skips with a log line (BSS-only mode is the supported fallback).
+seed-demo:
+	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.demo seed
+
+# Reverse of seed-demo. Demo-prefix surgical: unassigns the targeted promo
+# (loyalty revoke + BSS delete), drops the two demo promotions, and removes
+# the demo customers from BOTH systems. Never touches operator data.
+seed-demo-reset:
+	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.demo reset
+
 # v0.20+ — operator-driven doc-corpus reindex into knowledge.doc_chunk.
 # Runs on-demand (no file-watcher in containers). Idempotent —
 # unchanged sections skip via mtime + content_hash dedup.

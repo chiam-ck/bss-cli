@@ -249,6 +249,18 @@ class CatalogClient(BSSClient):
         resp = await self._request("POST", f"{self._PROMO}/{promotion_id}/assign", json=body)
         return resp.json()
 
+    async def unassign_promotion(
+        self,
+        promotion_id: str,
+        *,
+        customer_ids: list[str],
+    ) -> dict[str, Any]:
+        """v1.3.1 — remove customers from a targeted promo's eligibility list +
+        ``offer.revoke`` the upfront-minted loyalty offer. Idempotent."""
+        body: dict[str, Any] = {"customerIds": customer_ids}
+        resp = await self._request("POST", f"{self._PROMO}/{promotion_id}/unassign", json=body)
+        return resp.json()
+
     async def preview_promo(
         self, *, code: str, offering: str, customer_id: str | None = None
     ) -> dict[str, Any]:

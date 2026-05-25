@@ -430,6 +430,115 @@ class PromotionService:
             "already": already,
         }
 
+    async def unassign_targeted(
+        self,
+        *,
+        promotion_id: str,
+        customer_ids: list[str],
+    ) -> dict:
+        """Remove customers from a targeted promo's eligibility list (v1.3.1).
+
+        The mirror of ``assign_targeted``: delete the BSS eligibility row AND
+        ``offer.revoke`` the upfront-minted loyalty offer. Cheap "delete the
+        row" stopped being enough once v1.3.0 made the loyalty pairing the
+        source of truth on the loyalty side too — without the revoke loyalty
+        keeps showing the customer as paired (audit drift). Idempotent — a
+        customer not on the list is reported under ``not_eligible``.
+
+        Loyalty refusal / outage at revoke time does NOT block the eligibility
+        delete (degrade pattern, mirrors assign). The BSS-side gate is closed
+        regardless; loyalty drifts and a ``loyalty_revoke_failed_drift``
+        warning is logged for the operator to reconcile later.
+        """
+        _check_admin(self._actor)
+        promo = await self._repo.get(promotion_id)
+        if promo is None or promo.audience != "targeted":
+            raise PolicyViolation(
+                rule="catalog.promotion.not_targeted",
+                message=(
+                    f"Promotion {promotion_id} is not a targeted promo; "
+                    "cannot remove eligibility"
+                ),
+                context={
+                    "promotion_id": promotion_id,
+                    "audience": promo.audience if promo else None,
+                },
+            )
+
+        removed: list[str] = []
+        not_eligible: list[str] = []
+        for customer_id in customer_ids:
+            loyalty_offer_id = await self._repo.remove_eligibility(
+                promotion_id=promotion_id, customer_id=customer_id
+            )
+            if loyalty_offer_id == "__not_found__":
+                not_eligible.append(customer_id)
+                continue
+            # BSS gate closed. Terminal-transition the upfront-minted loyalty
+            # offer (if we have an id — pre-v1.3.0 rows + degraded assigns
+            # have None here; nothing to expire/revoke).
+            #
+            # Loyalty FSM: ``issued → expired`` (never-claimed offer, the
+            # typical unassign case) vs ``claimed → revoked`` (order failed
+            # path, owned by COM). We try ``expire`` first; if loyalty refuses
+            # because the offer is already past issued (the customer used the
+            # promo to order), we fall back to ``revoke`` to handle the
+            # post-claim unassign case.
+            if loyalty_offer_id and self._loyalty is not None:
+                try:
+                    await self._loyalty.expire_offer(
+                        offer_id=loyalty_offer_id,
+                        idempotency_key=f"{loyalty_offer_id}:expire:unassign",
+                    )
+                except PolicyViolationFromServer as exc:
+                    if exc.rule == "offer.expire.illegal_state":
+                        try:
+                            await self._loyalty.revoke_offer(
+                                offer_id=loyalty_offer_id,
+                                reason="operator_action",
+                                idempotency_key=f"{loyalty_offer_id}:revoke:unassign",
+                            )
+                        except (ClientError, PolicyViolationFromServer) as exc2:
+                            log.warning(
+                                "catalog.promotion.loyalty_revoke_failed_drift",
+                                promotion_id=promotion_id,
+                                customer_id=customer_id,
+                                loyalty_offer_id=loyalty_offer_id,
+                                error=str(exc2),
+                            )
+                    else:
+                        log.warning(
+                            "catalog.promotion.loyalty_expire_failed_drift",
+                            promotion_id=promotion_id,
+                            customer_id=customer_id,
+                            loyalty_offer_id=loyalty_offer_id,
+                            error=str(exc),
+                        )
+                except ClientError as exc:
+                    log.warning(
+                        "catalog.promotion.loyalty_expire_failed_drift",
+                        promotion_id=promotion_id,
+                        customer_id=customer_id,
+                        loyalty_offer_id=loyalty_offer_id,
+                        error=str(exc),
+                    )
+            removed.append(customer_id)
+        await self._session.commit()
+
+        log.info(
+            "catalog.promotion.eligibility_removed",
+            promotion_id=promotion_id,
+            removed=len(removed),
+            not_eligible=len(not_eligible),
+            actor=self._actor,
+        )
+        return {
+            "promotion_id": promotion_id,
+            "code": promo.code,
+            "removed": removed,
+            "not_eligible": not_eligible,
+        }
+
     # ── create saga ────────────────────────────────────────────────────────
 
     async def create_promotion(

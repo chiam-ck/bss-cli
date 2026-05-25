@@ -118,6 +118,40 @@ def assign(
     _run_safely(_do())
 
 
+@app.command("unassign")
+def unassign(
+    promotion_id: Annotated[str, typer.Option("--promo", help="An active targeted promotion id.")],
+    customers: Annotated[str, typer.Option("--customers", help="Comma-separated customer ids.")],
+) -> None:
+    """Remove customers from a targeted promotion's eligibility list (v1.3.1).
+
+    Mirrors ``assign``: drops the BSS eligibility row AND ``offer.revoke``s the
+    upfront-minted loyalty offer so loyalty's per-customer views stop showing
+    the customer as paired. Idempotent — a customer not on the list is reported
+    under ``not_eligible``. A loyalty revoke failure logs a drift warning but
+    does not block the BSS-side removal.
+    """
+    customer_ids = [c.strip() for c in customers.split(",") if c.strip()]
+
+    async def _do() -> None:
+        result = await get_clients().catalog.unassign_promotion(
+            promotion_id, customer_ids=customer_ids
+        )
+        removed = result.get("removed", [])
+        not_eligible = result.get("not_eligible", [])
+        rprint(
+            f"[green]✓[/] Removed from [bold]{promotion_id}[/] "
+            f"(code {result.get('code')}): {len(removed)} removed, "
+            f"{len(not_eligible)} not eligible"
+        )
+        for cid in removed:
+            rprint(f"  • [yellow]removed[/] {cid}")
+        for cid in not_eligible:
+            rprint(f"  • [dim]not_eligible[/] {cid}")
+
+    _run_safely(_do())
+
+
 @app.command("show")
 def show(
     promotion_id: Annotated[str, typer.Argument(help="Promotion id.")],

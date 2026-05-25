@@ -313,6 +313,22 @@ class LoyaltyClient(BSSClient):
             idempotency_key=idempotency_key,
         )
 
+    async def expire_offer(
+        self,
+        *,
+        offer_id: str,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """``offer.expire`` — terminal transition for an ``issued`` offer that
+        was never claimed (e.g. unassigning a customer before they ordered).
+
+        FSM: ``issued → expired``. ``offer.revoke`` is illegal from ``issued``
+        — that's the ``claimed → revoked`` lane (order failed / cancelled).
+        """
+        return await self._call(
+            "offer.expire", {"offer_id": offer_id}, idempotency_key=idempotency_key
+        )
+
     async def revoke_offer(
         self,
         *,

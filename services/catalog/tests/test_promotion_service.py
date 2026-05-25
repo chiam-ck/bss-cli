@@ -70,6 +70,14 @@ class FakeLoyalty:
             )
         return {"offer_id": kwargs["offer_id"], "state": "issued"}
 
+    async def expire_offer(self, **kwargs):
+        self.calls.append(("expire_offer", kwargs))
+        return {"offer_id": kwargs["offer_id"], "state": "expired"}
+
+    async def revoke_offer(self, **kwargs):
+        self.calls.append(("revoke_offer", kwargs))
+        return {"offer_id": kwargs["offer_id"], "state": "revoked"}
+
     async def list_offers(self, **kwargs):
         self.calls.append(("list_offers", kwargs))
         state = kwargs.get("state")
@@ -480,6 +488,102 @@ class TestAssignTargeted:
                 promotion_id=pid, customer_id="CUST-101"
             )
             assert offer_id == f"OFF-CUST-101-{pid}"
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_unassign_expires_issued_offer(self, db_session: AsyncSession):
+        """v1.3.1 — unassign expires (not revokes) the upfront-minted offer.
+        Loyalty FSM: ``issued → expired`` is the terminal lane for a never-
+        claimed offer; ``offer.revoke`` is illegal from ``issued`` (that's
+        the ``claimed → revoked`` lane owned by COM)."""
+        pid = _pid("PROMO_UNASSIGN")
+        try:
+            loy = FakeLoyalty()
+            svc = _svc(db_session, loy)
+            await _create_targeted(svc, pid)
+            await svc.assign_targeted(
+                promotion_id=pid, customer_ids=["CUST-301", "CUST-302"]
+            )
+
+            res = await svc.unassign_targeted(
+                promotion_id=pid, customer_ids=["CUST-301", "CUST-999"]
+            )
+            assert res["removed"] == ["CUST-301"]
+            assert res["not_eligible"] == ["CUST-999"]  # idempotent
+
+            # offer.expire was called against the issued offer (revoke not used).
+            expires = loy.called("expire_offer")
+            assert len(expires) == 1
+            assert expires[0]["offer_id"] == f"OFF-CUST-301-{pid}"
+            assert loy.called("revoke_offer") == []
+            # BSS state matches: CUST-301 gone, CUST-302 still eligible.
+            assert not await svc._repo.is_eligible(pid, "CUST-301")
+            assert await svc._repo.is_eligible(pid, "CUST-302")
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_unassign_falls_back_to_revoke_when_offer_already_claimed(
+        self, db_session: AsyncSession
+    ):
+        """v1.3.1 — if the customer already claimed the offer (placed an
+        order with the promo), the offer is in ``claimed`` state and
+        ``offer.expire`` refuses with ``illegal_state``. Catalog falls back
+        to ``offer.revoke`` (the ``claimed → revoked`` lane)."""
+        pid = _pid("PROMO_UNASSIGN_CLAIMED")
+
+        class ClaimedLoyalty(FakeLoyalty):
+            async def expire_offer(self, **kwargs):
+                self.calls.append(("expire_offer", kwargs))
+                raise PolicyViolationFromServer(
+                    rule="offer.expire.illegal_state",
+                    message="offer is in claimed state",
+                    context={"source": "loyalty"},
+                )
+
+        try:
+            loy = ClaimedLoyalty()
+            svc = _svc(db_session, loy)
+            await _create_targeted(svc, pid)
+            await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-501"])
+            res = await svc.unassign_targeted(
+                promotion_id=pid, customer_ids=["CUST-501"]
+            )
+            assert res["removed"] == ["CUST-501"]
+            # Tried expire first, then fell back to revoke.
+            assert len(loy.called("expire_offer")) == 1
+            revokes = loy.called("revoke_offer")
+            assert len(revokes) == 1
+            assert revokes[0]["reason"] == "operator_action"
+        finally:
+            await _cleanup(db_session, pid)
+
+    async def test_unassign_loyalty_failure_does_not_block_delete(
+        self, db_session: AsyncSession
+    ):
+        """v1.3.1 — degrade: a loyalty refusal/outage at expire+revoke time
+        does NOT block the BSS-side row delete. The gate must close even when
+        loyalty drifts; the operator reconciles later (warning logged)."""
+        pid = _pid("PROMO_UNASSIGN_DEGRADE")
+
+        class RaisingLoyalty(FakeLoyalty):
+            async def expire_offer(self, **kwargs):
+                self.calls.append(("expire_offer", kwargs))
+                # Some other refusal that's NOT illegal_state → no revoke fallback.
+                raise PolicyViolationFromServer(
+                    rule="offer.expire.not_found",
+                    message="offer missing",
+                    context={"source": "loyalty"},
+                )
+
+        try:
+            svc = _svc(db_session, RaisingLoyalty())
+            await _create_targeted(svc, pid)
+            await svc.assign_targeted(promotion_id=pid, customer_ids=["CUST-404"])
+            res = await svc.unassign_targeted(
+                promotion_id=pid, customer_ids=["CUST-404"]
+            )
+            assert res["removed"] == ["CUST-404"]
+            assert not await svc._repo.is_eligible(pid, "CUST-404")
         finally:
             await _cleanup(db_session, pid)
 
