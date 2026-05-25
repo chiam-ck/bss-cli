@@ -147,6 +147,37 @@ bss trace for-order ORD-0001
 bss admin knowledge search "rotate cockpit token"   # v0.20+ doc-corpus search
 ```
 
+### Demo data (`make demo-restore`)
+
+`make seed` (always available) populates **reference data** — agents, SLA
+policies, plans, MSISDN + eSIM pools, provisioning-sim config. No customers,
+no promotions, no test users. It is BSS-only — never touches `loyalty-cli`
+even when one is wired.
+
+v1.3.1 added a **synced demo seed** for messy-environment recovery:
+
+```bash
+make seed-demo          # 3 demo customers + 2 promos + 2 VIP assignments,
+                        # in lockstep across BSS and loyalty-cli
+make seed-demo-reset    # surgical reverse: unassign (loyalty offer.expire +
+                        # BSS row delete), drop demo promotions, delete demo
+                        # customers from both systems. Demo-prefix only.
+make loyalty-reset      # full wipe of loyalty.* + audit.* schemas (TRUNCATE
+                        # + re-stamp alembic head). Companion to reset-db.
+make demo-restore       # the single-button golden state: reset-db (BSS) +
+                        # loyalty-reset + seed-demo. Use after any messy
+                        # session to return to a known-good clean state.
+```
+
+`seed-demo` is **idempotent** (re-runs skip-if-present on both sides) and
+respects the optional-adapter rule: with `BSS_LOYALTY_API_TOKEN` unset, the
+customer half still runs and the promo lane logs a clean skip — BSS-only
+demo dataset, no loyalty entries created.
+
+Naming convention: every demo row is keyed on `*.demo@bss-cli.local` emails
+or `PROMO_DEMO_*` / `DEMO_*` ids, so `seed-demo-reset` is surgical and never
+touches operator data.
+
 ## Documentation map
 
 - [`CLAUDE.md`](CLAUDE.md) — project doctrine; read first
