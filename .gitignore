@@ -56,3 +56,9 @@ v0.6-baseline.md
 # tracked individually; this pattern only filters the obvious dupes.
 *.png.jpg
 *.jpg.png
+
+# v1.4 — Playwright e2e suite reports. The per-run timestamped
+# directories (HTML report + JUnit XML + trace zips) are local-only
+# artefacts; only the README pointer is checked in.
+/docs/e2e-reports/*
+!/docs/e2e-reports/README.md

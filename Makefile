@@ -1,4 +1,4 @@
-.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero
+.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero e2e e2e-down
 
 help:
 	@echo "  up                  — 10 BSS services (BYOI Postgres/RabbitMQ)"
@@ -15,6 +15,8 @@ help:
 	@echo "  lint                — lint with ruff + mypy"
 	@echo "  scenarios           — run every scenario in ./scenarios (including LLM ask: steps)"
 	@echo "  scenarios-hero      — run only the three hero ship-gate scenarios"
+	@echo "  e2e                 — v1.4 Playwright suite in mock-providers mode (CLEAN=1 for full wipe)"
+	@echo "  e2e-down            — manually tear down a stuck e2e override stack"
 	@echo "  check-clock         — grep guard: all datetime.now sites route through bss-clock"
 	@echo "  doctrine-check      — run all v0.6+ grep guards (clock, channel, portals, no-bypass)"
 	@echo "  python-check        — warn if active Python is outside the supported 3.12 range"
@@ -476,6 +478,55 @@ scenarios:
 
 scenarios-hero:
 	$(call SCENARIOS_RUN,--tag hero)
+
+# v1.4 — Playwright end-to-end suite. Brings up the stack with
+# docker-compose.e2e.yml overlaid (payment=mock, kyc=prebaked,
+# email=logging, esim=sim), runs `demo-restore` for clean seed,
+# then pytest with HTML + JUnit reports + per-spec traces. Tear-down
+# fires on EXIT/INT/TERM so Ctrl-C still cleans up:
+#
+#   1. compose down with the e2e override   (drops mock-only state)
+#   2. `make seed-demo-reset` as a backstop (surgical PROMO_DEMO_* /
+#      *.demo@bss-cli.local sweep — also catches e2e-* leftovers via
+#      the prefix-scoped reset_e2e_data path once specs are wired in)
+#   3. `docker compose up -d`               (restore normal stack)
+#
+# Reports land in docs/e2e-reports/<UTC-ts>/ — gitignored except
+# README.md. Pass CLEAN=1 to do a destructive `down -v` (drops
+# volumes) instead of the soft down.
+#
+# Pre-condition: your .env should have mock/no-creds for Stripe / Didit
+# / Resend. A real `sk_live_*` in .env will still cause the payment
+# service startup template-scan to refuse to boot — the override pins
+# `BSS_PAYMENT_PROVIDER=mock` but doesn't strip a live secret key.
+e2e:
+	@mkdir -p docs/e2e-reports
+	@ts=$$(date -u +%Y%m%dT%H%M%SZ); \
+	out="docs/e2e-reports/$$ts"; \
+	mkdir -p "$$out/traces"; \
+	down_cmd="docker compose -f docker-compose.yml -f docker-compose.e2e.yml down --remove-orphans"; \
+	if [ "$$CLEAN" = "1" ]; then down_cmd="$$down_cmd -v"; fi; \
+	trap 'echo; echo "--- tearing down e2e stack ---"; \
+	      eval "$$down_cmd" >/dev/null 2>&1 || true; \
+	      $(MAKE) seed-demo-reset >/dev/null 2>&1 || true; \
+	      docker compose up -d >/dev/null 2>&1 || true; \
+	      echo "--- e2e report: '"$$out"' ---"' EXIT INT TERM; \
+	echo "--- bringing up e2e stack (override: docker-compose.e2e.yml) ---"; \
+	docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --wait; \
+	echo "--- seeding demo data ---"; \
+	$(MAKE) demo-restore; \
+	echo "--- running playwright suite ---"; \
+	uv run --package bss-e2e pytest packages/bss-e2e/tests/ \
+	    --html="$$out/report.html" --self-contained-html \
+	    --junitxml="$$out/junit.xml"
+
+# Manual escape-hatch — if a previous `make e2e` left the override
+# stack up (e.g. SIGKILL), run this to drop it and bring the normal
+# stack back.
+e2e-down:
+	@docker compose -f docker-compose.yml -f docker-compose.e2e.yml down --remove-orphans
+	@docker compose up -d
+	@echo "✓ e2e override torn down; normal stack restored."
 
 reset-db:
 	@$(ENV_SOURCE); \

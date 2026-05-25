@@ -178,6 +178,40 @@ Naming convention: every demo row is keyed on `*.demo@bss-cli.local` emails
 or `PROMO_DEMO_*` / `DEMO_*` ids, so `seed-demo-reset` is surgical and never
 touches operator data.
 
+### Automated end-to-end tests (`make e2e`)
+
+v1.4 ships a **Playwright-driven** suite covering the self-serve portal
+(`localhost:9001`) and the operator cockpit browser veneer (`localhost:9002`).
+Smoke + promo branches at v1.4.0; ~10 specs, ~4 minutes wall-clock.
+
+```bash
+make e2e                # bring up stack in mock-providers mode, run suite,
+                        # tear down, restore normal stack. Trap on
+                        # EXIT/INT/TERM so Ctrl-C still cleans up.
+make e2e CLEAN=1        # same, but full `down -v` first (drops volumes).
+make e2e-down           # manual escape-hatch if a previous run left the
+                        # override stack up.
+```
+
+How it works:
+
+1. `docker-compose.e2e.yml` is layered over the normal compose to pin
+   `BSS_PAYMENT_PROVIDER=mock`, `BSS_KYC_ALLOW_PREBAKED=true`,
+   `BSS_PORTAL_EMAIL_PROVIDER=logging`, `BSS_ESIM_PROVIDER=sim`. Your `.env`
+   is not touched.
+2. `make demo-restore` runs first for clean seed.
+3. Tests run via `pytest` in `packages/bss-e2e/` — pytest-html + JUnit XML
+   reports land in `docs/e2e-reports/<UTC-ts>/` (git-ignored except for the
+   README pointer).
+4. On exit, the override stack comes down and the normal stack comes back up.
+
+Pre-condition: your `.env` should not have a real `sk_live_*` Stripe key —
+the v0.16 startup template-scan will refuse to boot with `mock` providers if
+it spots one. Use mock or unset for `BSS_PAYMENT_*`, `BSS_PORTAL_KYC_*`, and
+`BSS_PORTAL_EMAIL_*` creds before invoking `make e2e`.
+
+See `phases/V1_4_0.md` for the suite design.
+
 ## Documentation map
 
 - [`CLAUDE.md`](CLAUDE.md) — project doctrine; read first

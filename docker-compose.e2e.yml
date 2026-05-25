@@ -1,0 +1,58 @@
+# docker-compose.e2e.yml — v1.4 Playwright suite override.
+#
+# Pins providers to their mock/dev variants on the containers that consume
+# them, so the suite can drive the full signup funnel + cockpit veneer
+# without touching Resend / Didit / Stripe / SM-DP+.
+#
+# Usage (via the Makefile `e2e` target):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml up -d --wait
+#   ... run pytest ...
+#   docker compose -f docker-compose.yml -f docker-compose.e2e.yml down
+#   docker compose up -d         # restore the normal stack
+#
+# Safety: this file ONLY overrides `environment:`. It does NOT touch
+# volumes, networks, build contexts, or the `env_file: .env` line — so an
+# operator's `.env` is untouched and a Ctrl-C teardown can restore the
+# normal stack by re-`up`ing without the override.
+#
+# CLAUDE.md note: "No silent fallback when prod creds are missing" — if a
+# real Stripe `sk_live_*` sits in `.env`, the startup template scan in the
+# payment service will refuse to boot even with `BSS_PAYMENT_PROVIDER=mock`
+# pinned here. The e2e contract is that the operator's `.env` has mock
+# creds (or no provider creds) before invoking `make e2e`. The Makefile
+# target documents this.
+
+services:
+  payment:
+    environment:
+      BSS_PAYMENT_PROVIDER: mock
+      # PCI: no server-side card input under mock provider; the v0.16
+      # startup scan stays happy because there's no `sk_live_*` here.
+      BSS_PAYMENT_ALLOW_TEST_CARD_REUSE: "true"
+
+  crm:
+    environment:
+      # KYC: accept signed attestations with provider="prebaked". v0.15
+      # default-rejects in production; e2e is an authorised sandbox.
+      BSS_KYC_ALLOW_PREBAKED: "true"
+      # eSIM provider for the simulator path; cap'd to the in-memory pool.
+      BSS_ESIM_PROVIDER: sim
+
+  portal-self-serve:
+    environment:
+      # Magic-link OTPs go to .dev-mailbox/portal-mailbox.log (bind-mounted
+      # from the host) instead of Resend. helpers/otp.py tails the file.
+      BSS_PORTAL_EMAIL_PROVIDER: logging
+      # Mirror the KYC + payment flips so the portal's own client paths
+      # don't try to negotiate with live providers behind the service.
+      BSS_KYC_ALLOW_PREBAKED: "true"
+      BSS_PAYMENT_PROVIDER: mock
+
+  som:
+    environment:
+      BSS_ESIM_PROVIDER: sim
+
+  provisioning-sim:
+    environment:
+      BSS_ESIM_PROVIDER: sim
