@@ -44,9 +44,14 @@ services:
       # Magic-link OTPs go to .dev-mailbox/portal-mailbox.log (bind-mounted
       # from the host) instead of Resend. helpers/otp.py tails the file.
       BSS_PORTAL_EMAIL_PROVIDER: logging
-      # Mirror the KYC + payment flips so the portal's own client paths
-      # don't try to negotiate with live providers behind the service.
+      # KYC: configured provider is "prebaked" so the signup funnel uses
+      # a server-side stub attestation instead of a Didit hosted-UI
+      # redirect. ALLOW_PREBAKED unlocks acceptance through the v0.15
+      # production gate. Both required.
+      BSS_PORTAL_KYC_PROVIDER: prebaked
       BSS_KYC_ALLOW_PREBAKED: "true"
+      # Mock tokenizer — server-side card_pan input is accepted, no
+      # Stripe Checkout redirect.
       BSS_PAYMENT_PROVIDER: mock
 
   som:

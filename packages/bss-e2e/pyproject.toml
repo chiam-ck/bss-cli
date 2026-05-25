@@ -25,9 +25,17 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
-# Inherits asyncio_mode and --import-mode=importlib from the root
-# pyproject.toml; this section only adds package-local knobs.
 testpaths = ["tests"]
+# The whole suite uses Playwright's SYNCHRONOUS API (the sync-first pattern
+# Playwright recommends with pytest). asyncio_mode=auto from the root config
+# wraps every fixture in an event loop; ``strict`` keeps the loop scoped to
+# explicitly-marked async tests, leaving sync fixtures free to spin up their
+# own loops (the ``available_msisdn`` fixture does this for asyncpg).
+asyncio_mode = "strict"
+# Re-state importlib mode here so pytest's own rootdir auto-detection
+# (which picks this pyproject when running from the package dir) keeps
+# the same import semantics as the root suite.
+addopts = "--import-mode=importlib"
 markers = [
     "self_serve: spec drives the self-serve portal (localhost:9001).",
     "cockpit: spec drives the operator cockpit browser veneer (localhost:9002).",

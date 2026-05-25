@@ -85,3 +85,48 @@ def e2e_customer_email() -> str:
     """Unique ``e2e-<short-uuid>@bss-cli.local`` per test."""
     short = uuid.uuid4().hex[:10]
     return f"e2e-{short}@bss-cli.local"
+
+
+@pytest.fixture
+def available_msisdn() -> str:
+    """Pull a currently-``available`` MSISDN from ``inventory.msisdn_pool``.
+
+    Per-spec, fresh — avoids cross-run collisions where a prior spec's
+    subscription still holds the number. The signup funnel takes ``msisdn``
+    as a query param and SOM hard-fails the order if it's unavailable, so
+    binding to a known-free number at test time keeps the funnel green
+    without relying on ``demo-restore`` between runs.
+
+    Runs the async DB query on a dedicated thread with its own event loop —
+    pytest-asyncio (strict mode) sometimes leaves the main thread's loop in
+    an ambiguous state that ``asyncio.run()`` refuses to re-enter, but a
+    fresh-thread fresh-loop is always safe.
+    """
+    from bss_e2e.helpers.seed import pick_available_msisdn
+
+    return _run_async_in_thread(pick_available_msisdn())
+
+
+def _run_async_in_thread(coro):
+    """Run an async coroutine on a fresh event loop in a fresh thread."""
+    import asyncio
+    import threading
+
+    box: list = []
+    error: list = []
+
+    def _runner() -> None:
+        loop = asyncio.new_event_loop()
+        try:
+            box.append(loop.run_until_complete(coro))
+        except BaseException as exc:  # noqa: BLE001 — re-raise on main
+            error.append(exc)
+        finally:
+            loop.close()
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join()
+    if error:
+        raise error[0]
+    return box[0]
