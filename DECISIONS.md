@@ -3519,3 +3519,78 @@ esim=sim) — operator's `.env` is untouched. Reports land in
 - Pre-condition documented (and not enforced by the override): `.env` must
   not contain a real `sk_live_*` Stripe key — the v0.16 startup template
   scan refuses to boot under mock providers when one is present.
+
+## 2026-05-25 — v1.4.1 — Resolve all four v1.4.0 xfails: admin exhaust verb + mock-LLM seam
+
+**Context.** v1.4.0 shipped 6 specs green + 4 deferred xfails (one needing
+an admin tool, three needing LLM determinism). CK asked for all four
+resolved as a single release rather than letting tech debt sit.
+
+**Decision.** Two pieces, both delivered:
+
+### 1. Admin `catalog.exhaust_promotion` verb (1 xfail unlocked)
+
+- Migration 0030: `catalog.promotion.state` CHECK constraint accepts a
+  new `exhausted` value.
+- `PromotionService.exhaust_promotion(promotion_id)` — admin-gated FSM
+  transition `active → exhausted`. Idempotent on already-exhausted rows
+  (operator can re-run without surprise); refuses transitions from
+  `pending_link` / `retired` because those are different states with
+  different semantics.
+- New route `POST /tmf-api/promotionManagement/v4/promotion/{id}/exhaust`;
+  `CatalogClient.exhaust_promotion`; `bss promo exhaust` Typer verb.
+- `validate_for_order` and `resolve_eligible_promo` already reject
+  non-`active` promos (line 143, 363) so exhausted codes silently no-op
+  at signup time — the order proceeds at full price. No new validate-side
+  logic required.
+
+**Scope note: this verb tests a different timing path from the v1.1.3
+graceful-degrade fix.** v1.1.3 protected against loyalty refusing a claim
+at `service_order.completed` for an order whose discount snapshot was
+already in flight when the code was exhausted between create and claim.
+The v1.4.1 verb stops new orders from picking up the discount but doesn't
+poison in-flight orders. Both timing windows are real; the e2e suite
+covers the v1.4.1 window, the v1.1.3 window is unit-tested.
+
+### 2. Mock-orchestrator seam for LLM-driven specs (3 xfails unlocked)
+
+- `orchestrator/bss_orchestrator/llm_mock.py` — `MockChatModel` that
+  inherits `langchain_core.language_models.chat_models.BaseChatModel` and
+  reads scripted responses from a JSON fixture. The duck-typed-only first
+  draft tripped LangGraph's `RunnableBinding` (LangGraph wraps the model
+  in a Runnable; raw `ainvoke`-shim isn't enough). Proper subclass with
+  `_agenerate` / `_generate` / `bind_tools` is the contract.
+- New env var `BSS_LLM_FIXTURE_PATH` — when set, `build_chat_model()`
+  returns a `MockChatModel` instead of constructing a `ChatOpenAI`.
+  Unset means real OpenRouter (production / dev). The env is read at
+  every `build_chat_model` call because LangGraph builds a fresh graph
+  per turn — so an operator can toggle without restarting.
+- Fixture file `packages/bss-e2e/fixtures/cockpit_e2e.json`, bind-mounted
+  into `portal-csr` at `/fixtures` by `docker-compose.e2e.yml`.
+- Fixture schema: `responses[]` with `match` (case-insensitive substring
+  against the latest user message) and `steps[]` (one entry per LLM turn
+  in the ReAct loop; carries `tool_calls` or `content`).
+- Tools still execute against the **real services** — the mock only
+  replaces LLM response generation. That keeps the e2e suite asserting on
+  the cockpit's full rendering + tool-execution pipeline, not just LLM
+  output.
+
+**Alternatives rejected.**
+- Loosen the LLM specs to "any tool fires" / "any response renders" — too
+  weak; doesn't test the destructive gate or the hallucination guard.
+- Record real LLM transcripts and replay — adds tape-recording machinery
+  for one-off content; the fixture file is hand-edited which makes spec
+  changes legible in code review.
+- Mock OpenRouter at the HTTP layer (respx / httpx-mock) — works for unit
+  tests but not for the full container stack the e2e suite drives.
+
+**Consequences.**
+- All 10 e2e specs green, no xfails, no skips. ~30s wall-clock.
+- New surface: `BSS_LLM_FIXTURE_PATH` — documented in the cockpit override
+  compose. Unset by default everywhere.
+- The fixture is operator-editable for future cockpit specs without
+  touching `llm_mock.py` — match string + steps, JSON-schema-free.
+- `bss promo exhaust <id>` adds a real operator verb (not just an e2e
+  hook). Future promo lifecycle additions like "reactivate" stay deferred
+  until a real use case appears — exhaust is intentionally terminal in
+  v1.4.1.

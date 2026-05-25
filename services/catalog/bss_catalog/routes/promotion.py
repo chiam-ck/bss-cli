@@ -172,6 +172,27 @@ async def unassign_targeted(
     )
 
 
+@router.post(f"{_TMF}/promotion/{{promotion_id}}/exhaust", response_model=Tmf671Promotion)
+async def exhaust_promotion(
+    promotion_id: str,
+    svc: PromotionService = Depends(get_promotion_service),
+) -> Tmf671Promotion:
+    """v1.4.1 — operator-initiated terminal stop. Flips ``active → exhausted``;
+    new orders see no discount and proceed at full price. The row stays for
+    audit; no archive."""
+    from bss_catalog.policies import PolicyViolation
+
+    try:
+        promo = await svc.exhaust_promotion(promotion_id=promotion_id)
+    except PolicyViolation as exc:
+        if exc.rule == "catalog.promotion.not_found":
+            raise HTTPException(
+                status_code=404, detail=f"Promotion {promotion_id} not found"
+            ) from exc
+        raise
+    return _to_tmf671(promo)
+
+
 # ── portal-facing reads ───────────────────────────────────────────────────
 
 
