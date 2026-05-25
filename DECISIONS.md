@@ -3420,3 +3420,57 @@ they never had upfront pairing and continue mint-and-claim by code.
 - v1.1.1 amendment in DECISIONS (2026-05-22 #1) is explicitly *partially*
   reversed: claim-by-code as the SOLE path is retired; it remains the
   default for public codes only.
+
+## 2026-05-25 — v1.4.0 — Phase 0 amendment: Playwright e2e suite via mock-providers compose override
+
+**Context.** Through v1.1 → v1.3 every regression we shipped was caught by
+hand — screenshot capture (v1.1.2 preview-param bug), an operator stuck-order
+report (v1.1.3 exhausted-code brick), the chiamck+001 recycled-MSISDN report
+(the v1.2.1 partial-unique fix). The portal funnel now has enough surface
+(auth, KYC, payment, signup, promo preview, dashboard, cockpit veneer) that
+silent regressions are likely between releases. v1.4 closes the gap with an
+automated browser-driven suite.
+
+**Decision.** New uv workspace member `packages/bss-e2e/` running
+`pytest + playwright-python`. Two surfaces: self-serve portal (5 specs) and
+cockpit browser veneer (5 specs) — golden-path smoke + promo branches
+(public-applied, targeted-on-dashboard, exhausted-degrades) + step-up auth.
+Single entry point: `make e2e`. Provider flip via `docker-compose.e2e.yml`
+overlaid on the normal compose (payment=mock, kyc=prebaked, email=logging,
+esim=sim) — operator's `.env` is untouched. Reports land in
+`docs/e2e-reports/<UTC-ts>/` (git-ignored except for a README pointer).
+
+**Alternatives.**
+- Playwright's native TypeScript test runner — better trace viewer + parallel
+  execution out of the box, but adds node/npm to the tree (CLAUDE.md
+  anti-pattern: "no React/Vue/Svelte, no bundler, no npm" — portals rule,
+  but the spirit applies). Rejected.
+- In-place `.env` edit + restore at teardown — closer to a "real" environment
+  but riskier: a Ctrl-C between flip and restore leaves the operator's stack
+  in mock mode. Override file is cleanly revertable (just `down` it).
+  Rejected.
+- A `bss e2e` Typer verb — matches "every capability is a tool" doctrine,
+  but CLAUDE.md says CLI exposes business verbs over runner wrappers. The
+  Makefile target stays. Rejected.
+- CI integration on day one (GH Actions job + artefact upload) — deferred
+  to v1.4.1 to ship the local loop first. The `make e2e` plumbing is
+  CI-shaped already; adding the GH Actions YAML is a small follow-up.
+
+**Consequences.**
+- Phase 1 (this release) ships scaffolding + skipped specs that pass
+  `pytest --collect-only`. Phase 2 fills in real specs incrementally and
+  bumps `BSS_RELEASE` to `1.4.0` only when the suite is green end-to-end.
+- New e2e-prefix convention: `e2e-<uuid>@bss-cli.local` customers,
+  `PROMO_E2E_*` ids — disjoint from `*.demo@bss-cli.local` /
+  `PROMO_DEMO_*` so the suite's surgical teardown never collides with the
+  operator demo dataset.
+- Auth is the real OTP flow tailed from the `logging` provider mailbox
+  (`.dev-mailbox/portal-mailbox.log`). No middleware bypass or session-id
+  injection — same path a real customer walks, just with the inbox swapped
+  for a file.
+- Doctrine-additive: no write-policy holes, no migration, no changes to
+  CLAUDE.md / ARCHITECTURE.md / DATA_MODEL.md / TOOL_SURFACE.md. The phase
+  doc `phases/V1_4_0.md` IS the Phase 0 amendment.
+- Pre-condition documented (and not enforced by the override): `.env` must
+  not contain a real `sk_live_*` Stripe key — the v0.16 startup template
+  scan refuses to boot under mock providers when one is present.
