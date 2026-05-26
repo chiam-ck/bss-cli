@@ -48,6 +48,7 @@ from typing import Any, Optional
 
 import structlog
 from bss_clock import now as clock_now
+from .chrome_filter import is_cockpit_chrome
 from sqlalchemy import text
 from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import (
@@ -499,6 +500,14 @@ class Conversation:
         ``created_at`` order. Tool-role messages are prefixed with
         ``tool[NAME]:`` so the LLM can see what the cockpit's slash
         commands have surfaced inline.
+
+        v1.5 — assistant rows that match the cockpit's own emit chrome
+        (``(no reply)``, the empty-final recovery bubble, the route
+        error fallback, the citation-guard fallback) are filtered out
+        before the transcript reaches the LLM. See
+        ``bss_cockpit.chrome_filter`` for the rationale — leaving
+        chrome in causes the LLM to mimic the placeholder output
+        instead of doing the work.
         """
         async with self.store._factory() as db:
             rows = (
@@ -526,6 +535,13 @@ class Conversation:
                     f"tool[{tool_name}]" if tool_name else "tool"
                 )
                 out.append(f"{prefix}:\n{r.content}")
+            elif r.role == "assistant" and is_cockpit_chrome(r.content):
+                # Drop the chrome row entirely — the LLM never said it,
+                # so showing it back as "prior reasoning" only invites
+                # mimicry. User/tool turns around it stitch back to a
+                # coherent transcript because LLMs handle "I asked, I
+                # got a tool result, I'm asked again" naturally.
+                continue
             else:
                 out.append(f"{r.role}:\n{r.content}")
         return "\n\n".join(out)
