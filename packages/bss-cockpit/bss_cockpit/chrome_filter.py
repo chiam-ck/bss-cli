@@ -62,12 +62,46 @@ _ASSISTANT_CHROME_PREFIXES: Final[tuple[str, ...]] = (
 
 # v1.5 — LLMs sometimes emit text that LOOKS LIKE the cockpit's
 # propose banner (anti-mimicry rule in the system prompt is the first
-# line of defence; this regex is the runtime backstop). Matches a
-# line-leading ``⚠ PROPOSE: ...`` or ``PROPOSE: ...`` shape so the
-# stripped reply still reads cleanly.
+# line of defence; this regex is the runtime backstop). Two shapes
+# observed in the wild:
+#
+# A. Banner mimicry — leading ``⚠ PROPOSE:`` or ``PROPOSE:``:
+#       ⚠ PROPOSE: subscription.terminate subscription_id='SUB-0001'
+#       PROPOSE [step 2]: order.cancel order_id='ORD-007'
+#
+# B. Narrated-call mimicry — function-call shape in prose, often
+#    paired with ``Please type /confirm``:
+#       "I propose to terminate subscription SUB-0005.
+#        subscription.terminate(subscription_id='SUB-0005')
+#        Please type /confirm to proceed."
+#
+# Both must be stripped so the operator doesn't read banner-shaped
+# prose that won't actually trigger anything. Shape B is harder to
+# match cleanly because the model wraps it in arbitrary prose — we
+# match the ``tool.name(args)`` chunk + any "type /confirm" boilerplate
+# that surrounds it.
 _FAKE_PROPOSE_LINE_RE: Final[re.Pattern[str]] = re.compile(
     r"^\s*(?:⚠\s*)?PROPOSE\s*(?:\[\s*step\s*\d+\s*\])?\s*:.*?(?:\n|$)",
     re.MULTILINE | re.IGNORECASE,
+)
+
+# Shape B detector. ``<lower_words>.<lower_words>(...)`` is the
+# function-call shape; we require at least one dot so we don't match
+# arbitrary parenthesised prose. Greedy to the closing paren on the
+# same line (function-call args don't normally span lines in LLM
+# narrations).
+_NARRATED_CALL_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\([^)\n]*\)",
+)
+
+# "Please type /confirm" boilerplate the model wraps around its
+# narrated call. Matched as standalone sentences so we can strip them
+# without slicing prose that LEGITIMATELY mentions /confirm (e.g. the
+# anti-mimicry prompt rule itself, or a knowledge.search-grounded
+# explanation).
+_PLEASE_CONFIRM_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:^|\n)\s*(?:please\s+)?type\s+`?/confirm`?[^\n.]*\.?\s*",
+    re.IGNORECASE,
 )
 
 
@@ -85,13 +119,40 @@ def is_cockpit_chrome(content: str) -> bool:
 
 
 def strip_fake_propose(text: str) -> tuple[str, bool]:
-    """Strip cockpit-banner-shaped lines from an LLM text reply.
+    """Strip cockpit-banner-shaped lines AND narrated function-call
+    shapes from an LLM text reply.
 
     Returns ``(cleaned_text, was_modified)``. The legitimate prose
     (the ask, the explanation, the wrap-up) is preserved; only the
-    chrome-shaped lines are removed. Operators reading the cleaned
-    output don't see a misleading PROPOSE-shape that won't fire.
+    chrome-shaped fragments are removed. Operators reading the cleaned
+    output don't see a misleading PROPOSE-shape or a fake
+    "type /confirm" prompt that won't actually fire anything.
+
+    Two strip passes:
+      1. Banner mimicry (``⚠ PROPOSE: ...`` / ``PROPOSE: ...``) →
+         delete the line.
+      2. Narrated-call mimicry (``tool.name(args)`` in prose, often
+         with surrounding "I propose ..." / "Please type /confirm ..."
+         boilerplate) → delete the call shape AND the "/confirm"
+         prompt sentence around it.
+
+    Pass-2 is conservative: a single ``tool.name(arg)`` in legitimate
+    prose (e.g. "I'm about to call `customer.get` — confirm CUST-001
+    is the right id") is RARE; the cost of a false positive is
+    explaining a missing fragment to the operator, vs. the cost of a
+    false negative which is a stalled /confirm loop. The trade-off
+    favours stripping.
     """
-    cleaned, n = _FAKE_PROPOSE_LINE_RE.subn("", text)
+    cleaned, n_banner = _FAKE_PROPOSE_LINE_RE.subn("", text)
+    cleaned, n_calls = _NARRATED_CALL_RE.subn("", cleaned)
+    cleaned, n_confirm = _PLEASE_CONFIRM_RE.subn(" ", cleaned)
+    # Collapse runs of whitespace left behind by the inline strips,
+    # but preserve paragraph breaks.
+    cleaned = re.sub(r"[ \t]+", " ", cleaned)
+    cleaned = re.sub(r"\n\s*\n\s*\n+", "\n\n", cleaned)
     cleaned = cleaned.strip()
-    return cleaned, n > 0
+    # Only flag "narrated call" as a modification if the strip actually
+    # removed a function-call shape — the /confirm-sentence regex on
+    # its own can match legitimate carve-outs ("type /confirm to
+    # authorise" inside a knowledge-tool answer), so don't gate on it.
+    return cleaned, (n_banner + n_calls) > 0

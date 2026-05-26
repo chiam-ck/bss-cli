@@ -91,6 +91,7 @@ from bss_cockpit import (
     configure_store,
     current as cockpit_config_current,
 )
+from bss_cockpit.chrome_filter import strip_fake_propose
 from bss_orchestrator.autonomy import read_autonomy_mode
 from bss_orchestrator.clients import close_clients, get_clients
 from bss_orchestrator.config import settings as orch_settings
@@ -598,6 +599,13 @@ async def _open_in_editor(path: Path) -> None:
     await proc.wait()
 
 
+async def _peek_pending_destructive(conv: Conversation):
+    """Thin wrapper so the slash handler doesn't import the dataclass
+    type directly. Returns the PendingDestructive row (or None)
+    without consuming it — the next _drive_turn pops it."""
+    return await conv.peek_pending_destructive()
+
+
 # ─── Turn driver ──────────────────────────────────────────────────────
 
 
@@ -731,6 +739,29 @@ async def _drive_turn(
             f"(error: {error})", tool_calls_json=captured_tool_calls or None
         )
         return
+
+    # v1.5 — anti-mimicry runtime backstop. If the LLM ignored the
+    # CALL TOOLS — DO NOT NARRATE rule and emitted the propose banner
+    # shape as plain text (e.g. "subscription.terminate(...)"), strip
+    # those line(s) before the reply lands. If stripping leaves
+    # nothing useful AND no real tool_call fired this turn, surface
+    # an explicit "stalled" warning instead of an empty bubble — the
+    # operator would otherwise type /confirm into the void.
+    cleaned_text, mimicry_stripped = strip_fake_propose(final_text)
+    if mimicry_stripped:
+        final_text = cleaned_text
+        if not final_text.strip() and not captured_tool_calls:
+            rprint(
+                "[yellow]⚠ anti-mimicry: the model narrated a propose "
+                "banner in prose instead of calling the tool. Nothing "
+                "is pending; rephrase or try again.[/]"
+            )
+            final_text = (
+                "(The model wrote a propose banner as text instead of "
+                "calling the tool — no pending action. Rephrase the "
+                "request or be more direct, e.g. just 'terminate "
+                "SUB-0005'.)"
+            )
 
     # v0.20+ citation guard. If the reply claims handbook/runbook/
     # doctrine but no knowledge.* tool fired this turn, replace the
@@ -918,15 +949,35 @@ async def _handle_slash(
         await _cmd_ports(conv, arg)
         return "continue", None
     if cmd == "/confirm":
-        # Explicit confirmation flow: the next turn will consume any
-        # pending_destructive row; here we just tell the operator
-        # whether one is in flight.
-        # We don't pop the row — the next /drive_turn does that. This
-        # check is purely informational so the operator knows what's
-        # about to run.
-        # (The row stays in place; consume_pending_destructive runs in
-        # _drive_turn below.)
-        return "continue", "_confirmed_marker"  # type: ignore[return-value]
+        # v1.5 — peek at the pending_destructive row WITHOUT consuming
+        # it (consume_pending_destructive happens inside _drive_turn on
+        # the next operator message). If a row exists, tell the
+        # operator what's queued so they know /confirm has real effect.
+        # If NO row exists, warn loudly — the most common cause is
+        # mimicry (Gemma narrated the propose banner in prose instead
+        # of emitting a tool_call), and the operator's /confirm into
+        # the void would otherwise look like a silent bug.
+        pending = await _peek_pending_destructive(conv)
+        if pending is None:
+            rprint(
+                "[yellow]Nothing pending /confirm — no destructive "
+                "proposal is staged for this session.[/]\n"
+                "[dim]Common cause: the model narrated the call in "
+                "prose ('subscription.terminate(...)') instead of "
+                "emitting a tool_call. The v1.5 anti-mimicry prompt "
+                "tries to prevent this; if it keeps happening, "
+                "rephrase your last request more directly (e.g. just "
+                "'terminate SUB-0005' with no surrounding context).[/]"
+            )
+            return "continue", None
+        rprint(
+            f"[green]/confirm staged for[/] [bold]{pending.tool_name}[/] "
+            f"[dim]args={pending.tool_args!r}[/]\n"
+            "[dim]Type your next message to drive the resumed turn "
+            "(the cockpit consumes the pending row and runs with "
+            "allow_destructive=True).[/]"
+        )
+        return "continue", None
     if cmd in {"/config", "/operator"}:
         # /config edit  /operator edit
         if arg.strip() != "edit":

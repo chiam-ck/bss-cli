@@ -132,6 +132,73 @@ def test_strip_fake_propose_handles_unicode_warning_symbol() -> None:
     assert "PROPOSE" not in cleaned
 
 
+# ─── v1.5: narrated-call mimicry (the Gemma "I propose ..." shape) ─────
+
+
+def test_strip_narrated_call_gemma_shape_observed_in_wild() -> None:
+    # Verbatim Gemma output from a live REPL session (2026-05-26):
+    # "I propose to terminate subscription SUB-0005.
+    #  subscription.terminate(subscription_id=\"SUB-0005\")
+    #
+    #  Please type /confirm to proceed."
+    # The bubble looks like a real propose but no tool_call was emitted,
+    # so /confirm stalls. strip_fake_propose must remove the call shape
+    # AND the "type /confirm" prompt so what reaches the operator
+    # doesn't lie about being actionable.
+    text = (
+        "I propose to terminate subscription SUB-0005. "
+        'subscription.terminate(subscription_id="SUB-0005")\n\n'
+        "Please type /confirm to proceed."
+    )
+    cleaned, modified = strip_fake_propose(text)
+    assert modified is True
+    assert "subscription.terminate(" not in cleaned
+    # The "type /confirm" sentence is also dropped — leaving it would
+    # be a second lie about what's about to happen.
+    assert "type /confirm" not in cleaned.lower()
+
+
+def test_strip_narrated_call_multiple_tools_in_prose() -> None:
+    text = (
+        "I'll first call customer.get(customer_id='CUST-001') and then "
+        "subscription.list_for_customer(customer_id='CUST-001'). Type "
+        "/confirm to proceed."
+    )
+    cleaned, modified = strip_fake_propose(text)
+    assert modified is True
+    assert "customer.get(" not in cleaned
+    assert "subscription.list_for_customer(" not in cleaned
+
+
+def test_strip_does_not_match_dotted_prose_without_call_parens() -> None:
+    # "subscription.state" or "customer.get" without parens is prose
+    # describing an idea, not a call — leave it alone.
+    text = (
+        "The subscription.state field flips to 'active' once "
+        "customer.attest_kyc succeeds."
+    )
+    cleaned, modified = strip_fake_propose(text)
+    # Banner stripper finds nothing AND call-shape regex requires (...)
+    # so this prose survives intact.
+    assert modified is False
+    assert cleaned == text.strip()
+
+
+def test_strip_preserves_legitimate_prose_around_narrated_call() -> None:
+    text = (
+        "Found the line. Here's the plan: "
+        "subscription.terminate(subscription_id='SUB-007'). Want me to "
+        "proceed?"
+    )
+    cleaned, modified = strip_fake_propose(text)
+    assert modified is True
+    # The call shape is gone but the surrounding prose survives so the
+    # operator can still see the ask.
+    assert "Found the line" in cleaned
+    assert "Want me to proceed" in cleaned
+    assert "subscription.terminate(" not in cleaned
+
+
 # ─── Inventory guard — new chrome MUST be added to the module ──────────
 
 

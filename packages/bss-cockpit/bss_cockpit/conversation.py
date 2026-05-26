@@ -629,6 +629,40 @@ class Conversation:
             )
             await db.commit()
 
+    async def peek_pending_destructive(self) -> PendingDestructive | None:
+        """Read the in-flight propose row WITHOUT deleting it. ``None`` if
+        absent. v1.5 — used by the REPL ``/confirm`` slash handler to
+        report what's staged (or warn loudly when nothing is, which
+        catches the mimicry-stalled case where the LLM narrated the
+        proposal in prose instead of emitting a tool_call).
+        """
+        async with self.store._factory() as db:
+            row = (
+                await db.execute(
+                    text(
+                        """
+                        SELECT tool_name, tool_args_json,
+                               proposal_message_id, proposed_at
+                        FROM cockpit.pending_destructive
+                        WHERE session_id = :sid
+                        """
+                    ),
+                    {"sid": self.session_id},
+                )
+            ).one_or_none()
+        if row is None:
+            return None
+        args = row.tool_args_json
+        if isinstance(args, str):
+            import json as _json
+            args = _json.loads(args)
+        return PendingDestructive(
+            tool_name=row.tool_name,
+            tool_args=args or {},
+            proposal_message_id=int(row.proposal_message_id),
+            proposed_at=row.proposed_at,
+        )
+
     async def consume_pending_destructive(self) -> PendingDestructive | None:
         """Atomically read+delete the in-flight propose row. ``None`` if absent."""
         async with self.store._factory() as db:

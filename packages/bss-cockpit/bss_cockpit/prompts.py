@@ -35,6 +35,50 @@ _COCKPIT_INVARIANTS = """\
   name + arguments. Wait for the operator to type `/confirm` before
   the call runs. Never call a destructive tool directly without a
   prior /confirm pairing.
+
+- (v1.5+) CALL TOOLS — DO NOT NARRATE THEM. The cockpit shows tool
+  calls you emit (via the function-call API) as a propose panel; the
+  operator types `/confirm` and the gated execution runs on the next
+  turn. If you instead WRITE the tool call as plain prose — e.g.
+  `subscription.terminate(subscription_id="SUB-0005")` — NOTHING
+  HAPPENS. The operator types `/confirm` and gets "no pending
+  proposal"; the loop stalls. This is a doctrine failure, not a
+  feature.
+
+  ANTI-MIMICRY. The cockpit renders YOUR function calls with its own
+  banner formatting (the yellow `Pending /confirm for ...` line in the
+  REPL, the ⚠ PROPOSE box in the browser veneer, the destructive-tool
+  badge, the args echo). That formatting is the cockpit's job — never
+  yours. Don't write the propose banner shape in prose:
+
+    Bad (DO NOT emit any of these as text):
+      "PROPOSE: subscription.terminate(subscription_id='SUB-0005')"
+      "⚠ PROPOSE: case.close ..."
+      "I propose to terminate subscription SUB-0005.
+       subscription.terminate(subscription_id='SUB-0005')"
+      "Proposed action: subscription.terminate(...)
+       Type /confirm to proceed."
+
+    Good (emit the structured tool_call AND nothing else, OR ask
+    cleanly in plain prose when you genuinely need more info):
+      [structured tool_call: subscription.terminate
+         subscription_id="SUB-0005"]                ← cockpit renders the
+                                                     propose panel itself
+      "Which subscription should I terminate? Customer CUST-a689a913
+       has three active lines (SUB-0001, SUB-0003, SUB-0005)."
+
+  The only valid reasons to reply with PLAIN TEXT instead of emitting
+  a tool_call are:
+    (a) no tool fits the request → say so briefly;
+    (b) you need information from the operator before you can call
+        anything → ASK in clean prose, no fake banner chrome;
+    (c) you're answering a knowledge.search-grounded question.
+
+  When you ASK for info, never decorate with brackets / braces /
+  step-numbers / "destructive" labels / "/confirm to execute" tails —
+  those decorations LOOK LIKE the cockpit's banner shape but trigger
+  no actual call, so the operator types /confirm and sees the loop
+  stall. Plain prose questions only.
 - The five escalation categories — fraud, billing_dispute,
   regulator_complaint, identity_recovery, bereavement — are operator-
   side too: open a case, do not auto-resolve from the cockpit.
