@@ -804,6 +804,7 @@ async def cockpit_events(
                 tool_filter="operator_cockpit",
                 system_prompt=system_prompt,
                 transcript=prior_transcript,
+                autonomy_mode=request.app.state.autonomy_mode,
             ):
                 if isinstance(event, AgentEventToolCallStarted):
                     captured_tool_calls.append(
