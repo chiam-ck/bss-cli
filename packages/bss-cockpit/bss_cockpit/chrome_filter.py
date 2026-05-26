@@ -88,10 +88,34 @@ _FAKE_PROPOSE_LINE_RE: Final[re.Pattern[str]] = re.compile(
 # Shape B detector. ``<lower_words>.<lower_words>(...)`` is the
 # function-call shape; we require at least one dot so we don't match
 # arbitrary parenthesised prose. Greedy to the closing paren on the
-# same line (function-call args don't normally span lines in LLM
-# narrations).
+# same line. Consumes the optional surrounding backticks (`call(...)`
+# / ``call(...)``) the LLM often wraps around the call shape — left
+# behind those produce ugly empty-backtick fragments in the bubble.
 _NARRATED_CALL_RE: Final[re.Pattern[str]] = re.compile(
-    r"\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\([^)\n]*\)",
+    r"`{1,3}[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\([^)\n]*\)`{1,3}"
+    r"|\b[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*\([^)\n]*\)",
+)
+
+# Empty inline-code fragments left over when the strip removes a
+# call from inside backticks but the backticks survived (the regex
+# above handles backtick-wrapped calls; this is the safety-net for
+# any stray pair). Two-backtick form (``) is the inline-code empty.
+_EMPTY_BACKTICK_RE: Final[re.Pattern[str]] = re.compile(r"`{2,3}\s*`*")
+
+# Mimicry narration that often surrounds the call shape — "I propose
+# to ..." / "I'll call ..." / "I would like to ..." / "I'm going to
+# ..." sentences. Removed when adjacent to a stripped call so the
+# bubble doesn't read like a half-finished propose. Conservative:
+# matches the leading clause only when the verb is one of a small
+# canon (propose / call / terminate / cancel / close / remove / refund
+# / revoke) — same canon that triggers the destructive contract.
+_NARRATION_LEAD_RE: Final[re.Pattern[str]] = re.compile(
+    r"(?:^|(?<=[.!?]\s))\s*"
+    r"I(?:'ll|\s+will|\s+would\s+like|\s+intend|\s+propose|'m\s+going)"
+    r"\s+to\s+"
+    r"(?:propose|call|invoke|terminate|cancel|close|remove|refund|revoke)\b"
+    r"[^.!?\n]*[.!?]?",
+    re.IGNORECASE,
 )
 
 # "Please type /confirm" boilerplate the model wraps around its
@@ -145,6 +169,13 @@ def strip_fake_propose(text: str) -> tuple[str, bool]:
     """
     cleaned, n_banner = _FAKE_PROPOSE_LINE_RE.subn("", text)
     cleaned, n_calls = _NARRATED_CALL_RE.subn("", cleaned)
+    # If we stripped a call, also strip surrounding "I propose to ..."
+    # narration AND any leftover empty backticks that the call was
+    # wrapped in — both turn the bubble into half-finished propose
+    # prose that would still mislead the operator.
+    if n_calls > 0:
+        cleaned, _ = _NARRATION_LEAD_RE.subn("", cleaned)
+        cleaned, _ = _EMPTY_BACKTICK_RE.subn("", cleaned)
     cleaned, n_confirm = _PLEASE_CONFIRM_RE.subn(" ", cleaned)
     # Collapse runs of whitespace left behind by the inline strips,
     # but preserve paragraph breaks.

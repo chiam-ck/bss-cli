@@ -31,19 +31,32 @@ _COCKPIT_INVARIANTS = """\
 ## Cockpit safety contract (code-defined)
 
 - Destructive tool calls (terminate, remove, cancel, refund, etc.)
-  must be PROPOSED first with a one-line summary and the exact tool
-  name + arguments. Wait for the operator to type `/confirm` before
-  the call runs. Never call a destructive tool directly without a
-  prior /confirm pairing.
+  MUST be EMITTED AS STRUCTURED tool_calls — never written as prose.
+  The cockpit's pending_destructive contract handles the propose-
+  then-/confirm flow at the FRAMEWORK level: when you emit a
+  destructive tool_call and `allow_destructive=False`, the wrapper
+  returns a structured `DESTRUCTIVE_OPERATION_BLOCKED` response, the
+  cockpit stages a pending_destructive row, and the operator types
+  `/confirm` to authorise the next turn. **YOUR ONLY JOB is to call
+  the tool** — emit the function_call. Do NOT also write the call as
+  text "for the operator to see"; the cockpit's banner rendering
+  takes care of presentation.
 
-- (v1.5+) CALL TOOLS — DO NOT NARRATE THEM. The cockpit shows tool
-  calls you emit (via the function-call API) as a propose panel; the
-  operator types `/confirm` and the gated execution runs on the next
-  turn. If you instead WRITE the tool call as plain prose — e.g.
-  `subscription.terminate(subscription_id="SUB-0005")` — NOTHING
-  HAPPENS. The operator types `/confirm` and gets "no pending
-  proposal"; the loop stalls. This is a doctrine failure, not a
-  feature.
+- (v1.5+) CALL TOOLS — DO NOT NARRATE THEM. **This is the most common
+  doctrine failure on small models.** When you intend to call a
+  destructive tool, EMIT the function_call (the tool_call /
+  tool_use / function_calling API). Do NOT write the call as prose.
+  If you write text like:
+
+      "I propose to terminate subscription SUB-0005.
+       subscription.terminate(subscription_id='SUB-0005')
+       Please type /confirm to proceed."
+
+  NOTHING HAPPENS. The cockpit never sees a tool_call. No
+  pending_destructive row gets staged. The operator types `/confirm`
+  and the cockpit reports "no pending action — the model narrated
+  the proposal in prose instead of calling the tool." The loop
+  stalls. This is a doctrine failure, not a feature.
 
   ANTI-MIMICRY. The cockpit renders YOUR function calls with its own
   banner formatting (the yellow `Pending /confirm for ...` line in the

@@ -922,19 +922,30 @@ async def cockpit_events(
                     # the LLM's prose copy.
                     text = _suppress_tool_recap(text, captured_tool_calls)
                     # v1.5 — anti-mimicry runtime backstop. If the LLM
-                    # ignored the CALL TOOLS — DO NOT NARRATE rule and
-                    # wrote the propose banner shape as plain text
-                    # (e.g. "subscription.terminate(...)"), strip those
-                    # line(s) before the bubble lands. If stripping
-                    # leaves nothing useful AND no real tool_call fired
-                    # this turn, surface a "stalled" warning instead of
-                    # an empty bubble — without it the operator types
-                    # /confirm into the void.
+                    # ignored the CALL TOOLS — DO NOT NARRATE rule, the
+                    # strip removes the call shape + surrounding
+                    # "I propose ..." narration + leftover backticks.
+                    # Then — regardless of remaining bubble content —
+                    # surface a stalled-state warning when no real
+                    # tool_call fired AND there are mimicry signals.
+                    # A half-stripped propose ("I propose to terminate
+                    # SUB-0005.") still misleads the operator into
+                    # typing /confirm; the explicit replacement is the
+                    # only honest UX.
                     text, mimicry_stripped = strip_fake_propose(text)
-                    if mimicry_stripped and not text.strip() and not captured_tool_calls:
+                    _mentions_confirm = (
+                        "/confirm" in text.lower()
+                        or "type confirm" in text.lower()
+                    )
+                    if (
+                        not captured_tool_calls
+                        and (mimicry_stripped or _mentions_confirm)
+                    ):
                         log.warning(
                             "cockpit.anti_mimicry_stall",
                             session_id=session_id,
+                            mimicry_stripped=mimicry_stripped,
+                            mentions_confirm=_mentions_confirm,
                         )
                         text = (
                             "(The model wrote a propose banner as text "

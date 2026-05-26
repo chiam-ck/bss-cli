@@ -742,26 +742,42 @@ async def _drive_turn(
 
     # v1.5 — anti-mimicry runtime backstop. If the LLM ignored the
     # CALL TOOLS — DO NOT NARRATE rule and emitted the propose banner
-    # shape as plain text (e.g. "subscription.terminate(...)"), strip
-    # those line(s) before the reply lands. If stripping leaves
-    # nothing useful AND no real tool_call fired this turn, surface
-    # an explicit "stalled" warning instead of an empty bubble — the
-    # operator would otherwise type /confirm into the void.
+    # shape as plain text, strip the call shape + surrounding
+    # "I propose ..." narration + leftover empty backticks. Then —
+    # regardless of whether the bubble is empty after the strip —
+    # surface an explicit warning when no real tool_call fired this
+    # turn AND there are mimicry signals (the strip ran OR the bubble
+    # mentions /confirm). The warning is independent of whether the
+    # bubble has remaining prose: a half-stripped propose still
+    # misleads the operator into typing /confirm.
     cleaned_text, mimicry_stripped = strip_fake_propose(final_text)
     if mimicry_stripped:
         final_text = cleaned_text
-        if not final_text.strip() and not captured_tool_calls:
-            rprint(
-                "[yellow]⚠ anti-mimicry: the model narrated a propose "
-                "banner in prose instead of calling the tool. Nothing "
-                "is pending; rephrase or try again.[/]"
-            )
-            final_text = (
-                "(The model wrote a propose banner as text instead of "
-                "calling the tool — no pending action. Rephrase the "
-                "request or be more direct, e.g. just 'terminate "
-                "SUB-0005'.)"
-            )
+    mentions_confirm = (
+        "/confirm" in final_text.lower()
+        or "type confirm" in final_text.lower()
+    )
+    mimicry_signal = mimicry_stripped or mentions_confirm
+    if mimicry_signal and not captured_tool_calls:
+        rprint(
+            "[yellow]⚠ no pending action — the model narrated a "
+            "proposal in prose instead of calling the tool. "
+            "Nothing is staged for /confirm.[/]\n"
+            "[dim]Rephrase more directly (e.g. just "
+            "'terminate SUB-0005' with no surrounding context) "
+            "or bypass the LLM: `bss subscription terminate "
+            "SUB-0005 --allow-destructive`.[/]"
+        )
+        # Replace the bubble entirely so the persisted conversation
+        # log carries the warning text, not the misleading half-
+        # stripped propose. Without this, the next turn's transcript
+        # rehydration would feed Gemma its own half-finished narration
+        # and likely re-trigger the same shape.
+        final_text = (
+            "(The model wrote a propose banner as text instead of "
+            "calling the tool — no pending action. Rephrase the "
+            "request or be more direct.)"
+        )
 
     # v0.20+ citation guard. If the reply claims handbook/runbook/
     # doctrine but no knowledge.* tool fired this turn, replace the

@@ -199,6 +199,73 @@ def test_strip_preserves_legitimate_prose_around_narrated_call() -> None:
     assert "subscription.terminate(" not in cleaned
 
 
+# ─── v1.5 follow-up: half-stripped propose observed in live REPL ───────
+
+
+def test_strip_handles_backtick_wrapped_call_no_empty_backticks_left() -> None:
+    # Observed verbatim in a live REPL session (2026-05-26 follow-up):
+    # the LLM wrapped the narrated call in single backticks, the
+    # original regex stripped only the call body, leaving "I propose
+    # to terminate subscription SUB-0005. ``" as a half-finished
+    # propose that still misled the operator into typing /confirm.
+    # The broader regex now eats the backticks AND the "I propose ..."
+    # narration adjacent to a stripped call.
+    text = (
+        "I propose to terminate subscription SUB-0005. "
+        '`subscription.terminate(subscription_id="SUB-0005")`'
+    )
+    cleaned, modified = strip_fake_propose(text)
+    assert modified is True
+    # No half-finished propose left over.
+    assert "I propose to terminate" not in cleaned
+    assert "subscription.terminate" not in cleaned
+    assert "``" not in cleaned
+    # Cleaned-to-empty is fine here — the caller's mimicry-stall
+    # warning takes over and replaces with the canonical explanation.
+    assert cleaned.strip() == ""
+
+
+def test_strip_handles_triple_backtick_code_fence_call() -> None:
+    # Some models fence the call in triple backticks. Same defense
+    # for the call + backticks. The surrounding prose ("I'll cancel
+    # that order now:") survives — the narration regex deliberately
+    # requires "I [will|propose|...] to <destructive verb>" with the
+    # "to" present, so vague prose stays intact (false positives are
+    # worse than false negatives here — better to leave a slightly
+    # awkward bubble than to delete legitimate operator-facing text).
+    text = (
+        "I would like to cancel that order now:\n"
+        '```order.cancel(order_id="ORD-007")```'
+    )
+    cleaned, modified = strip_fake_propose(text)
+    assert modified is True
+    assert "order.cancel(" not in cleaned
+    assert "```" not in cleaned
+    # "I would like to cancel ..." MATCHES the narration regex
+    # (destructive canon + "to" + "cancel") so it gets stripped.
+    assert "I would like to cancel" not in cleaned
+
+
+def test_narration_strip_only_fires_with_destructive_canon() -> None:
+    # "I'm going to think about it for a moment" — no destructive verb,
+    # no call shape, no strip. Survives intact.
+    text = "I'm going to think about it for a moment."
+    cleaned, modified = strip_fake_propose(text)
+    assert modified is False
+    assert cleaned == text
+
+
+def test_narration_strip_does_not_run_without_a_stripped_call() -> None:
+    # "I propose we look at the metrics first" has the narration shape
+    # but no function-call shape — the narration strip only runs when
+    # a call was actually removed (the destructive context is what
+    # makes the narration misleading).
+    text = "I propose we look at the metrics first."
+    cleaned, modified = strip_fake_propose(text)
+    assert modified is False
+    assert cleaned == text
+
+
 # ─── Inventory guard — new chrome MUST be added to the module ──────────
 
 
