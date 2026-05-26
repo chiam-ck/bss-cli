@@ -91,6 +91,7 @@ from bss_cockpit import (
     configure_store,
     current as cockpit_config_current,
 )
+from bss_orchestrator.autonomy import read_autonomy_mode
 from bss_orchestrator.clients import close_clients, get_clients
 from bss_orchestrator.config import settings as orch_settings
 from bss_orchestrator.session import (
@@ -383,13 +384,31 @@ _maybe_render_tool_result = render_tool_result
 
 
 def _bootstrap_store_and_config() -> tuple[ConversationStore, str, str]:
-    """Wire the cockpit store + read settings.toml. Returns (store, actor, model)."""
+    """Wire the cockpit store + read settings.toml. Returns (store, actor, model).
+
+    Also reads ``BSS_REPL_LLM_AUTONOMY`` once here so the REPL refuses to
+    start with a misconfigured autonomy mode (v1.5; mirrors the cockpit
+    portal lifespan in ``portals/csr/bss_csr/main.py``). The validated
+    mode is stashed on a module-level so ``_drive_turn`` can read it
+    without re-parsing env on every turn.
+    """
     db_url = os.environ.get("BSS_DB_URL", "")
     if not db_url:
         raise RuntimeError(
             "BSS_DB_URL is not set. Source .env or export it before "
             "running the cockpit."
         )
+
+    # v1.5 — fail-closed validation of BSS_REPL_LLM_AUTONOMY. The reader
+    # itself raises AutonomyMisconfigured on a bad value; we let it
+    # propagate so the operator sees a clear startup crash rather than
+    # the REPL silently defaulting to granular when they typed
+    # 'batchd'. Stashed in a module global rather than passed around
+    # because every astream_once call needs it and threading through
+    # a half-dozen handler signatures adds noise without value.
+    global _AUTONOMY_MODE
+    _AUTONOMY_MODE = read_autonomy_mode()
+
     store = ConversationStore(db_url=db_url)
     configure_store(store)
 
@@ -399,6 +418,11 @@ def _bootstrap_store_and_config() -> tuple[ConversationStore, str, str]:
     cfg = cockpit_config_current()
     model = cfg.settings.llm.model or orch_settings.llm_model
     return store, OPERATOR_ACTOR, model
+
+
+# v1.5 — autonomy mode cache, set by _bootstrap_store_and_config().
+# Read-only after boot; per-session override is deferred to v1.5.1.
+_AUTONOMY_MODE: str = "granular"
 
 
 # ─── Slash command handlers ───────────────────────────────────────────

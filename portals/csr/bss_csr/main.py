@@ -26,6 +26,7 @@ from pathlib import Path
 import os
 import structlog
 from bss_cockpit import ConversationStore, configure_store
+from bss_orchestrator.autonomy import read_autonomy_mode
 from bss_portal_ui import STATIC_DIR as SHARED_STATIC_DIR
 from bss_telemetry import configure_telemetry
 from fastapi import FastAPI
@@ -41,6 +42,13 @@ log = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = app.state.settings
     configure_telemetry(service_name="portal-csr", app=app)
+
+    # v1.5 — read BSS_REPL_LLM_AUTONOMY once at boot, cache on app.state.
+    # read_autonomy_mode() raises AutonomyMisconfigured on a bad value;
+    # we let it propagate so the cockpit refuses to start rather than
+    # silently defaulting (same fail-closed shape as the v0.9 named-
+    # token sentinel rejection).
+    app.state.autonomy_mode = read_autonomy_mode()
 
     # v0.13 — boot the cockpit Conversation store. Both surfaces
     # (the CLI REPL and this browser veneer) share the singleton via
@@ -59,6 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         "cockpit.starting",
         service=settings.service_name,
         version=settings.version,
+        autonomy_mode=app.state.autonomy_mode,
     )
     try:
         yield
