@@ -1,5 +1,5 @@
 {
-  "_comment": "v1.4.1 — scripted LLM responses for the cockpit e2e specs. The fixture is bind-mounted into portal-csr via docker-compose.e2e.yml and selected by BSS_LLM_FIXTURE_PATH. orchestrator/bss_orchestrator/llm_mock.py owns the read + match logic. Match strings are case-insensitive substring searches against the latest user message.",
+  "_comment": "v1.4.1 + v1.5 — scripted LLM responses for the cockpit e2e specs. The fixture is bind-mounted into portal-csr via docker-compose.e2e.yml and selected by BSS_LLM_FIXTURE_PATH. orchestrator/bss_orchestrator/llm_mock.py owns the read + match logic. Match strings are case-insensitive substring searches against the latest user message. Each fixture entry's `steps` walks one astream_once invocation (= one cockpit turn); compound actions that span multiple /confirm rounds need ONE entry per turn — the second entry typically matches the synthetic '(operator typed /confirm — ...)' rewrite the cockpit sends on a /confirm-bracketed turn.",
 
   "responses": [
     {
@@ -51,6 +51,99 @@
       "steps": [
         {
           "content": "Per the handbook, refunds are issued at the operator's discretion within 30 days of purchase."
+        }
+      ]
+    },
+
+    {
+      "name": "v15-compound-action-turn1-propose-first-destructive",
+      "_comment": "Spec test_compound_action_granular / test_compound_action_batched — turn 1 of a compound action. Operator's prompt 'plan compound' triggers the LLM to propose TWO destructive tools in the same step (LangGraph emits both as tool_calls in one AIMessage). The wrapper blocks the FIRST one regardless of mode because allow_destructive=False on the operator's initial prompt. The cockpit stages the first as pending_destructive and waits for /confirm. We pick provisioning.set_fault_injection (cheap blast radius, no real-state precondition required) so the spec can run repeatedly without dependent fixtures.",
+      "match": "plan compound",
+      "steps": [
+        {
+          "tool_calls": [
+            {
+              "name": "provisioning.set_fault_injection",
+              "args": {
+                "task_type": "create_msisdn",
+                "fault_kind": "fail",
+                "probability": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "content": "Proposed the first destructive step. Type /confirm to authorise."
+        }
+      ]
+    },
+
+    {
+      "name": "v15-compound-action-turn2-after-confirm-tries-two-destructives",
+      "_comment": "Spec test_compound_action_granular / test_compound_action_batched — turn 2 after /confirm. Cockpit rewrites the user message to '(operator typed /confirm — proceed with the prior destructive proposal now; call the tool)'. The mock matches that substring and tries to call BOTH destructive tools in a row. Granular mode: the wrapper executes the first and re-blocks the second, so the cockpit stages a NEW pending_destructive for the second. Batched mode: the wrapper executes both and no new pending row gets staged. The specs assert on the cockpit.pending_destructive row count via asyncpg to differentiate.",
+      "match": "operator typed /confirm",
+      "steps": [
+        {
+          "tool_calls": [
+            {
+              "name": "provisioning.set_fault_injection",
+              "args": {
+                "task_type": "create_msisdn",
+                "fault_kind": "fail",
+                "probability": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "name": "provisioning.set_fault_injection",
+              "args": {
+                "task_type": "create_esim_profile",
+                "fault_kind": "fail",
+                "probability": 0.0
+              }
+            }
+          ]
+        },
+        {
+          "content": "Compound action complete (or second step pending /confirm under granular mode)."
+        }
+      ]
+    },
+
+    {
+      "name": "v15-case-investigation-chained-reads",
+      "_comment": "Spec test_case_investigation — operator prompt 'investigate' triggers a chain of THREE read tools in one astream_once turn. Tests that the v0.19 'Done.' rule is softened (the agent can call read N, then read N+1, then read N+2, then terminate with a one-sentence summary). All three tools are read-only so the autonomy mode doesn't matter here. The case.list call is the cheapest discovery read; customer.list and catalog.list_active_offerings flesh out the chain. The final content asserts that the agent terminates with a brief summary instead of duplicating tool data as markdown.",
+      "match": "investigate the demo state",
+      "steps": [
+        {
+          "tool_calls": [
+            {
+              "name": "case.list",
+              "args": {"limit": 3}
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "name": "customer.list",
+              "args": {"name_contains": "Demo"}
+            }
+          ]
+        },
+        {
+          "tool_calls": [
+            {
+              "name": "catalog.list_active_offerings",
+              "args": {}
+            }
+          ]
+        },
+        {
+          "content": "Investigation complete — see the three cards above for the case roster, customer roster, and active offerings."
         }
       ]
     }

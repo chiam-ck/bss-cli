@@ -534,6 +534,15 @@ e2e:
 	 uv run --package bss-e2e pytest packages/bss-e2e/tests/ \
 	     --junitxml="$$out/junit.xml")
 
+# v1.5 — run the e2e suite with the cockpit autonomy mode set to
+# "batched" so test_v15_compound_action_batched (skipped under the
+# default granular mode) exercises. Same shape as `make e2e`; just
+# pre-exports the env var before invoking it. Granular-only specs
+# (test_v15_compound_action_granular) will skip cleanly because
+# their setup observes the same env.
+e2e-batched:
+	@BSS_REPL_LLM_AUTONOMY=batched $(MAKE) e2e
+
 # Manual escape-hatch — if a previous `make e2e` left the override
 # stack up (e.g. SIGKILL), run this to drop it and bring the normal
 # stack back.

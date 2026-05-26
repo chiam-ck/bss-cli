@@ -671,14 +671,37 @@ async def _drive_turn(
         ):
             if isinstance(event, AgentEventToolCallStarted):
                 captured_tool_calls.append(
-                    {"name": event.name, "args": event.args}
+                    {
+                        "name": event.name,
+                        "args": event.args,
+                        "call_id": event.call_id,
+                    }
                 )
-                # Track the last destructive-shaped proposal so a
-                # propose-then-/confirm pairing can stash a row.
-                if _is_destructive(event.name):
-                    last_tool_proposal = (event.name, event.args)
+                # NOTE: pre-v1.5 set last_tool_proposal on STARTED for
+                # every destructive — but that incorrectly staged tools
+                # that ACTUALLY EXECUTED on /confirm-resumed turns
+                # (allow=True with the wrapper letting it through).
+                # v1.5 derives the proposal-to-stage strictly from the
+                # COMPLETED-with-BLOCKED signal below.
             elif isinstance(event, AgentEventToolCallCompleted):
                 raw = event.result_full or event.result
+                # v1.5 — when a destructive tool's result is the
+                # structured DESTRUCTIVE_OPERATION_BLOCKED response,
+                # treat it as a proposal to stage. Covers both
+                # pre-v1.5 (allow=False blocks at the gate) and v1.5
+                # granular (second destructive in the same loop
+                # re-gates even with allow=True).
+                if (
+                    event.name
+                    and _is_destructive(event.name)
+                    and "DESTRUCTIVE_OPERATION_BLOCKED" in (raw or "")
+                ):
+                    args = {}
+                    for tc in reversed(captured_tool_calls):
+                        if tc.get("call_id") == event.call_id:
+                            args = tc.get("args", {}) or {}
+                            break
+                    last_tool_proposal = (event.name, args)
                 card = _maybe_render_tool_result(event.name, raw)
                 if card:
                     rprint(card)
@@ -745,12 +768,14 @@ async def _drive_turn(
         tool_calls_json=captured_tool_calls or None,
     )
 
-    # If the agent proposed a destructive action (without /confirm),
-    # stash the proposal so the next turn's /confirm can consume it.
-    if (
-        not allow_destructive_this_turn
-        and last_tool_proposal is not None
-    ):
+    # If the agent proposed a destructive action AND the gate blocked
+    # it (either pre-v1.5 allow=False, or v1.5 granular second-destructive
+    # re-gate), stash the proposal so the next turn's /confirm can
+    # consume it. The COMPLETED-side BLOCKED check above is the v1.5
+    # signal; the staging guard here no longer gates on
+    # allow_destructive_this_turn because granular post-confirm runs
+    # with allow=True yet still re-blocks the second destructive.
+    if last_tool_proposal is not None:
         tool_name, tool_args = last_tool_proposal
         await conv.set_pending_destructive(
             tool_name=tool_name,

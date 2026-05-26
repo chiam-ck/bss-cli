@@ -73,6 +73,12 @@ services:
   portal-csr:
     environment:
       BSS_LLM_FIXTURE_PATH: /fixtures/cockpit_e2e.json
+      # v1.5 — propagate the host's BSS_REPL_LLM_AUTONOMY into the
+      # container so `make e2e-batched` (which sets the env to "batched"
+      # before invoking compose) can exercise the batched-mode spec.
+      # Defaults to "granular" — matches the v1.5 doctrine default and
+      # the autonomy module's own default-when-unset.
+      BSS_REPL_LLM_AUTONOMY: ${BSS_REPL_LLM_AUTONOMY:-granular}
     volumes:
       - ./packages/bss-e2e/fixtures:/fixtures:ro
       # Preserve the .bss-cli mount from docker-compose.yml — compose

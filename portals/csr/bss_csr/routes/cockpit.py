@@ -808,12 +808,20 @@ async def cockpit_events(
             ):
                 if isinstance(event, AgentEventToolCallStarted):
                     captured_tool_calls.append(
-                        {"name": event.name, "args": event.args}
+                        {
+                            "name": event.name,
+                            "args": event.args,
+                            "call_id": event.call_id,
+                        }
                     )
-                    if not allow_destructive_this_turn and _is_destructive(
-                        event.name
-                    ):
-                        last_proposal = (event.name, event.args)
+                    # NOTE: pre-v1.5 set last_proposal here when allow=
+                    # False, but that path didn't observe whether the
+                    # tool actually got BLOCKED — it inferred it from
+                    # the gate flag. v1.5 unifies the staging signal on
+                    # the COMPLETED-with-BLOCKED detection below, which
+                    # also catches the granular post-confirm path where
+                    # allow_destructive_this_turn=True yet the second
+                    # destructive re-gates.
                     yield _sse_frame(
                         "message", render_tool_pill(event.name)
                     )
@@ -826,6 +834,27 @@ async def cockpit_events(
                     # block. The LLM's subsequent assistant bubble is
                     # commentary, not the answer; the answer is here.
                     raw = event.result_full or event.result or ""
+                    # v1.5 — when a destructive tool's result IS the
+                    # structured DESTRUCTIVE_OPERATION_BLOCKED response
+                    # (either because allow_destructive=False blocked it
+                    # at the gate OR because granular mode re-gated
+                    # after a prior destructive in the same loop
+                    # already fired), capture it as the proposal to
+                    # stage. This is the path that lets the second
+                    # destructive in a granular compound action surface
+                    # as a fresh /confirm prompt even though we entered
+                    # this turn with allow_destructive=True.
+                    if (
+                        event.name
+                        and _is_destructive(event.name)
+                        and "DESTRUCTIVE_OPERATION_BLOCKED" in raw
+                    ):
+                        args = {}
+                        for tc in reversed(captured_tool_calls):
+                            if tc.get("call_id") == event.call_id:
+                                args = tc.get("args", {}) or {}
+                                break
+                        last_proposal = (event.name, args)
                     rendered = render_tool_result(event.name, raw)
                     if rendered is None:
                         # No registered renderer — surface the raw JSON
@@ -918,7 +947,23 @@ async def cockpit_events(
                     asst_id = await conv.append_assistant_turn(
                         text, tool_calls_json=captured_tool_calls or None
                     )
-                    if last_proposal is not None and not allow_destructive_this_turn:
+                    # v1.5 — stage whenever a destructive proposal landed,
+                    # regardless of the per-turn allow_destructive flag. The
+                    # last_proposal is set in two paths today:
+                    #   1) STARTED on allow=False (pre-v1.5 behaviour): the
+                    #      LLM proposes, the wrapper would BLOCK so the
+                    #      cockpit pre-empts the blocked round trip and
+                    #      stages the proposal directly off the started event.
+                    #   2) COMPLETED with BLOCKED in the result (v1.5
+                    #      granular path): the LLM proposed a second
+                    #      destructive in a /confirm-resumed turn; the
+                    #      wrapper re-gated and returned BLOCKED, so the
+                    #      cockpit needs to stage even though
+                    #      allow_destructive_this_turn was True.
+                    # Both paths converge here. Gating the staging on
+                    # allow_destructive_this_turn (pre-v1.5 behaviour) would
+                    # drop case (2) silently.
+                    if last_proposal is not None:
                         tn, ta = last_proposal
                         await conv.set_pending_destructive(
                             tool_name=tn,
