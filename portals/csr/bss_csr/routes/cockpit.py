@@ -953,6 +953,30 @@ async def cockpit_events(
                             "action. Rephrase the request or be more "
                             "direct.)"
                         )
+                    # v1.5 — destructive-just-proposed bubble override.
+                    # When a destructive tool_call returned BLOCKED this
+                    # turn (= we just staged a pending_destructive row),
+                    # Gemma's wrap-up is almost always misleadingly
+                    # short ("Done." / "OK." / "Terminated.") — none of
+                    # which are true: the action hasn't fired yet.
+                    # Replace with an explicit short status that matches
+                    # the staged pending row, so the persisted transcript
+                    # carries the right state. Conservative trigger:
+                    # only fires when last_proposal is set (destructive
+                    # BLOCKED was detected this turn) AND the LLM's
+                    # bubble is short enough to be a wrap-up rather
+                    # than a real explanation.
+                    if last_proposal is not None and text:
+                        _wrapup_shape = text.strip().lower()
+                        if len(_wrapup_shape) < 40:
+                            _tn, _ta = last_proposal
+                            _args_preview = ", ".join(
+                                f"{k}={v!r}" for k, v in list(_ta.items())[:3]
+                            )
+                            text = (
+                                f"Proposed {_tn}({_args_preview}). "
+                                f"Type /confirm to authorise."
+                            )
                     # v0.20+ citation guard. Un-cited handbook claims →
                     # safe fallback. See REPL _RE_KNOWLEDGE_CLAIM mirror.
                     # v0.20.1 — compute via the imported ``knowledge_called``

@@ -779,6 +779,30 @@ async def _drive_turn(
             "request or be more direct.)"
         )
 
+    # v1.5 — destructive-just-proposed bubble override. When the only
+    # destructive action this turn was a real tool_call that returned
+    # BLOCKED (= we just staged a pending_destructive row), Gemma's
+    # wrap-up is almost always misleadingly short ("Done." / "OK." /
+    # "Terminated." — none of which are true: the action hasn't fired
+    # yet). The cockpit's own "Pending /confirm for ..." status line
+    # is the honest answer; replace the bubble with a matching
+    # short status so the persisted transcript + the next turn's
+    # rehydration carry the right state. Conservative trigger: only
+    # fires when a destructive proposal landed AND no non-blocked
+    # destructive ran this turn AND the LLM's bubble is short enough
+    # to be a misleading wrap-up rather than a real explanation.
+    if last_tool_proposal is not None and final_text:
+        wrapup_shape = final_text.strip().lower()
+        if len(wrapup_shape) < 40:
+            tn, ta = last_tool_proposal
+            args_preview = ", ".join(
+                f"{k}={v!r}" for k, v in list(ta.items())[:3]
+            )
+            final_text = (
+                f"Proposed {tn}({args_preview}). "
+                f"Type /confirm to authorise."
+            )
+
     # v0.20+ citation guard. If the reply claims handbook/runbook/
     # doctrine but no knowledge.* tool fired this turn, replace the
     # text. Doctrine: never paraphrase doctrine without citing.
@@ -965,14 +989,19 @@ async def _handle_slash(
         await _cmd_ports(conv, arg)
         return "continue", None
     if cmd == "/confirm":
-        # v1.5 — peek at the pending_destructive row WITHOUT consuming
-        # it (consume_pending_destructive happens inside _drive_turn on
-        # the next operator message). If a row exists, tell the
-        # operator what's queued so they know /confirm has real effect.
-        # If NO row exists, warn loudly — the most common cause is
-        # mimicry (Gemma narrated the propose banner in prose instead
-        # of emitting a tool_call), and the operator's /confirm into
-        # the void would otherwise look like a silent bug.
+        # v1.5 — /confirm marks the operator's authorisation to run
+        # the pending destructive. Two cases:
+        #   1) No pending row → warn loudly (catches the mimicry-
+        #      narrated propose case where the LLM wrote the call as
+        #      text instead of emitting a tool_call). Do NOT drive a
+        #      turn — there's nothing to confirm.
+        #   2) Pending row → return the synthetic "(operator typed
+        #      /confirm — proceed with the prior destructive proposal
+        #      now; call the tool)" prompt. The caller in run_repl
+        #      detects this special return shape and drives a real
+        #      _drive_turn with the synthetic prompt — same shape as
+        #      the cockpit browser veneer's slash-command interceptor
+        #      (routes/cockpit.py around line 755).
         pending = await _peek_pending_destructive(conv)
         if pending is None:
             rprint(
@@ -988,12 +1017,12 @@ async def _handle_slash(
             return "continue", None
         rprint(
             f"[green]/confirm staged for[/] [bold]{pending.tool_name}[/] "
-            f"[dim]args={pending.tool_args!r}[/]\n"
-            "[dim]Type your next message to drive the resumed turn "
-            "(the cockpit consumes the pending row and runs with "
-            "allow_destructive=True).[/]"
+            f"[dim]args={pending.tool_args!r}[/]"
         )
-        return "continue", None
+        # Signal to run_repl that this slash command needs a real
+        # turn driven against the synthetic-confirm prompt. The
+        # caller checks for this exact magic-string return.
+        return "drive_confirm_turn", None  # type: ignore[return-value]
     if cmd in {"/config", "/operator"}:
         # /config edit  /operator edit
         if arg.strip() != "edit":
@@ -1116,10 +1145,32 @@ def run_repl(
                             allow_destructive_default=allow_destructive,
                         )
                     )
-                # /confirm: leaves a marker; next turn's _drive_turn
-                # consumes the pending row. No explicit state change
-                # here; the next prompt the operator types will run
-                # with allow_destructive=True if a pending row exists.
+                # v1.5 — /confirm slash command signals it needs a
+                # real turn driven against the synthetic-confirm
+                # prompt (matches the browser cockpit's behaviour
+                # where typing /confirm in the textarea IS the
+                # trigger message). Without this, the REPL operator
+                # would have to type a second prompt after /confirm
+                # to actually re-evoke the destructive — that broke
+                # the workflow because Gemma rarely re-emits the same
+                # destructive without explicit prompting.
+                if action == "drive_confirm_turn":
+                    synthetic_prompt = (
+                        "(operator typed /confirm — proceed with the "
+                        "prior destructive proposal now; call the tool)"
+                    )
+                    try:
+                        loop.run_until_complete(
+                            _drive_turn(
+                                conv=conv,
+                                line=synthetic_prompt,
+                                actor=actor,
+                                model=model,
+                                allow_destructive_default=allow_destructive,
+                            )
+                        )
+                    except Exception as e:  # pragma: no cover
+                        rprint(f"[red]/confirm turn failed:[/] {e}")
                 continue
 
             # v0.19 — list-intent intercept. Small models hallucinate
