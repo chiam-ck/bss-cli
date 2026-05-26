@@ -779,29 +779,32 @@ async def _drive_turn(
             "request or be more direct.)"
         )
 
-    # v1.5 — destructive-just-proposed bubble override. When the only
-    # destructive action this turn was a real tool_call that returned
-    # BLOCKED (= we just staged a pending_destructive row), Gemma's
-    # wrap-up is almost always misleadingly short ("Done." / "OK." /
-    # "Terminated." — none of which are true: the action hasn't fired
-    # yet). The cockpit's own "Pending /confirm for ..." status line
-    # is the honest answer; replace the bubble with a matching
-    # short status so the persisted transcript + the next turn's
-    # rehydration carry the right state. Conservative trigger: only
-    # fires when a destructive proposal landed AND no non-blocked
-    # destructive ran this turn AND the LLM's bubble is short enough
-    # to be a misleading wrap-up rather than a real explanation.
-    if last_tool_proposal is not None and final_text:
-        wrapup_shape = final_text.strip().lower()
-        if len(wrapup_shape) < 40:
-            tn, ta = last_tool_proposal
-            args_preview = ", ".join(
-                f"{k}={v!r}" for k, v in list(ta.items())[:3]
-            )
-            final_text = (
-                f"Proposed {tn}({args_preview}). "
-                f"Type /confirm to authorise."
-            )
+    # v1.5 — destructive-just-proposed bubble override. When a
+    # destructive returned BLOCKED this turn (= we just staged a
+    # pending_destructive row), Gemma's wrap-up is unreliable in
+    # three observed shapes:
+    #   - "Done." / "OK." — implies the action happened (it didn't)
+    #   - "I propose to terminate SUB-0005. Please type /confirm to
+    #     proceed." — looks like mimicry but actually paired with a
+    #     real tool_call this turn, so the mimicry-stall warning
+    #     doesn't fire and the misleading narration reaches the
+    #     operator
+    #   - empty / silent
+    # All three are equally bad for the operator: the staged pending
+    # row is the truth, the bubble should match it. Replace
+    # unconditionally with the canonical "Proposed X(args). Type
+    # /confirm to authorise." Persisted transcript carries the
+    # right state; next turn's rehydration doesn't feed Gemma its
+    # own misleading prose.
+    if last_tool_proposal is not None:
+        tn, ta = last_tool_proposal
+        args_preview = ", ".join(
+            f"{k}={v!r}" for k, v in list(ta.items())[:3]
+        )
+        final_text = (
+            f"Proposed {tn}({args_preview}). "
+            f"Type /confirm to authorise."
+        )
 
     # v0.20+ citation guard. If the reply claims handbook/runbook/
     # doctrine but no knowledge.* tool fired this turn, replace the
