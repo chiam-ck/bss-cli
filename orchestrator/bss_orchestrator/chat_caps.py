@@ -24,9 +24,11 @@ than no cap.
 
 Cost accounting derives from token counts × ``MODEL_RATES_USD_PER_M_TOK``.
 OpenRouter's response body does not surface a cost-cents number
-directly; tokens × rate is the deterministic path. v0.10.0+ ships
-``google/gemma-4-26b-a4b-it`` (see CLAUDE.md). Add new models to the
-rate table when swapping.
+directly; tokens × rate is the deterministic path. v0.10.0–v1.5
+shipped ``google/gemma-4-26b-a4b-it``; v1.5.1+ defaults to
+``deepseek/deepseek-v4-pro``. Add new models to the rate table when
+swapping; unknown models fall back to a conservative ceiling so cap
+enforcement stays honest (see ``_FALLBACK_RATE``).
 """
 
 from __future__ import annotations
@@ -55,7 +57,20 @@ log = structlog.get_logger(__name__)
 # runaway customer at ~$2/month, not to bill perfectly.
 MODEL_RATES_USD_PER_M_TOK: dict[str, tuple[float, float]] = {
     "google/gemma-4-26b-a4b-it": (0.15, 0.50),
+    # v1.5.1 — placeholder rates for the new default; verify against
+    # openrouter.ai/models headline pricing on next billing review.
+    # Slightly-too-high is the safe direction (cap enforcement, not
+    # billing accuracy).
+    "deepseek/deepseek-v4-pro": (1.00, 4.00),
 }
+
+
+# v1.5.1 — conservative fallback used when (a) the request's model isn't
+# in MODEL_RATES_USD_PER_M_TOK AND (b) the configured ``settings.llm_model``
+# isn't either. Pre-v1.5.1, the fallback recursively looked up
+# ``settings.llm_model`` and raised KeyError when that was also unknown,
+# which broke customer-chat cap accounting on any unconfigured swap.
+_FALLBACK_RATE: tuple[float, float] = (2.00, 8.00)
 
 
 def _cost_cents_for_turn(
@@ -63,11 +78,23 @@ def _cost_cents_for_turn(
 ) -> int:
     """Convert token counts to integer cents. Unknown model → falls
     back to the configured headline model's rate so we never under-
-    count; logs a warning so the rate table can be updated."""
+    count; logs a warning so the rate table can be updated. If even
+    the configured headline isn't in the table, falls back to the
+    conservative ``_FALLBACK_RATE`` ceiling — caps still enforce
+    correctly, just with extra headroom for the operator to notice
+    the missing entry."""
     rates = MODEL_RATES_USD_PER_M_TOK.get(model)
     if rates is None:
         log.warning("chat_caps.unknown_model", model=model)
-        rates = MODEL_RATES_USD_PER_M_TOK[settings.llm_model]
+        rates = MODEL_RATES_USD_PER_M_TOK.get(
+            settings.llm_model, _FALLBACK_RATE
+        )
+        if rates is _FALLBACK_RATE:
+            log.warning(
+                "chat_caps.configured_model_also_unknown",
+                configured_model=settings.llm_model,
+                using_fallback_rate=_FALLBACK_RATE,
+            )
     in_rate, out_rate = rates
     usd = (prompt_tok / 1_000_000) * in_rate + (completion_tok / 1_000_000) * out_rate
     # Round up so partial cents always count toward the cap.

@@ -5,7 +5,7 @@ regardless of where the CLI is invoked from.
 
 Env vars (prefix ``BSS_``):
     BSS_LLM_BASE_URL       OpenRouter (or OpenAI-compatible) endpoint
-    BSS_LLM_MODEL          Model identifier, e.g. ``google/gemma-4-26b-a4b-it``
+    BSS_LLM_MODEL          Model identifier, e.g. ``deepseek/deepseek-v4-pro``
     BSS_LLM_API_KEY        OpenRouter API key (``sk-or-...``)
     BSS_LLM_HTTP_REFERER   OpenRouter attribution header (optional)
     BSS_LLM_APP_NAME       OpenRouter ``X-Title`` header (optional)
@@ -25,7 +25,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     # ── LLM provider (OpenRouter via openai SDK) ────────────────────────
     llm_base_url: str = "https://openrouter.ai/api/v1"
-    llm_model: str = "google/gemma-4-26b-a4b-it"
+    llm_model: str = "deepseek/deepseek-v4-pro"
     llm_api_key: str = ""
     llm_http_referer: str = "https://github.com/samurai-bot/bss-cli"
     llm_app_name: str = "bss-cli"

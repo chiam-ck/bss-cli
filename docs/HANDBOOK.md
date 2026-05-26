@@ -249,7 +249,7 @@ sed -i "s/^BSS_API_TOKEN=changeme$/BSS_API_TOKEN=$(openssl rand -hex 32)/" .env
 sed -i "s/^BSS_PORTAL_TOKEN_PEPPER=changeme$/BSS_PORTAL_TOKEN_PEPPER=$(openssl rand -hex 32)/" .env
 
 # 3. Set BSS_LLM_API_KEY to your OpenRouter key.
-# Edit .env directly. Default model: google/gemma-4-26b-a4b-it (works on free tier).
+# Edit .env directly. Default model: deepseek/deepseek-v4-pro (v1.5.1+; previously gemma-4-26b-a4b-it).
 
 # 4a. Bundled mode:
 make up-all
@@ -329,7 +329,7 @@ Loaded once at startup into a `TokenMap` (HMAC-SHA-256 hashed). Identity derived
 | Var | What | Default | Required |
 |---|---|---|---|
 | `BSS_LLM_BASE_URL` | OpenRouter URL | `https://openrouter.ai/api/v1` | yes |
-| `BSS_LLM_MODEL` | Model id (overridable per-cockpit by `settings.toml [llm].model`) | `google/gemma-4-26b-a4b-it` | yes |
+| `BSS_LLM_MODEL` | Model id (overridable per-cockpit by `settings.toml [llm].model`) | `deepseek/deepseek-v4-pro` | yes |
 | `BSS_LLM_API_KEY` | OpenRouter key | sentinel `sk-or-v1-replace-me` (rejected) | yes |
 | `BSS_LLM_HTTP_REFERER` | OpenRouter routing hint | repo URL | no |
 | `BSS_LLM_APP_NAME` | OpenRouter app tag | `bss-cli` | no |
@@ -471,7 +471,7 @@ The cockpit reads two operator-editable files from `.bss-cli/` (in the cockpit c
 ```toml
 [llm]
 # Overrides BSS_LLM_MODEL when set. Comment out to fall back to env.
-model = "google/gemma-4-26b-a4b-it"
+model = "deepseek/deepseek-v4-pro"
 temperature = 0.2
 
 [cockpit]

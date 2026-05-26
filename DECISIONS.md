@@ -3788,3 +3788,83 @@ in CI.
   "visibility / debt closure" pitch (outbox/inbox dashboards,
   usage.rated consumer + live verify, CI integration for e2e, parallel-
   spec safety) stays on the v1.6 candidate list.
+
+## 2026-05-26 — v1.5.1 — Default model swap: Gemma 4 26B A4B → DeepSeek v4 Pro
+
+**Context.** v1.5 shipped a heavy defensive stack (chrome filter,
+bubble overrides, narration strip, anti-mimicry warnings, 3-strike
+bail) primarily to fight Gemma 4 26B A4B's failure modes — narrated
+tool calls in prose, the "Done." default reply that lied about
+post-block state, occasional fabrication of prior turns. The defenses
+work, but half the v1.5 code path is dormant the moment a more capable
+model is in the seat.
+
+Live-tested DeepSeek v4 Pro on the same flow that broke Gemma five
+ways in v1.5 development. Result: emitted a clean `customer.create +
+com.create_order` chain on one English prompt under granular autonomy;
+the only defensive layer that fired was the anti-hallucination rule
+(DeepSeek invented a "prior turn / 404 above" once — that family of
+failure isn't Gemma-specific). No mimicry-stall, no bubble-override
+needed, no chrome to strip.
+
+**Decision.** Flip the project default to `deepseek/deepseek-v4-pro`:
+
+- `orchestrator/bss_orchestrator/config.py` — `llm_model` default
+  + docstring.
+- `.env.example` — `BSS_LLM_MODEL` example value.
+- `.bss-cli/settings.toml.template` — `[llm].model` (the autobootstrap
+  source for new operator installs).
+- `CLAUDE.md` tech-stack line names DeepSeek as v1.5.1+ default and
+  preserves the Gemma → DeepSeek history with the rationale.
+- `docs/HANDBOOK.md` — three visible-default mentions bumped
+  (quickstart comment, env-var table, settings.toml example).
+- `orchestrator/bss_orchestrator/chat_caps.py` — added DeepSeek to
+  `MODEL_RATES_USD_PER_M_TOK` (placeholder `(1.00, 4.00)` USD/M;
+  conservative, verify against openrouter.ai pricing on next billing
+  review). **Also hardened the unknown-model fallback** — pre-this-
+  commit, an unknown configured model would raise `KeyError` when
+  chat_caps tried to fall back to `settings.llm_model`'s rate. New
+  `_FALLBACK_RATE = (2.00, 8.00)` ceiling fires when both requested
+  AND configured models are missing from the table; logs a warning.
+
+The Gemma rate stays in `MODEL_RATES_USD_PER_M_TOK` so flipping back
+for cost-experiments still costs-correctly. Test fixtures pin specific
+models for determinism and stay on Gemma deliberately — they're not
+asserting the default, they're verifying the actor-slug / pricing /
+hot-reload mechanisms.
+
+**Alternatives rejected.**
+
+- *Keep Gemma + simplify the prompt instead.* The v1.5 defensive stack
+  was earned the hard way (each layer landed because something bit us
+  live); removing rules without solving the underlying failure modes
+  means accepting the failure modes back. A bigger model absorbs whole
+  *clusters* of rules at once — cheaper simplification.
+- *Multi-model A/B at runtime.* No evidence yet that any operator
+  wants per-turn model switching; carrying two prompt variants costs
+  more than "set BSS_LLM_MODEL in .env and restart."
+- *Wait for a v1.6 prompt refactor.* Prompt consolidation stays on the
+  v1.6 candidate list; this commit changes which rules are load-bearing
+  but doesn't drop the dormant ones. The dormancy is documented (this
+  entry); cleanup happens opportunistically.
+
+**Consequences.**
+
+- **Operator cockpit:** noticeably cleaner default behaviour on
+  compound writes; the v1.5 defensive layers stay in place but mostly
+  idle. Propose/execute bubble overrides remain useful for the rare
+  cases DeepSeek chooses silence after a tool render.
+- **Customer chat:** same change; chat_caps cap enforcement now safe
+  across arbitrary `BSS_LLM_MODEL` settings thanks to the hardened
+  fallback.
+- **Cost.** DeepSeek is paid-tier (placeholder ≈$1/$4 per M tokens),
+  Gemma was free-tier. v0.12 chat cap ceiling at $2/customer/month
+  still holds; operator cockpit isn't per-operator-capped
+  (single-operator-by-design).
+- **Future flips.** The `_FALLBACK_RATE` + documented six-file swap
+  procedure is now the template for any future default-model change.
+
+**Non-decision.** This is NOT a doctrine change about which models are
+supported — it's just a default flip. Anyone running their own
+deployment can still set `BSS_LLM_MODEL` to whatever OpenRouter model
+they want; the rate table is a hint, not a gate.

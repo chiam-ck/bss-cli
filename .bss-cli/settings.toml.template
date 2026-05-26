@@ -9,7 +9,7 @@
 
 [llm]
 # Overrides BSS_LLM_MODEL when set. Comment out to fall back to env.
-model = "google/gemma-4-26b-a4b-it"
+model = "deepseek/deepseek-v4-pro"
 temperature = 0.2
 
 [cockpit]
