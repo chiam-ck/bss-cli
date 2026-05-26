@@ -791,6 +791,12 @@ async def cockpit_events(
 
     captured_tool_calls: list[dict[str, Any]] = []
     last_proposal: tuple[str, dict] | None = None
+    # v1.5 — destructive tools that ACTUALLY ran this turn (wrapper
+    # let them through). Used to replace "Done." wrap-ups with a
+    # specific "Executed X(args)." so the operator can tell post-
+    # propose ("Done." after a stall) from post-execute ("Done."
+    # after a real action).
+    executed_destructive: list[tuple[str, dict]] = []
 
     async def stream() -> AsyncIterator[bytes]:
         nonlocal last_proposal
@@ -845,17 +851,16 @@ async def cockpit_events(
                     # destructive in a granular compound action surface
                     # as a fresh /confirm prompt even though we entered
                     # this turn with allow_destructive=True.
-                    if (
-                        event.name
-                        and _is_destructive(event.name)
-                        and "DESTRUCTIVE_OPERATION_BLOCKED" in raw
-                    ):
+                    if event.name and _is_destructive(event.name):
                         args = {}
                         for tc in reversed(captured_tool_calls):
                             if tc.get("call_id") == event.call_id:
                                 args = tc.get("args", {}) or {}
                                 break
-                        last_proposal = (event.name, args)
+                        if "DESTRUCTIVE_OPERATION_BLOCKED" in raw:
+                            last_proposal = (event.name, args)
+                        else:
+                            executed_destructive.append((event.name, args))
                     rendered = render_tool_result(event.name, raw)
                     if rendered is None:
                         # No registered renderer — surface the raw JSON
@@ -974,6 +979,26 @@ async def cockpit_events(
                             f"Proposed {_tn}({_args_preview}). "
                             f"Type /confirm to authorise."
                         )
+                    # v1.5 — symmetric post-execute override. When a
+                    # destructive ACTUALLY RAN this turn (not BLOCKED),
+                    # Gemma's "Done." is the same word the operator
+                    # just saw on the stalled-propose path; it teaches
+                    # them not to trust the cockpit. Replace with an
+                    # explicit "Executed X(args)." so the bubble names
+                    # what actually happened.
+                    elif executed_destructive:
+                        _tn, _ta = executed_destructive[-1]
+                        _args_preview = ", ".join(
+                            f"{k}={v!r}" for k, v in list(_ta.items())[:3]
+                        )
+                        _n = len(executed_destructive)
+                        if _n == 1:
+                            text = f"Executed {_tn}({_args_preview})."
+                        else:
+                            text = (
+                                f"Executed {_n} destructive actions, "
+                                f"last was {_tn}({_args_preview})."
+                            )
                     # v0.20+ citation guard. Un-cited handbook claims →
                     # safe fallback. See REPL _RE_KNOWLEDGE_CLAIM mirror.
                     # v0.20.1 — compute via the imported ``knowledge_called``
