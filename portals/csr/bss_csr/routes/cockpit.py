@@ -43,6 +43,7 @@ from bss_cockpit import (
     current as cockpit_config_current,
     knowledge_called,
 )
+from bss_cockpit.chrome_filter import strip_fake_propose
 from bss_cockpit.renderers import render_tool_result
 from bss_orchestrator.clients import get_clients
 from bss_orchestrator.session import (
@@ -920,6 +921,27 @@ async def cockpit_events(
                     # card already showed; the operator doesn't need
                     # the LLM's prose copy.
                     text = _suppress_tool_recap(text, captured_tool_calls)
+                    # v1.5 — anti-mimicry runtime backstop. If the LLM
+                    # ignored the CALL TOOLS — DO NOT NARRATE rule and
+                    # wrote the propose banner shape as plain text
+                    # (e.g. "subscription.terminate(...)"), strip those
+                    # line(s) before the bubble lands. If stripping
+                    # leaves nothing useful AND no real tool_call fired
+                    # this turn, surface a "stalled" warning instead of
+                    # an empty bubble — without it the operator types
+                    # /confirm into the void.
+                    text, mimicry_stripped = strip_fake_propose(text)
+                    if mimicry_stripped and not text.strip() and not captured_tool_calls:
+                        log.warning(
+                            "cockpit.anti_mimicry_stall",
+                            session_id=session_id,
+                        )
+                        text = (
+                            "(The model wrote a propose banner as text "
+                            "instead of calling the tool — no pending "
+                            "action. Rephrase the request or be more "
+                            "direct.)"
+                        )
                     # v0.20+ citation guard. Un-cited handbook claims →
                     # safe fallback. See REPL _RE_KNOWLEDGE_CLAIM mirror.
                     # v0.20.1 — compute via the imported ``knowledge_called``
