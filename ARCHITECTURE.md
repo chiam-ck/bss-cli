@@ -407,6 +407,54 @@ draft and echo the parser/Pydantic diagnostic in the page. Last
 good view stays in effect on parse failure (mtime hot-reload only
 swaps on a successful parse).
 
+**Autonomy mode (v1.5).** Compound actions ("register this customer
+then create their order", "investigate CASE-042 and tell me what's
+going on") are unlocked in v1.5 by softening the v0.19 anti-
+hallucination "Done." rule + adding an `ITERATIVE FLOW` block to the
+operator system prompt. Two operator-visible knobs control how
+chatty the loop is with `/confirm`:
+
+- `BSS_REPL_LLM_AUTONOMY=granular` (default) — every destructive
+  step in a compound action propose-then-`/confirm`s separately.
+  Per-step operator control even after the first authorisation.
+- `BSS_REPL_LLM_AUTONOMY=batched` — the FIRST destructive step in a
+  `/confirm`-resumed loop gates; subsequent destructive steps in the
+  same loop execute autonomously. One `/confirm` authorises the
+  plan; the loop runs to completion.
+
+Read once at process boot via `bss_orchestrator.autonomy.read_autonomy_mode()`
+(fail-closed on a bad value, same shape as `BSS_API_TOKEN=changeme`)
+and cached on `app.state.autonomy_mode` (cockpit portal) or the
+REPL's module-level `_AUTONOMY_MODE`. Scope is per-process — a
+per-session `/autonomy {granular,batched}` slash command is
+deferred to v1.5.1. The autonomy mode flows through
+`astream_once(autonomy_mode=...)` → `build_graph` → `build_tools` →
+the per-graph `LoopState` that every destructive wrapper observes.
+
+Two safety rails sit alongside autonomy:
+
+- **3-strike loop bail** (`MAX_CONSECUTIVE_TOOL_FAILURES=3` in
+  `bss_orchestrator.session`). When three consecutive tool results
+  are failure-shaped (real exceptions OR structured
+  `POLICY_VIOLATION` / `DESTRUCTIVE_OPERATION_BLOCKED` /
+  `CLIENT_ERROR`), the stream terminates with a structured
+  `AgentEventError` and the cockpit renders a "couldn't recover"
+  panel — catches Gemma thrash without an unbounded loop.
+- **Cockpit chrome filter** (`bss_cockpit.chrome_filter`). When
+  `Conversation.transcript_text()` rehydrates prior turns into the
+  LLM's context, cockpit-emitted chrome (the route error fallback,
+  the empty-final recovery bubble, the citation-guard fallback,
+  totally empty AIMessages) is stripped before the LLM sees it.
+  Without the filter the LLM mimics the placeholder strings
+  instead of doing the work. Inventory-locked by a unit test so a
+  new fallback bubble added without a matching prefix surfaces in
+  code review.
+
+The destructive-tool list (`DESTRUCTIVE_TOOLS` in
+`bss_orchestrator.safety`) is unchanged in v1.5. Autonomy controls
+*how many* `/confirm`s a compound action needs, not *which* tools
+require one.
+
 ### Chat scoping (self-serve, v0.12)
 
 The chat surface is the only orchestrator-mediated route in the

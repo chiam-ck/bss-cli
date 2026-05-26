@@ -333,6 +333,7 @@ Loaded once at startup into a `TokenMap` (HMAC-SHA-256 hashed). Identity derived
 | `BSS_LLM_API_KEY` | OpenRouter key | sentinel `sk-or-v1-replace-me` (rejected) | yes |
 | `BSS_LLM_HTTP_REFERER` | OpenRouter routing hint | repo URL | no |
 | `BSS_LLM_APP_NAME` | OpenRouter app tag | `bss-cli` | no |
+| `BSS_REPL_LLM_AUTONOMY` | Cockpit autonomy mode (v1.5+): `granular` or `batched`. See 8.16. | `granular` | no |
 
 #### Chat caps (v0.12, customer chat surface only)
 
@@ -2454,6 +2455,57 @@ docker compose restart \
     catalog crm payment com som subscription mediation rating provisioning-sim \
     portal-self-serve portal-csr
 ```
+
+### 8.20 Multi-step cockpit actions (v1.5)
+
+The REPL's natural-language grammar is an **agentic loop** as of v1.5 — one operator prompt can chain N tool calls. Useful when:
+
+- Two-or-more reads in one breath ("show me CUST-001 then list their subscriptions")
+- A compound write ("register CUST-XYZ then create order for PLAN_M")
+- Discovery-then-action ("investigate CASE-042 and tell me what's going on")
+
+**Granular mode (default — `BSS_REPL_LLM_AUTONOMY=granular`).**
+
+Each destructive step gates separately. The operator types one NL prompt; the loop emits two `⚠ PROPOSE` panels (one per destructive write), each waiting for `/confirm`:
+
+```
+> register CUST-XYZ then issue them PLAN_M
+⚠  PROPOSE: customer.create id="CUST-XYZ" email="..." 
+> /confirm
+(customer card renders)
+⚠  PROPOSE: com.create_order customer_id="CUST-XYZ" offering="PLAN_M"
+> /confirm
+(order card renders, plus agent's one-sentence wrap-up)
+```
+
+**Batched mode (`BSS_REPL_LLM_AUTONOMY=batched`).**
+
+The FIRST destructive step gates. The operator authorises the whole plan with one `/confirm`; subsequent destructive steps in the same loop execute autonomously:
+
+```bash
+export BSS_REPL_LLM_AUTONOMY=batched
+# Restart the orchestrator + cockpit so the new value loads.
+docker compose restart portal-csr
+```
+
+```
+> register CUST-XYZ then issue them PLAN_M
+⚠  PROPOSE: customer.create id="CUST-XYZ" email="..."
+> /confirm
+(customer card renders)
+(order card renders — auto-executed; no second /confirm)
+(agent's one-sentence wrap-up)
+```
+
+The mode is process-scoped — read once at orchestrator/cockpit boot via `bss_orchestrator.autonomy.read_autonomy_mode()`, cached on `app.state.autonomy_mode` for the portal and a module-level for the REPL. Unknown values fail-closed at boot (`AutonomyMisconfigured`) — same shape as `BSS_API_TOKEN=changeme`. Per-session `/autonomy {granular,batched}` override is open as a v1.5.1 question.
+
+**Aborting a multi-step plan.** Any non-`/confirm` input replaces the pending proposal — type a new prompt to discard the plan in-flight. The pending row gets UPSERTed; nothing executes.
+
+**Recovery semantics.** When a tool returns a structured error (`POLICY_VIOLATION`, `DESTRUCTIVE_OPERATION_BLOCKED`, `CLIENT_ERROR`) or raises (`ToolMessage.status="error"`), the loop feeds the error back to the LLM as a `role:"tool"` payload and lets it adapt. After **3 consecutive failures in a row** the loop bails with a "couldn't recover" panel — catches the Gemma thrash pattern where the same broken call keeps recurring. The 3-strike threshold lives in `bss_orchestrator.session.MAX_CONSECUTIVE_TOOL_FAILURES`.
+
+**Chrome-filter contract.** The cockpit's own emit chrome (`(no reply)`, the empty-final recovery bubble, the citation-guard fallback, the route error fallback) is stripped from history before `astream_once(transcript=...)` sees it (`bss_cockpit.chrome_filter`). Without the filter the LLM mimics the placeholder strings; pre-v1.5 long conversations occasionally exhibited this. New cockpit fallback bubbles MUST add their prefix to `_ASSISTANT_CHROME_PREFIXES` — the inventory-lock unit test fails CI on the omission.
+
+**When to flip to batched.** Two-step compounds where the second step is obvious from the first ("register customer then create order with the COF you just added") feel fine in batched. Investigations that may surface destructive proposals as you go ("investigate this case, then maybe close the open tickets, then maybe terminate the line") are safer in granular — you don't want a propose for `subscription.terminate` to fire just because the loop is mid-stream. Default to granular until a specific compound action repeatedly costs you a typed `/confirm`.
 
 ---
 
