@@ -46,6 +46,36 @@ from .ownership import (
 )
 
 
+# v1.5 — agentic loop bail when tool calls keep failing. Catches the
+# Gemma thrash pattern where the model fires the same broken call over
+# and over instead of adapting. Three consecutive failures = bail with
+# a structured AgentEventError; any success resets the counter.
+MAX_CONSECUTIVE_TOOL_FAILURES: int = 3
+
+# Substring markers in the tool result that flag a "failure" for the
+# purpose of the consecutive-failures counter. PolicyViolation +
+# DESTRUCTIVE_OPERATION_BLOCKED + CLIENT_ERROR are the structured
+# errors the orchestrator emits today; ToolMessage.status == "error"
+# is the LangGraph-native signal for an actual exception. We treat
+# all three the same — they all mean "the LLM's call didn't do what
+# it intended", which is the thing that signals thrash.
+_TOOL_FAILURE_MARKERS: tuple[str, ...] = (
+    '"error": "DESTRUCTIVE_OPERATION_BLOCKED"',
+    '"error": "POLICY_VIOLATION"',
+    '"error": "CLIENT_ERROR"',
+)
+
+
+def _is_failure_tool_result(content: str, is_error: bool) -> bool:
+    """True if the tool result should count as a failure for the bail
+    counter. Conservative — false negatives are fine (we'd just bail
+    later or not at all), but false positives could end a healthy
+    investigation loop early."""
+    if is_error:
+        return True
+    return any(marker in content for marker in _TOOL_FAILURE_MARKERS)
+
+
 def _resolve_token_for_service_identity(identity: str) -> str:
     """v0.9 — resolve a service_identity label to its env-loaded token.
 
@@ -337,6 +367,8 @@ async def astream_once(
             seen_call_ids: set[str] = set()
             last_ai_text = ""
             usage_total = {"input_tokens": 0, "output_tokens": 0, "model": ""}
+            # v1.5 — bail counter (see MAX_CONSECUTIVE_TOOL_FAILURES).
+            consecutive_failures = 0
 
             # v0.13 — when the caller passes a non-empty ``transcript``,
             # parse it into typed prior-turn messages and prepend them
@@ -434,6 +466,33 @@ async def astream_once(
                                     result_full=full,
                                     is_error=is_error,
                                 )
+                                # v1.5 — 3-strike bail. Track consecutive
+                                # failure-shaped results across the loop.
+                                # A run of three (real exceptions OR
+                                # structured POLICY_VIOLATION /
+                                # DESTRUCTIVE_OPERATION_BLOCKED /
+                                # CLIENT_ERROR results) terminates the
+                                # stream with a clear AgentEventError so
+                                # the cockpit can render a "couldn't
+                                # recover" panel instead of letting the
+                                # LLM thrash forever. Counter resets on
+                                # any success.
+                                if _is_failure_tool_result(full, is_error):
+                                    consecutive_failures += 1
+                                    if consecutive_failures >= MAX_CONSECUTIVE_TOOL_FAILURES:
+                                        yield AgentEventError(
+                                            message=(
+                                                f"agent_loop_bailout: "
+                                                f"{MAX_CONSECUTIVE_TOOL_FAILURES} "
+                                                f"consecutive tool failures "
+                                                f"(last tool: {msg.name or 'unknown'!r}). "
+                                                f"The agent could not recover — "
+                                                f"send a fresh prompt or rephrase."
+                                            )
+                                        )
+                                        return
+                                else:
+                                    consecutive_failures = 0
                                 # v0.12 PR4 — output ownership trip-wire.
                                 # Skips error-status results (they cannot
                                 # carry customer-bound rows by definition)
