@@ -31,9 +31,9 @@
             {
               "name": "provisioning.set_fault_injection",
               "args": {
-                "task_type": "create_msisdn",
-                "fault_kind": "fail",
-                "probability": 0.0
+                "task_type": "HLR_PROVISION",
+                "fault_type": "fail_first_attempt",
+                "enabled": false
               }
             }
           ]
@@ -65,9 +65,9 @@
             {
               "name": "provisioning.set_fault_injection",
               "args": {
-                "task_type": "create_msisdn",
-                "fault_kind": "fail",
-                "probability": 0.0
+                "task_type": "HLR_PROVISION",
+                "fault_type": "fail_first_attempt",
+                "enabled": false
               }
             }
           ]
@@ -88,9 +88,9 @@
             {
               "name": "provisioning.set_fault_injection",
               "args": {
-                "task_type": "create_msisdn",
-                "fault_kind": "fail",
-                "probability": 0.0
+                "task_type": "HLR_PROVISION",
+                "fault_type": "fail_first_attempt",
+                "enabled": false
               }
             }
           ]
@@ -100,9 +100,9 @@
             {
               "name": "provisioning.set_fault_injection",
               "args": {
-                "task_type": "create_esim_profile",
-                "fault_kind": "fail",
-                "probability": 0.0
+                "task_type": "ESIM_PROFILE_PREPARE",
+                "fault_type": "fail_first_attempt",
+                "enabled": false
               }
             }
           ]

@@ -170,24 +170,21 @@ def test_v15_compound_action_granular(page, snap, base_urls):
     )
     snap("turn1-first-pending-staged")
 
-    # /confirm — POST returns 303 (same contract as the v1.4.1 spec).
-    response = page.request.post(
-        f"{base}/cockpit/{session_id}/confirm", max_redirects=0
-    )
-    assert response.status == 303, (
-        f"expected 303 from /confirm; got {response.status}"
-    )
-
-    # The /confirm POST writes the synthetic "(operator typed /confirm — ...)"
-    # user message + triggers a new SSE turn from the cockpit_events route.
-    # Wait for that turn to finish.
-    page.goto(f"{base}/cockpit/{session_id}")
-    _wait_for_turn_done(page, timeout_ms=20_000)
+    # Type /confirm via the compose form — NOT the POST /confirm
+    # endpoint, which is a no-op marker. Typing /confirm causes the
+    # cockpit's slash-command interceptor (routes/cockpit.py around
+    # line 755) to flip allow_destructive_this_turn=True for the next
+    # SSE turn AND rewrite the user message to the synthetic
+    # "(operator typed /confirm — ...)" prompt, which matches the
+    # fixture's turn-2 entry.
+    _send_message(page, "/confirm")
+    _wait_for_turn_done(page, timeout_ms=25_000)
 
     # Granular re-gate: after /confirm, the LLM tried two destructives;
-    # the first executed, the second BLOCKED. The cockpit must stage the
-    # SECOND as a fresh pending_destructive — different args (different
-    # task_type) so we can tell it apart from turn 1's staging.
+    # the first executed (loop_state.destructive_executed=1), the
+    # second BLOCKED because autonomy=granular. The cockpit's
+    # COMPLETED-with-BLOCKED detector picks up the second's BLOCKED
+    # result and stages it as a fresh pending_destructive row.
     second_tool = _run_async_in_thread(
         _pending_destructive_tool(db_url, session_id)
     )
@@ -198,8 +195,8 @@ def test_v15_compound_action_granular(page, snap, base_urls):
     )
     snap("turn2-second-pending-restaged")
 
-    # Also verify exactly one row — the v1.5 staging path UPSERTs on
-    # (session_id), so the old row should have been replaced not appended.
+    # Also verify exactly one row — the staging path UPSERTs on
+    # (session_id), so the prior row was replaced, not appended.
     post = _run_async_in_thread(
         _count_pending_destructive(db_url, session_id)
     )
@@ -253,15 +250,16 @@ def test_v15_compound_action_batched(page, snap, base_urls):
         f"expected 1 pending row after turn 1; got {pre_confirm}"
     )
 
-    response = page.request.post(
-        f"{base}/cockpit/{session_id}/confirm", max_redirects=0
-    )
-    assert response.status == 303
+    # Type /confirm via the compose form (the POST /confirm endpoint
+    # is a no-op marker; the actual destructive execution rides on
+    # the cockpit's slash-command interceptor of the user message).
+    _send_message(page, "/confirm")
+    _wait_for_turn_done(page, timeout_ms=25_000)
 
-    page.goto(f"{base}/cockpit/{session_id}")
-    _wait_for_turn_done(page, timeout_ms=20_000)
-
-    # Batched: both destructives executed; no fresh pending row.
+    # Batched: both destructives executed; the consume_pending_destructive
+    # call in the events route cleared the staged row; no new
+    # DESTRUCTIVE_OPERATION_BLOCKED result fired, so nothing was
+    # re-staged. End state: zero pending rows.
     post = _run_async_in_thread(
         _count_pending_destructive(db_url, session_id)
     )
