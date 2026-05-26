@@ -3645,3 +3645,146 @@ XML stays because it's small and useful for the v1.4.x GH Actions slot.
 - The gallery generator (`bss_e2e/report.py`) is template-free (inline
   HTML + CSS in code) so future operators editing it don't have to chase
   a separate Jinja file.
+
+## 2026-05-26 — v1.5.0 — Multi-step cockpit orchestration + `BSS_REPL_LLM_AUTONOMY`
+
+**Context.** Through v1.4.1 the cockpit's natural-language grammar
+effectively did one action per operator prompt. The ReAct loop
+*mechanically* supported chaining — but two layers above it suppressed
+the use:
+
+1. **Safety contract.** Every destructive tool in `DESTRUCTIVE_TOOLS`
+   propose-then-`/confirm`s, and the cockpit pattern wrote
+   `pending_destructive` after each propose. Compound writes
+   ("register CUST + create order") thus needed one /confirm per
+   destructive — no way for the operator to authorise the plan once.
+2. **v0.19 anti-hallucination prompt.** After every renderer-backed
+   read the LLM was instructed to reply with "one short sentence and
+   STOP". That was the right fix for the `customer.get` →
+   "Product Catalog: PLAN_L 45.00…" re-fabrication bug (May 2026), but
+   it ALSO suppressed compound investigations. The operator couldn't
+   say "investigate CASE-042" and have the agent walk `case.get` →
+   `customer.get` → `subscription.list_for_customer` → `ticket.list`
+   in one turn.
+
+Loyalty-cli landed an equivalent unlock at v0.11 (`cli/loyalty-cli/
+src/loyalty_cli/repl/llm.py:read_autonomy_mode`,
+`_FAKE_PROPOSE_LINE_RE`, `_is_cockpit_chrome`, 3-strike bail). Design
+proven in a sister project, doctrinally compatible, lifts cleanly.
+
+**Decision.** v1.5 ships five pieces, no new container, no new schema,
+no migration:
+
+### 1. `BSS_REPL_LLM_AUTONOMY` env var
+
+`granular` (default — current behaviour) or `batched` (new opt-in).
+Granular re-gates after each destructive in the loop. Batched
+authorises the whole loop on the first /confirm. Unknown values raise
+`AutonomyMisconfigured` at orchestrator boot — same fail-closed shape
+as the v0.9 named-token sentinel rejection. Read once at process boot
+via `bss_orchestrator.autonomy.read_autonomy_mode()`, cached on
+`app.state.autonomy_mode` (cockpit portal) and a module-level
+`_AUTONOMY_MODE` (REPL).
+
+### 2. Autonomy-aware destructive gating
+
+`safety.wrap_destructive` grows `autonomy_mode` + `loop_state` kwargs.
+`build_tools` creates one `LoopState` per `build_graph` invocation
+and shares it across every destructive wrapper in that graph. In
+granular mode + `allow_destructive=True`, the first destructive fires
+and subsequent destructive calls in the same graph block again with
+the original `DESTRUCTIVE_OPERATION_BLOCKED` shape. Each
+`astream_once` invocation builds its own graph, so `LoopState` resets
+between turns naturally. `autonomy_mode` defaults to `"batched"` at
+the primitive level so the dozens of scenario/test callers that don't
+pass it keep their pre-v1.5 behaviour; production cockpit callers
+pass the cached mode explicitly.
+
+### 3. ITERATIVE FLOW prompt block + softened "Done." rule
+
+`bss_cockpit/prompts.py _COCKPIT_INVARIANTS` gains a (v1.5+)
+ITERATIVE FLOW section with three bss-shaped worked examples (read
+chain, case investigation, compound write). The v0.19 "after
+renderer-backed call → one short sentence, STOP" rule is softened:
+the TEXT reply that TERMINATES a compound action is still bound by
+the one-sentence rule, but the agent MAY emit another TOOL CALL
+instead of a text reply when the prompt clearly requires more steps.
+Anti-duplication contract unchanged. Doctrine guard
+`orchestrator/tests/test_iterative_flow_scope.py` asserts ITERATIVE
+FLOW is in the operator prompt AND absent from
+`orchestrator/bss_orchestrator/customer_chat_prompt.py` — compound
+actions are an operator capability, the v0.12 chat caps + ownership
+trip-wire were never stress-tested against agent-driven write
+chains.
+
+### 4. 3-strike loop bail
+
+`MAX_CONSECUTIVE_TOOL_FAILURES=3` in `bss_orchestrator.session`. After
+three consecutive failure-shaped tool results (real exceptions OR
+structured `POLICY_VIOLATION` / `DESTRUCTIVE_OPERATION_BLOCKED` /
+`CLIENT_ERROR`), `astream_once` terminates with `AgentEventError` and
+the cockpit renders a "couldn't recover" panel — catches Gemma's
+thrash pattern without an unbounded loop. Threshold lifted from
+loyalty-cli.
+
+### 5. Cockpit chrome filter on history rehydration
+
+New `bss_cockpit.chrome_filter` with `is_cockpit_chrome` +
+`strip_fake_propose`. When `Conversation.transcript_text()` rehydrates
+prior turns into the LLM's context for `astream_once(transcript=...)`,
+cockpit-emitted chrome (the route error fallback, the empty-final
+recovery bubble, the citation-guard fallback, totally empty
+AIMessages) is stripped. Without the filter the LLM mimics the
+placeholder strings, sees its own past "(no reply)" as prior
+reasoning, learns the citation-guard fallback as the default — three
+failure modes observed in long pre-v1.5 conversations.
+`_ASSISTANT_CHROME_PREFIXES` is inventory-locked by a unit test so a
+new cockpit fallback bubble added without a matching prefix surfaces
+in CI.
+
+**Alternatives rejected.**
+
+- *Plan-emit-then-confirm-once* (LLM emits the full compound sequence
+  as JSON; operator confirms the plan once; all steps execute). Same
+  shape loyalty-cli rejected and for the same reason — operator loses
+  per-step control, and there's no clean recovery shape when a mid-
+  plan step fails. Available as the `batched` mode for operators who
+  trust the loop after a few uses.
+- *Composite read tools* (`case.investigate(case_id)` that bundles the
+  read chain server-side and returns one structured payload). Considered
+  for v1.5 but kept out — v1.5 unlocks the LLM-driven path; v1.6 can
+  add server-side fast paths for high-frequency investigations without
+  re-architecting the cockpit.
+- *Per-tool autonomy annotations* (`admin.reset_operational_data` always
+  granular even in batched mode). Real concern, deferred to v1.5.2 as
+  an open question rather than a v1.5.0 default.
+
+**Consequences.**
+
+- Compound actions ("register customer + create order", "investigate
+  case + propose next action") work in one operator prompt under
+  batched mode. Granular mode (default) preserves pre-v1.5 per-step
+  control behaviour.
+- New env var entry in `.env.example` + HANDBOOK §8.20 with worked
+  examples + recovery semantics + the 3-strike bail rule + the
+  chrome-filter contract.
+- Four new CLAUDE.md anti-pattern lines under `Cockpit (v1.5 —
+  multi-step autonomy)`: autonomy module ownership; ITERATIVE FLOW
+  scope (operator-only); MAX_CONSECUTIVE_TOOL_FAILURES contract;
+  `_ASSISTANT_CHROME_PREFIXES` inventory lock.
+- ARCHITECTURE.md § Operator cockpit gains a v1.5 paragraph covering
+  the autonomy modes + 3-strike bail + chrome filter.
+- 38 new unit tests across `autonomy`, `safety`, `session` (3-strike
+  bail classifier), `bss_cockpit.chrome_filter`, doctrine guard.
+  Total orchestrator: 403 → 420; bss-cockpit: 66 → 87. E2E specs for
+  compound action (granular + batched) and case investigation land in
+  Phase E.
+- The destructive-tool list (`DESTRUCTIVE_TOOLS`) is unchanged.
+  Autonomy controls *how many* /confirms a compound action needs, NOT
+  which tools require one. Adding a tool to `DESTRUCTIVE_TOOLS` is
+  still a doctrine decision.
+- Per-session `/autonomy {granular,batched}` slash override is the
+  v1.5.1 follow-up; per-tool annotations are v1.5.2; the alternative
+  "visibility / debt closure" pitch (outbox/inbox dashboards,
+  usage.rated consumer + live verify, CI integration for e2e, parallel-
+  spec safety) stays on the v1.6 candidate list.

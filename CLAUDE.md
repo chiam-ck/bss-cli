@@ -249,6 +249,13 @@ Two distinct planes:
 - Don't accept user-controllable `session_id` outside cockpit routes. Both REPL `--session` and browser path are operator-typed inputs only.
 - Don't store secrets in `settings.toml`. Anything that would burn the perimeter if leaked stays in `.env`.
 
+**Cockpit (v1.5 — multi-step autonomy):**
+
+- Don't read `BSS_REPL_LLM_AUTONOMY` outside `bss_orchestrator.autonomy`. `read_autonomy_mode()` is the single seam; fail-closed boot validation (`AutonomyMisconfigured`) is the contract — same shape as the v0.9 named-token sentinel rejection. The cached mode flows via `app.state.autonomy_mode` (cockpit portal) and the REPL's module-level `_AUTONOMY_MODE`.
+- Don't add the `ITERATIVE FLOW` prompt block to the `customer_self_serve` chat surface (`orchestrator/bss_orchestrator/customer_chat_prompt.py`). Compound actions are an operator capability — the v0.12 chat caps + ownership trip-wire were never stress-tested against agent-driven write chains. Doctrine guard: `orchestrator/tests/test_iterative_flow_scope.py` asserts the absence in customer chat AND the presence in the operator prompt.
+- Don't change `MAX_CONSECUTIVE_TOOL_FAILURES` from 3 without updating the test guard, the soak corpus expectations, and the cockpit's "couldn't recover" panel copy. Three is the lift from loyalty-cli; raising it invites longer thrash, lowering it cuts off healthy investigation loops.
+- Don't extend the cockpit's emit-chrome set without adding the new prefix to `bss_cockpit.chrome_filter._ASSISTANT_CHROME_PREFIXES`. The inventory-lock test pins the set; an omission lets chrome back into LLM history and re-opens the mimicry/state-confusion/citation-thrash failure modes from v1.5's design notes.
+
 **Provider adapters & webhooks (v0.14):**
 
 - Per-domain adapter Protocols only — no unified `Provider.execute()` API.

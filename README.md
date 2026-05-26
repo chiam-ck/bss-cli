@@ -237,6 +237,21 @@ it spots one. Use mock or unset for `BSS_PAYMENT_*`, `BSS_PORTAL_KYC_*`, and
 See `phases/V1_4_0.md` for the suite design and
 `docs/e2e-reports/README.md` for the artefact-format details.
 
+### Multi-step cockpit actions (`BSS_REPL_LLM_AUTONOMY`, v1.5)
+
+The cockpit's natural-language grammar is an **agentic loop** as of v1.5 — one operator prompt can chain N tool calls ("show me CUST-001 then list their subscriptions", "investigate CASE-042", "register CUST-XYZ then create order for PLAN_M"). One env var controls how chatty the loop is with `/confirm`:
+
+```bash
+# Default — each destructive step propose-then-/confirms separately.
+BSS_REPL_LLM_AUTONOMY=granular
+
+# Opt-in — first destructive in a loop gates; subsequent destructive
+# steps in the same /confirm-resumed loop execute autonomously.
+BSS_REPL_LLM_AUTONOMY=batched
+```
+
+Unknown values fail-closed at boot (`AutonomyMisconfigured`) — same shape as `BSS_API_TOKEN=changeme`. Per-process scope; a per-session slash-override is deferred to v1.5.1. See [HANDBOOK §8.20](docs/HANDBOOK.md#820-multi-step-cockpit-actions-v15) for worked examples + recovery semantics + the 3-strike bail rule + the chrome-filter contract.
+
 ## Documentation map
 
 - [`CLAUDE.md`](CLAUDE.md) — project doctrine; read first
