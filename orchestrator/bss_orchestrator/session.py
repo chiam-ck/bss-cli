@@ -193,13 +193,27 @@ def _truncate(text: str, limit: int = _RESULT_TRUNCATE) -> str:
 # longer exist as a public surface.
 
 
-async def ask_once(text: str, *, allow_destructive: bool = False) -> str:
-    """Run a single question through a fresh graph — no session state kept."""
+async def ask_once(
+    text: str,
+    *,
+    allow_destructive: bool = False,
+    autonomy_mode: str = "batched",
+) -> str:
+    """Run a single question through a fresh graph — no session state kept.
+
+    ``autonomy_mode`` defaults to ``"batched"`` for backward-compat with
+    scenario/test callers that don't care about multi-step gating. The
+    cockpit (which DOES care) calls ``astream_once`` with the cached
+    mode from ``read_autonomy_mode()`` instead.
+    """
     with tracer("bss-orchestrator").start_as_current_span("bss.ask") as span:
         span.set_attribute(semconv.BSS_CHANNEL, "llm")
         span.set_attribute("bss.ask.allow_destructive", allow_destructive)
+        span.set_attribute("bss.ask.autonomy_mode", autonomy_mode)
         use_llm_context()
-        graph = build_graph(allow_destructive=allow_destructive)
+        graph = build_graph(
+            allow_destructive=allow_destructive, autonomy_mode=autonomy_mode
+        )
         state = await graph.ainvoke({"messages": [HumanMessage(content=text)]})
         return _last_ai_text(state["messages"])
 
@@ -219,6 +233,7 @@ async def astream_once(
     tool_filter: str | None = None,
     system_prompt: str | None = None,
     transcript: str = "",
+    autonomy_mode: str = "batched",
 ) -> AsyncIterator[AgentEvent]:
     """Streaming variant of ``ask_once``. Yields ``AgentEvent`` as the graph runs.
 
@@ -276,6 +291,7 @@ async def astream_once(
     with tracer("bss-orchestrator").start_as_current_span("bss.ask") as span:
         span.set_attribute(semconv.BSS_CHANNEL, channel)
         span.set_attribute("bss.ask.allow_destructive", allow_destructive)
+        span.set_attribute("bss.ask.autonomy_mode", autonomy_mode)
         span.set_attribute("bss.ask.streaming", True)
         if actor:
             span.set_attribute("bss.actor", actor)
@@ -316,6 +332,7 @@ async def astream_once(
                 allow_destructive=allow_destructive,
                 tool_filter=tool_filter,
                 system_prompt=system_prompt,
+                autonomy_mode=autonomy_mode,
             )
             seen_call_ids: set[str] = set()
             last_ai_text = ""

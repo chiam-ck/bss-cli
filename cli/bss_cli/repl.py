@@ -667,6 +667,7 @@ async def _drive_turn(
             tool_filter="operator_cockpit",
             system_prompt=system_prompt,
             transcript=prior_transcript,
+            autonomy_mode=_AUTONOMY_MODE,
         ):
             if isinstance(event, AgentEventToolCallStarted):
                 captured_tool_calls.append(

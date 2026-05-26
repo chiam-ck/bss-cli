@@ -26,7 +26,7 @@ from langgraph.prebuilt import create_react_agent
 
 from .llm import build_chat_model
 from .prompts import SYSTEM_PROMPT
-from .safety import wrap_destructive
+from .safety import LoopState, make_loop_state, wrap_destructive
 from .tools import TOOL_PROFILES, TOOL_REGISTRY
 
 # Tools present in TOOL_REGISTRY (so scenarios can use them via ``action:``)
@@ -69,7 +69,14 @@ def _tool_error_to_observation(exc: Exception) -> str:
     return f'{{"error": "{type(exc).__name__}", "detail": "{exc}"}}'
 
 
-def _as_structured_tool(name: str, fn: Any, *, allow_destructive: bool) -> StructuredTool:
+def _as_structured_tool(
+    name: str,
+    fn: Any,
+    *,
+    allow_destructive: bool,
+    autonomy_mode: str,
+    loop_state: LoopState,
+) -> StructuredTool:
     """Wrap a registered async tool as a LangChain ``StructuredTool``.
 
     We wrap the coroutine in a try/except that converts ANY exception to a
@@ -77,8 +84,18 @@ def _as_structured_tool(name: str, fn: Any, *, allow_destructive: bool) -> Struc
     ``ToolException``, and wrapping inside the coroutine means the graph
     never sees the exception at all — the tool simply returns an
     error-shaped string and the ReAct loop reads it as a normal observation.
+
+    The shared ``loop_state`` is what lets granular mode re-gate after the
+    first destructive tool fires — every wrapper in this graph reads
+    the same dict.
     """
-    gated = wrap_destructive(fn, tool_name=name, allow_destructive=allow_destructive)
+    gated = wrap_destructive(
+        fn,
+        tool_name=name,
+        allow_destructive=allow_destructive,
+        autonomy_mode=autonomy_mode,
+        loop_state=loop_state,
+    )
     description = (fn.__doc__ or "").strip() or f"BSS tool {name}."
 
     # ``functools.wraps(fn)`` copies ``__wrapped__`` (among other dunders) so
@@ -104,6 +121,7 @@ def build_tools(
     *,
     allow_destructive: bool = False,
     tool_filter: str | None = None,
+    autonomy_mode: str = "batched",
 ) -> list[StructuredTool]:
     """Return the LLM-visible tool list, safety-wrapped.
 
@@ -115,6 +133,11 @@ def build_tools(
             ``_LLM_HIDDEN_TOOLS`` still applies. When ``None``, every
             registered, non-hidden tool is returned (CLI / scenario /
             CSR behaviour).
+        autonomy_mode: ``"granular"`` re-gates each destructive after
+            the first fires; ``"batched"`` (default for backward-compat
+            with non-cockpit callers) authorises the whole loop after
+            the first destructive runs. v1.5 cockpit callers pass the
+            value from ``read_autonomy_mode()``.
 
     Raises:
         KeyError: ``tool_filter`` names a profile that does not exist.
@@ -124,8 +147,18 @@ def build_tools(
         allowed = None
     else:
         allowed = TOOL_PROFILES[tool_filter]
+    # One LoopState per graph build; shared across every wrapped
+    # destructive tool so granular mode can observe the first-fire
+    # signal consistently.
+    loop_state = make_loop_state()
     return [
-        _as_structured_tool(name, fn, allow_destructive=allow_destructive)
+        _as_structured_tool(
+            name,
+            fn,
+            allow_destructive=allow_destructive,
+            autonomy_mode=autonomy_mode,
+            loop_state=loop_state,
+        )
         for name, fn in sorted(TOOL_REGISTRY.items())
         if name not in _LLM_HIDDEN_TOOLS
         and (allowed is None or name in allowed)
@@ -138,6 +171,7 @@ def build_graph(
     temperature: float = 0.0,
     tool_filter: str | None = None,
     system_prompt: str | None = None,
+    autonomy_mode: str = "batched",
 ) -> Any:
     """Compile a ReAct agent over the BSS tool surface.
 
@@ -146,7 +180,7 @@ def build_graph(
             short-circuits with a structured ``DESTRUCTIVE_OPERATION_BLOCKED``
             result and the LLM sees that and explains the situation to the
             user. Set to ``True`` only when the human has passed
-            ``--allow-destructive``.
+            ``--allow-destructive`` (CLI) or after ``/confirm`` (cockpit).
         temperature: LLM sampling temperature. Default ``0.0``.
         tool_filter: optional ``TOOL_PROFILES`` key — narrows the
             LLM-visible tool list to one curated profile (v0.12 chat
@@ -154,13 +188,23 @@ def build_graph(
         system_prompt: optional override for the agent's system
             message. Defaults to the canonical ``SYSTEM_PROMPT``;
             v0.12 chat passes the customer-chat prompt instead.
+        autonomy_mode: v1.5 — ``"granular"`` re-gates each destructive
+            after the first fires; ``"batched"`` authorises the loop.
+            Defaults to ``"batched"`` to preserve pre-v1.5 behaviour
+            for callers (scenarios, tests) that haven't been updated.
+            Production cockpit callers in v1.5+ pass the value cached
+            from ``read_autonomy_mode()`` at process boot.
 
     Returns:
         A compiled LangGraph runnable. Invoke with
         ``{"messages": [("user", text)]}`` → receive updated messages.
     """
     llm = build_chat_model(temperature=temperature)
-    tools = build_tools(allow_destructive=allow_destructive, tool_filter=tool_filter)
+    tools = build_tools(
+        allow_destructive=allow_destructive,
+        tool_filter=tool_filter,
+        autonomy_mode=autonomy_mode,
+    )
     return create_react_agent(
         model=llm,
         tools=tools,
