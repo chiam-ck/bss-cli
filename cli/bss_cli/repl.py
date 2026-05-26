@@ -664,6 +664,13 @@ async def _drive_turn(
     cards_shown = 0
     captured_tool_calls: list[dict[str, Any]] = []
     last_tool_proposal: tuple[str, dict] | None = None
+    # v1.5 — list of (name, args) for destructive tools that ACTUALLY
+    # EXECUTED this turn (wrapper let them through, result wasn't
+    # BLOCKED). Used to override the post-execution wrap-up so
+    # "Done." after a /confirm-resumed terminate becomes the
+    # specific "Executed subscription.terminate(SUB-0005)." that the
+    # operator can actually trust.
+    executed_destructive: list[tuple[str, dict]] = []
 
     try:
         async for event in astream_once(
@@ -699,17 +706,20 @@ async def _drive_turn(
                 # pre-v1.5 (allow=False blocks at the gate) and v1.5
                 # granular (second destructive in the same loop
                 # re-gates even with allow=True).
-                if (
-                    event.name
-                    and _is_destructive(event.name)
-                    and "DESTRUCTIVE_OPERATION_BLOCKED" in (raw or "")
-                ):
+                if event.name and _is_destructive(event.name):
                     args = {}
                     for tc in reversed(captured_tool_calls):
                         if tc.get("call_id") == event.call_id:
                             args = tc.get("args", {}) or {}
                             break
-                    last_tool_proposal = (event.name, args)
+                    if "DESTRUCTIVE_OPERATION_BLOCKED" in (raw or ""):
+                        # Gate blocked — stage as pending propose.
+                        last_tool_proposal = (event.name, args)
+                    else:
+                        # Gate let it through — record as executed so
+                        # the post-turn wrap-up override can replace
+                        # "Done." with a specific "Executed ...".
+                        executed_destructive.append((event.name, args))
                 card = _maybe_render_tool_result(event.name, raw)
                 if card:
                     rprint(card)
@@ -805,6 +815,35 @@ async def _drive_turn(
             f"Proposed {tn}({args_preview}). "
             f"Type /confirm to authorise."
         )
+
+    # v1.5 — destructive-just-executed bubble override (symmetric to
+    # the post-propose override above). When a destructive ACTUALLY
+    # RAN this turn (= /confirm-resumed path, allow=True, wrapper let
+    # it through, result wasn't BLOCKED), Gemma's wrap-up is the
+    # same unreliable "Done." / "OK." that's used on every successful
+    # tool call. After "Pending /confirm for subscription.terminate"
+    # from the previous turn the operator just SAW the same word
+    # used for a stalled action — seeing "Done." again is exactly
+    # what teaches them not to trust the cockpit. Replace with the
+    # specific "Executed X(args)." so the bubble names what just
+    # happened. The renderer-backed result card above (if any) is
+    # the detail; this bubble is the operator-facing summary.
+    if executed_destructive and last_tool_proposal is None:
+        # Take the LAST destructive that ran — typically the only one
+        # in a /confirm-resumed turn (granular mode), or the last in
+        # the chain (batched mode).
+        tn, ta = executed_destructive[-1]
+        args_preview = ", ".join(
+            f"{k}={v!r}" for k, v in list(ta.items())[:3]
+        )
+        n = len(executed_destructive)
+        prefix = (
+            f"Executed {tn}({args_preview})"
+            if n == 1
+            else f"Executed {n} destructive actions, last was "
+            f"{tn}({args_preview})"
+        )
+        final_text = f"{prefix}."
 
     # v0.20+ citation guard. If the reply claims handbook/runbook/
     # doctrine but no knowledge.* tool fired this turn, replace the
