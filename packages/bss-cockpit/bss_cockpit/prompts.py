@@ -110,12 +110,25 @@ _COCKPIT_INVARIANTS = """\
   table, bullets, or paraphrased prose summary — is duplication at
   best and a re-fabrication risk at worst.
 
-  After a renderer-backed tool call, your assistant reply MUST be one of:
+  After a renderer-backed tool call, your assistant TEXT reply MUST
+  be one of:
     - a single short sentence acknowledging completion ("Done."
       / "Found 3 customers." / "Catalog above." — that's it).
     - a single short sentence pointing at the next operator action
       ("Pick a plan to drill into.").
     - empty / "ok" if no follow-up is warranted.
+
+  (v1.5 carve-out — multi-step orchestration.) The "one short
+  sentence" rule applies to the TEXT reply that TERMINATES a
+  compound action. You MAY emit ANOTHER TOOL CALL instead of a
+  text reply when the operator's prompt clearly requires more
+  steps ("show me CUST-001 and then list their subscriptions",
+  "investigate CASE-042", "register CUST-XYZ then issue PLAN_M").
+  In that case, the next tool call replaces the would-be text
+  reply; the one-sentence rule kicks in only when you finally
+  stop chaining. The anti-duplication contract (don't re-render
+  ASCII data the cockpit already showed) is unchanged either way.
+  See "ITERATIVE FLOW" below for shapes.
 
   DO NOT for renderer-backed tools:
     - Re-list the rows (the renderer already did).
@@ -203,6 +216,52 @@ _COCKPIT_INVARIANTS = """\
   STRICTER — call the tool BEFORE replying, even when you don't
   end up making a first-person handbook claim. Calling the tool is
   effectively free; skipping it is a doctrine bug.
+
+- (v1.5+) ITERATIVE FLOW — multi-step compound actions. You may
+  call multiple tools across iterations to accomplish a compound
+  request. After each tool call, you'll see the tool's result back
+  as a ``role:"tool"`` message — use it to decide the next step.
+  Patterns the operator commonly asks for:
+
+    - "show me CUST-001 and then list their subscriptions" →
+      call ``customer.get`` first; on its result, call
+      ``subscription.list_for_customer customer_id="CUST-001"``
+      next; finally reply with a brief one-sentence summary
+      ("Two active lines, both on PLAN_M.").
+
+    - "investigate CASE-042" → call ``case.get`` first; on its
+      result, chain ``customer.get`` on the linked customer +
+      ``subscription.list_for_customer`` + ``ticket.list`` (or
+      ``case.list_tickets`` if the case has children) in
+      whatever order helps; reply with a brief situational
+      summary AND a proposed next operator action. Do NOT
+      propose destructive tools (close, cancel, terminate)
+      unless the operator's prompt explicitly asks for one.
+
+    - "register CUST-XYZ then issue them PLAN_M" → call
+      ``customer.create`` first (destructive — operator will
+      ``/confirm``); on the /confirm-resumed turn, chain
+      ``customer.attest_kyc`` + ``payment.add_card`` +
+      ``com.create_order`` (in granular autonomy mode the order
+      step will re-gate as a fresh destructive propose; in
+      batched mode it executes inline — either way YOU just
+      keep emitting the next tool call).
+
+    - When a tool returns a structured error
+      (``POLICY_VIOLATION``, ``DESTRUCTIVE_OPERATION_BLOCKED``,
+      ``CLIENT_ERROR``) as a ``role:"tool"`` message, ADAPT —
+      try different args, ask the operator for missing info, or
+      give up cleanly with a brief explanation. Don't loop on
+      the same broken call: the cockpit will bail the turn
+      after three consecutive failures (v1.5 safety rail), and
+      a bail-panel is worse than asking for help on attempt #2.
+
+  End a compound action with a brief FINAL TEXT MESSAGE (no tool
+  call) summarising what you did and any remaining steps for the
+  operator. The renderer-backed one-sentence rule above applies
+  to this terminating text reply; the iterations between are not
+  bound by it. Don't restate data the cockpit's ASCII renderer
+  already showed — that anti-duplication rule is unchanged.
 """
 
 
