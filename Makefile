@@ -1,4 +1,4 @@
-.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero e2e e2e-down
+.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero e2e e2e-down
 
 help:
 	@echo "  up                  — 10 BSS services (BYOI Postgres/RabbitMQ)"
@@ -9,6 +9,10 @@ help:
 	@echo "  build               — build all service images"
 	@echo "  migrate             — alembic upgrade head"
 	@echo "  seed                — seed reference data (3 plans + 4 VAS + 1000 MSISDNs + 1000 eSIMs)"
+	@echo "  seed-demo           — synced demo seed: 3 customers + 2 promos across BSS + loyalty"
+	@echo "  seed-demo-reset     — surgical reverse of seed-demo (demo-prefix only; spares operator data)"
+	@echo "  loyalty-reset       — TRUNCATE loyalty.* + audit.* and re-stamp alembic head"
+	@echo "  demo-restore        — THE button: reset-db + loyalty-reset + seed-demo (BSS + loyalty in lockstep)"
 	@echo "  knowledge-reindex   — v0.20+ reindex doc corpus into knowledge.doc_chunk"
 	@echo "  test                — run pytest"
 	@echo "  fmt                 — format with ruff"
