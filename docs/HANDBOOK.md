@@ -1,8 +1,8 @@
 ---
 title: BSS-CLI Operator Handbook
-version: 0.19.1
+version: 1.5.1
 audience: operator, deployer, developer, knowledge-base
-updated: 2026-05-04
+updated: 2026-05-31
 tags: [bss-cli, handbook, runbook, reference]
 ---
 
@@ -257,7 +257,7 @@ make up-all
 # 4b. OR BYOI mode — first edit BSS_DB_URL / BSS_MQ_URL / BSS_OTEL_EXPORTER_OTLP_ENDPOINT, then:
 make up
 
-# 5. Apply Alembic migrations (head currently 0021 on v0.19.1).
+# 5. Apply Alembic migrations (latest head 0030 on v1.5).
 make migrate
 
 # 6. Seed reference data: 3 plans + 4 VAS (incl. roaming) + 1000 MSISDNs + 1000 eSIM profiles.

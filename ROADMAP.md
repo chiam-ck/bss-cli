@@ -26,41 +26,45 @@
 | **v0.16.0** | 2026-05-03 | Payment (Stripe Checkout + webhook reconciliation). Track 0 sandbox-probe-first doctrine inherited from v0.15 retrospective. `TokenizerAdapter` Protocol with `mock` + `stripe` impls. Portal does Stripe-hosted Checkout (full-page redirect) — PAN never touches BSS in production. PCI scope guard refuses to boot the portal in production-stripe mode if a card-number `<input>` field survives in any rendered template. `payment.customer` table caches per-(BSS customer, provider) Stripe `cus_*` ref. Webhook is *secondary* source of truth (sync charge response is primary; webhook reconciles + detects drift via `payment.attempt_state_drift` event). Chargebacks + out-of-band refunds are record-only — motto #1. v0.16 idempotency uses `r0` only; crash-restart retry path documented but not implemented. |
 | **v0.17.0** | 2026-05-03 | Telco hygiene release. Three real-telco gaps closed: MNP (`crm.port_request` aggregate with FSM `requested → validated → completed | rejected`, operator-driven via REPL `/ports` + cockpit `port_request.*` tools), MSISDN replenishment (`bss inventory msisdn add-range` + `inventory.msisdn.pool_low` low-watermark event), and roaming as a product (new `data_roaming` allowance type — additive bucket; `VAS_ROAMING_1GB` top-up). `UsageEvent.roaming_indicator: bool` routes the rating decrement to the roaming balance; subscription-level block-on-exhaust independence (roaming exhaustion blocks roaming usage but not the subscription). Four new hero scenarios. Single Alembic migration (`0019`); no new doctrine pillars, no new auth model, no new external integrations. |
 | **v0.18.0** | 2026-05-04 | Automated subscription-renewal worker. In-process tick loop in the subscription service's lifespan polls `subscription.subscription` for due rows and dispatches the existing `renew()` (no logic duplication). New `last_renewal_attempted_at` column + `FOR UPDATE SKIP LOCKED` make the loop multi-replica safe by construction. New `subscription.renewal_skipped` audit event for blocked-overdue subs (cockpit dashboard signal). Admin endpoint `POST /admin-api/v1/renewal/tick-now` (gated by `BSS_ALLOW_ADMIN_RESET`) drives one deterministic sweep for scenarios. Worker can be disabled via `BSS_RENEWAL_TICK_SECONDS=0`. One new hero scenario asserts the worker fires on its own + idempotency holds across consecutive ticks. Single Alembic migration (`0020`); no new container, no new auth, no new external integration. |
+| **v0.20.0** | 2026-05-04 | Cockpit knowledge tool. Tier-0 Postgres FTS over `docs/HANDBOOK.md` + `CLAUDE.md` + runbooks (allowlist in `bss_knowledge.paths.INDEXED_PATHS`; `phases/V0_*.md` deliberately not indexed). `knowledge.search` / `knowledge.get` are `operator_cockpit`-only. The cockpit cites anchors or says "I don't have a citation for that"; a citation guard replaces un-cited handbook claims with a pointer to `bss admin knowledge search`. Catalog `--data-roaming-mb` flag on `add-offering` closes the v0.17 admin gap. Postgres image moves to `pgvector/pgvector:pg16`. |
+| **v1.0.0** | 2026-05-22 | General Availability — wrap of the v0.x arc, no new feature ladder. All seven motto principles hold under load: bundled-prepaid, card-on-file, block-on-exhaust, CLI-first / LLM-native, TMF-compliant, lightweight (~2.65 GiB all-in incl. infra; p99 internal API < 50 ms), write-through policy. Real-provider integrations live (Resend, Didit, Stripe Checkout); SM-DP+ remains the only NDA-gated mock in the production-shape stack. Single-Postgres / schema-per-domain holds; the documented split path is ready when traffic demands it. |
+| **v1.1.0–.3** | 2026-05-22 | Promo codes — *integrate, don't build*. The separate `samurai-bot/loyalty-cli` is the entitlement engine; BSS owns only the money terms (`catalog.promotion`) and composes over HTTP. Non-targeted typed codes (`SUMMER25`) + targeted codes gated by a BSS eligibility list (operator pre-assigns via `bss promo assign`). Discount composes on the lowest-active price; charged effective for 1 / N / perpetual periods, decremented at renewal, ended by a plan change. Claim-at-activation (a provisioning failure never burns a code; a payment decline revokes it). Operator-only tools — customers type a code, never issue one. **loyalty-cli is an optional adapter — BSS-CLI runs fully without it (promos just off); set `BSS_LOYALTY_*` to enable.** Runbook: `docs/runbooks/promo-codes.md`. |
+| **v1.2.0** | 2026-05-24 | Resilient COM/SOM pipeline — the order path can no longer silently lose or strand a paid order. **Transactional outbox** (`bss_events.relay`, per-service in-process tick, `FOR UPDATE SKIP LOCKED`) replaces the inline `exchange.publish` publish-before-commit hazard. **Safe consumers** (`bss_events.bind_consumer`) give every queue retry-TTL + a `<queue>.parked` terminal — poison messages park (operator-visible) instead of dropping. **Inbox dedup** (`<schema>.processed_event` on `event_id`) makes consumers idempotent; `subscription.create` is idempotent on `commercial_order_id` so MQ redelivery can't double-charge. **Reconciliation sweeper** flags `order.stuck` past 15 min — operator backstop, never auto-resolves. Live-verified on real RabbitMQ + Postgres. One-time deploy step (queue redeclaration): `docs/runbooks/v1.2-pipeline-deploy.md`. |
+| **v1.3.0–.2** | 2026-05-25 | Pairing-at-assign + recovery ergonomics. `bss promo assign` mints the customer↔offer pairing in loyalty at assign time (`offer.issue`); targeted-lane activation uses `offer.advance_to_claimed` (public typed codes stay claim-by-code) — partially reverses the v1.1.1 collapse-to-one-path for the targeted lane only. `bss promo unassign` reverses cleanly (eligibility-row delete + loyalty `offer.expire`, falling back to `offer.revoke` if claimed). New **synced demo seed** (`make seed-demo` / `seed-demo-reset` / `demo-restore`) builds a coherent BSS + loyalty dataset in lockstep — idempotent, demo-prefix surgical, BSS-only when loyalty is unwired. Bundles a v1.2.x schema fix: `UNIQUE (msisdn)` / `UNIQUE (iccid)` become partial indices excluding terminated rows so recycled numbers can't brick `subscription.create`. |
+| **v1.4.0–.1** | 2026-05-25 | Playwright-driven e2e suite over the self-serve portal + cockpit veneer. `docker-compose.e2e.yml` pins mock providers + a deterministic LLM fixture; `make e2e` runs demo-restore → pytest → gallery → teardown with cleanup traps. 10 specs green at v1.4.1, ~37s wall-clock. Every run emits **visual artefacts** under `docs/e2e-reports/<UTC-ts>/` — a self-contained `index.html` gallery with per-spec screenshots + embedded video + Playwright trace. |
+| **v1.5.0–.1** | 2026-05-26 | Multi-step cockpit autonomy. The REPL/cockpit grammar becomes an agentic loop — one operator prompt chains N tool calls. `BSS_REPL_LLM_AUTONOMY` (`granular` default / `batched` opt-in) controls `/confirm` granularity across destructive steps; unknown values fail-closed at boot (`AutonomyMisconfigured`). 3-strike bail caps tool-failure thrash (`MAX_CONSECUTIVE_TOOL_FAILURES`); a chrome filter keeps emit-only assistant text out of rehydrated LLM history. The `ITERATIVE FLOW` prompt block is operator-only — never on `customer_self_serve` (doctrine guard). v1.5.1 swaps the default model to `deepseek/deepseek-v4-pro` (Gemma 4 26B needed too much defensive tool-call scaffolding). |
 
-## Toward v1.0 — what's left to swap
+## Toward production-real — the last mock
 
-v0.16 shipped real Stripe (Checkout + webhook reconciliation).
-v0.15 shipped real Didit KYC (with prebaked dev-path preserved).
-v1.0 is what's left to make the platform production-real:
+v0.15 shipped real Didit KYC (prebaked dev-path preserved); v0.16 shipped
+real Stripe (Checkout + webhook reconciliation); v1.0 tagged GA with all
+three real-provider integrations (Resend, Didit, Stripe) live. **The only
+mock left in the production-shape stack is SM-DP+** — real eSIM provisioning
+is NDA-gated:
 
-- **Real Singpass / channel-layer eKYC for SG market.** Didit
-  covers most jurisdictions; a Singapore-market deploy would
-  swap the channel-layer adapter for a Singpass-issued signed
-  JWT. BSS-CLI's contract (`customer.attest_kyc` accepts a signed
-  attestation, records the corroboration_id, enforces
-  `order.create.requires_verified_customer`) does not change.
 - **Real SM-DP+ integration for eSIM provisioning.** The
   v0.15 `EsimProvisioner` Protocol stub gets a real GSMA SGP.22
   adapter. The `inventory.esim` pool, the
   `subscription.get_esim_activation` LPA bundle, and the activation
   state machine are all unchanged shape. The `ESIM_PROFILE_REARM`
   SOM task ships then.
+- **Real Singpass / channel-layer eKYC for SG market.** Didit
+  covers most jurisdictions; a Singapore-market deploy would
+  swap the channel-layer adapter for a Singpass-issued signed
+  JWT. BSS-CLI's contract (`customer.attest_kyc` accepts a signed
+  attestation, records the corroboration_id, enforces
+  `order.create.requires_verified_customer`) does not change.
 - **Public soak.** Real-customer-cohort exposure with all three
   real integrations live, monitored against the v0.12 soak gates
   (zero ownership trips, p99 chat latency, no DB unbounded growth)
   re-run on production data shapes.
-
-v1.0 is **not** a new feature ladder; nothing in v0.7–v0.18 is
-renegotiated. The data model, tool surface, doctrine, and audit
-trail are stable. Tagging v1.0 without the SM-DP+ swap (the only
-remaining mock in the production-shape stack) is a doctrine break.
 
 ## Future (speculative)
 
 These have come up enough to note, not enough to plan. Listed so contributors know they're on the radar; absence of a date means "no commitment".
 
 - **Postpaid (batch mediation plane).** Today's `services/mediation` is TMF635 online mediation: single-event ingest, block-at-edge, no batch CDR collection. Postpaid would mean a parallel mediation pipeline that ingests CDR files, enriches against subscriber data, runs rerating windows. Substantial new domain — would justify its own version and probably its own service (`services/mediation-batch/`).
-- **Multi-tenancy activation.** Every table has a `tenant_id` column already (seeded `'DEFAULT'`). Activating real multi-tenancy means routing requests by tenant claim, scoping queries per tenant, separate sequences per tenant. Pending a customer-side identity story (likely Singpass, see "Toward v1.0") that carries the tenant claim.
+- **Multi-tenancy activation.** Every table has a `tenant_id` column already (seeded `'DEFAULT'`). Activating real multi-tenancy means routing requests by tenant claim, scoping queries per tenant, separate sequences per tenant. Pending a customer-side identity story (likely Singpass, see "Toward production-real") that carries the tenant claim.
 - **Real CDR collection from network probes.** Currently out of scope per `CLAUDE.md` (channel/RAN concern). If a deployer ever wires a real network: a CDR-ingest service that parses Nokia NetAct / Ericsson EBM files into the existing `mediation.usage_event` shape.
 - **EKS / Aurora Tier-3 deployment path.** ARCHITECTURE.md sketches an AWS deployment ladder (Tier 1: ECS Fargate single-AZ; Tier 2: small MVNO; Tier 3: scaled MVNO on EKS + Aurora). Tier 1 is buildable from the current Dockerfiles. Tier 3 needs schema-per-service Postgres extraction (the boundary is already enforced; the split is mechanical).
 - **Customer-initiated chat in the self-serve portal.** Self-serve does signup, not support. A chat surface that escalates to a CSR is a real product, not a v0.x extension.
