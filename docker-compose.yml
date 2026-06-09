@@ -117,6 +117,8 @@ services:
       BSS_SERVICE_NAME: portal-self-serve
       # LiteLLM proxy lives on a separate compose project; we attach
       # its container to the `bss` network so this DNS name resolves.
+      # The attachment is LOST when that container is recreated — see
+      # docs/runbooks/litellm-proxy.md (re-attach + model-route rules).
       # Host CLI reaches the same proxy via localhost:4000 (see .env).
       BSS_LLM_BASE_URL: http://litellm-proxy:4000/v1
       BSS_CATALOG_URL: http://catalog:8000
@@ -164,6 +166,7 @@ services:
     ports: ["9002:8000"]
     environment:
       BSS_SERVICE_NAME: portal-csr
+      # See docs/runbooks/litellm-proxy.md for the proxy wiring rules.
       BSS_LLM_BASE_URL: http://litellm-proxy:4000/v1
       BSS_CATALOG_URL: http://catalog:8000
       BSS_COM_URL: http://com:8000
