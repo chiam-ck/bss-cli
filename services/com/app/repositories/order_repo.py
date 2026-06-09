@@ -1,13 +1,11 @@
 """Repository for ProductOrder aggregate — dumb CRUD over ORM."""
 
-from datetime import datetime, timezone
 
 from bss_clock import now as clock_now
+from bss_models.order_mgmt import OrderStateHistory, ProductOrder
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from bss_models.order_mgmt import OrderStateHistory, ProductOrder
 
 from app import auth_context
 
@@ -50,6 +48,30 @@ class OrderRepository:
             .where(ProductOrder.customer_id == customer_id)
             .order_by(ProductOrder.created_at.desc())
         )
+        result = await self._s.execute(stmt)
+        return list(result.scalars().all())
+
+    async def list(
+        self,
+        *,
+        customer_id: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ProductOrder]:
+        stmt = (
+            select(ProductOrder)
+            .options(
+                selectinload(ProductOrder.items),
+            )
+            .order_by(ProductOrder.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        if customer_id:
+            stmt = stmt.where(ProductOrder.customer_id == customer_id)
+        if state:
+            stmt = stmt.where(ProductOrder.state == state)
         result = await self._s.execute(stmt)
         return list(result.scalars().all())
 

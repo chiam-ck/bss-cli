@@ -57,3 +57,33 @@ def check_resolution_code(resolution_code: str | None) -> None:
             message="Resolution code is required to close a case",
             context={},
         )
+
+
+# v1.6 — field updates (priority/category) got a real service path when
+# the cockpit CRM workbench landed; before that the PATCH endpoint only
+# accepted triggers and `case.update_priority` 422'd on every call.
+
+VALID_PRIORITIES = frozenset({"low", "normal", "medium", "high", "critical"})
+
+
+@policy("case.update.case_is_closed")
+def check_case_not_closed(case_id: str, state: str) -> None:
+    if state == "closed":
+        raise PolicyViolation(
+            rule="case.update.case_is_closed",
+            message=f"Case {case_id} is closed; reopen is not supported",
+            context={"case_id": case_id, "state": state},
+        )
+
+
+@policy("case.update.invalid_priority")
+def check_priority_valid(priority: str) -> None:
+    if priority not in VALID_PRIORITIES:
+        raise PolicyViolation(
+            rule="case.update.invalid_priority",
+            message=(
+                f"Priority {priority!r} is not valid; expected one of "
+                f"{sorted(VALID_PRIORITIES)}"
+            ),
+            context={"priority": priority},
+        )

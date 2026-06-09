@@ -22,6 +22,23 @@ _STATE_TO_TRIGGER: dict[str, str] = {
     "closed": "close",
 }
 
+# v1.6 — ticket counterpart (services/crm/app/domain/ticket_state.py).
+# ``in_progress`` is deliberately absent: three triggers land there
+# (start/resume/reopen), so transition_ticket resolves it from the
+# ticket's current state instead.
+_TICKET_STATE_TO_TRIGGER: dict[str, str] = {
+    "acknowledged": "ack",
+    "pending": "wait",
+    "resolved": "resolve",
+    "closed": "close",
+    "cancelled": "cancel",
+}
+_TICKET_IN_PROGRESS_TRIGGER_BY_SOURCE: dict[str, str] = {
+    "acknowledged": "start",
+    "pending": "resume",
+    "resolved": "reopen",
+}
+
 
 class CRMClient(BSSClient):
     """Client for the CRM service (port 8002)."""
@@ -389,15 +406,26 @@ class CRMClient(BSSClient):
         customer_id: str | None = None,
         state: str | None = None,
         agent_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> list[dict[str, Any]]:
-        """GET /crm-api/v1/case."""
+        """GET /crm-api/v1/case.
+
+        v1.6 — the agent filter now sends ``assignedAgentId`` (the query
+        param the CRM service actually reads; ``agentId`` was silently
+        ignored), and ``limit``/``offset`` page the cockpit case queue.
+        """
         params: dict[str, Any] = {}
         if customer_id:
             params["customerId"] = customer_id
         if state:
             params["state"] = state
         if agent_id:
-            params["agentId"] = agent_id
+            params["assignedAgentId"] = agent_id
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
         resp = await self._request("GET", "/crm-api/v1/case", params=params)
         return resp.json()
 
@@ -420,7 +448,7 @@ class CRMClient(BSSClient):
         return resp.json()
 
     async def transition_case(
-        self, case_id: str, *, to_state: str
+        self, case_id: str, *, to_state: str | None = None, trigger: str | None = None
     ) -> dict[str, Any]:
         """PATCH /crm-api/v1/case/{id} with a state transition.
 
@@ -429,13 +457,20 @@ class CRMClient(BSSClient):
         convert here so callers can stay on the friendlier "to_state"
         shape; unknown target states raise ValueError early so the
         LLM gets a structured error rather than a server 422.
+
+        v1.6 — ``trigger`` may be passed directly for transitions the
+        to_state map can't express (``resume``: pending_customer →
+        in_progress collides with ``take``: open → in_progress).
         """
-        trigger = _STATE_TO_TRIGGER.get(to_state)
         if trigger is None:
-            raise ValueError(
-                f"Unknown target state {to_state!r}; valid targets: "
-                f"{sorted(_STATE_TO_TRIGGER)}"
-            )
+            if to_state is None:
+                raise ValueError("transition_case needs to_state or trigger")
+            trigger = _STATE_TO_TRIGGER.get(to_state)
+            if trigger is None:
+                raise ValueError(
+                    f"Unknown target state {to_state!r}; valid targets: "
+                    f"{sorted(_STATE_TO_TRIGGER)}"
+                )
         resp = await self._request(
             "PATCH",
             f"/crm-api/v1/case/{case_id}",
@@ -548,16 +583,25 @@ class CRMClient(BSSClient):
         subscription_id: str | None = None,
         service_id: str | None = None,
     ) -> dict[str, Any]:
-        """POST /tmf-api/troubleTicket/v4/troubleTicket."""
+        """POST /tmf-api/troubleTicket/v4/troubleTicket.
+
+        v1.6 — ``customerId``/``caseId`` are sent as direct fields; the
+        CRM ``CreateTicketRequest`` schema reads those, and the previous
+        relatedEntity-only payload failed validation (`customerId`
+        required) on every call that carried a customer. relatedEntity
+        is still attached for order/subscription/service references
+        (TMF-shaped, tolerated by the service today, parsed when the
+        schema grows them).
+        """
         body: dict[str, Any] = {
             "ticketType": ticket_type,
             "subject": subject,
         }
-        relates = []
-        if case_id:
-            relates.append({"entityType": "case", "id": case_id})
         if customer_id:
-            relates.append({"entityType": "customer", "id": customer_id})
+            body["customerId"] = customer_id
+        if case_id:
+            body["caseId"] = case_id
+        relates = []
         if order_id:
             relates.append({"entityType": "order", "id": order_id})
         if subscription_id:
@@ -604,22 +648,54 @@ class CRMClient(BSSClient):
     async def assign_ticket(
         self, ticket_id: str, *, agent_id: str
     ) -> dict[str, Any]:
-        """PATCH troubleTicket with assignedAgent."""
+        """PATCH troubleTicket with assignedToAgentId.
+
+        v1.6 — the field is ``assignedToAgentId`` (UpdateTicketRequest);
+        the previous ``assignedAgent`` key was silently ignored by the
+        service, making every assign a no-op.
+        """
         resp = await self._request(
             "PATCH",
             f"/tmf-api/troubleTicket/v4/troubleTicket/{ticket_id}",
-            json={"assignedAgent": agent_id},
+            json={"assignedToAgentId": agent_id},
         )
         return resp.json()
 
     async def transition_ticket(
-        self, ticket_id: str, *, to_state: str
+        self, ticket_id: str, *, to_state: str | None = None, trigger: str | None = None
     ) -> dict[str, Any]:
-        """POST /tmf-api/troubleTicket/v4/troubleTicket/{id}/transition."""
+        """POST /tmf-api/troubleTicket/v4/troubleTicket/{id}/transition.
+
+        v1.6 — the API takes ``{"trigger": ...}``; the previous
+        ``{"toState": ...}`` body failed validation on every call. We
+        map target state → trigger here (mirroring transition_case).
+        ``in_progress`` is reachable via three triggers (start / resume
+        / reopen), so that target costs one ``get_ticket`` read to pick
+        the right one; reads are free. ``trigger=`` overrides directly.
+        """
+        if trigger is None:
+            if to_state is None:
+                raise ValueError("transition_ticket needs to_state or trigger")
+            if to_state == "in_progress":
+                current = await self.get_ticket(ticket_id)
+                src = str(current.get("state", ""))
+                trigger = _TICKET_IN_PROGRESS_TRIGGER_BY_SOURCE.get(src)
+                if trigger is None:
+                    raise ValueError(
+                        f"No transition to in_progress from {src!r}; valid "
+                        f"sources: {sorted(_TICKET_IN_PROGRESS_TRIGGER_BY_SOURCE)}"
+                    )
+            else:
+                trigger = _TICKET_STATE_TO_TRIGGER.get(to_state)
+                if trigger is None:
+                    raise ValueError(
+                        f"Unknown target state {to_state!r}; valid targets: "
+                        f"{sorted(_TICKET_STATE_TO_TRIGGER)} + ['in_progress']"
+                    )
         resp = await self._request(
             "POST",
             f"/tmf-api/troubleTicket/v4/troubleTicket/{ticket_id}/transition",
-            json={"toState": to_state},
+            json={"trigger": trigger},
         )
         return resp.json()
 

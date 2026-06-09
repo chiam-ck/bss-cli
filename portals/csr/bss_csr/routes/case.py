@@ -1,9 +1,16 @@
-"""Case thread drill-in — read-only deep link.
+"""Case thread drill-in — detail page + workbench (v1.6).
 
 Per phases/V0_13_0.md §3.2, the case page is the one v0.5 surface kept
 into v0.13: useful for copy-paste case-id deep links from a chat
 session, slack, or a runbook. No login dependency anymore — the
 cockpit runs single-operator-by-design behind a secure perimeter.
+
+v1.6 — the read-only page grew the CRM workbench: notes, transitions,
+priority, ticket lifecycle, all rendered from ``cases.workbench_context``
+and POSTing to ``routes/cases.py``. The Case API speaks the internal
+snake_case DTO (``customer_id``/``opened_at``), not TMF camelCase —
+``views.field`` reads both, which also fixes the v0.13 page silently
+blanking those fields.
 
 Continues the v0.12 contract: when a case carries
 ``chat_transcript_hash`` (i.e. it was opened by the customer chat
@@ -16,12 +23,15 @@ from __future__ import annotations
 
 import structlog
 from bss_clients.errors import ClientError
-from bss_cockpit import OPERATOR_ACTOR, current as cockpit_config_current
+from bss_cockpit import OPERATOR_ACTOR
+from bss_cockpit import current as cockpit_config_current
 from bss_orchestrator.clients import get_clients
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from ..templating import templates
+from ..views import field, flatten_ticket, fmt_dt
+from .cases import workbench_context
 
 log = structlog.get_logger(__name__)
 router = APIRouter()
@@ -43,16 +53,24 @@ async def case_thread(request: Request, case_id: str) -> HTMLResponse:
             tickets = await clients.crm.list_tickets(case_id=case_id)
         except (ClientError, AttributeError):
             tickets = []
+    ticket_views = [flatten_ticket(t) for t in tickets]
+
+    # Agents for the assign dropdown — best-effort; an empty list just
+    # hides the control.
+    try:
+        agents = [
+            {"id": a.get("id", ""), "name": a.get("name", a.get("id", ""))}
+            for a in await clients.crm.list_agents(state="active") or []
+        ]
+    except (ClientError, AttributeError):
+        agents = []
 
     notes = sorted(
         case_raw.get("notes") or [],
-        key=lambda n: n.get("createdAt", ""),
+        key=lambda n: str(field(n, "created_at", default="")),
     )
 
-    transcript_hash = (
-        case_raw.get("chatTranscriptHash")
-        or case_raw.get("chat_transcript_hash")
-    )
+    transcript_hash = field(case_raw, "chat_transcript_hash", default=None)
     transcript_view: dict | None = None
     if transcript_hash:
         try:
@@ -76,44 +94,48 @@ async def case_thread(request: Request, case_id: str) -> HTMLResponse:
                 "error": "Transcript is no longer retrievable. It may have been archived.",
             }
 
+    case_state = field(case_raw, "state", default="unknown")
+    customer_id = field(case_raw, "customer_id", default="")
+
     cfg = cockpit_config_current()
     return templates.TemplateResponse(
         request,
         "case_thread.html",
         {
+            "active_page": "cases",
             "actor": OPERATOR_ACTOR,
             "model": cfg.settings.llm.model or "(env default)",
             "case": {
                 "id": case_raw.get("id", case_id),
                 "subject": case_raw.get("subject", ""),
-                "state": case_raw.get("state", "unknown"),
-                "priority": case_raw.get("priority", ""),
-                "category": case_raw.get("category", ""),
-                "agent_id": case_raw.get("agentId") or case_raw.get("assignedAgentId"),
-                "customer_id": case_raw.get("customerId", ""),
-                "created_at": case_raw.get("createdAt", ""),
-                "updated_at": case_raw.get("updatedAt", ""),
+                "description": case_raw.get("description") or "",
+                "state": case_state,
+                "priority": field(case_raw, "priority", default=""),
+                "category": field(case_raw, "category", default=""),
+                "resolution_code": field(case_raw, "resolution_code", default=""),
+                "agent_id": field(
+                    case_raw, "opened_by_agent_id", "agent_id", "assigned_agent_id",
+                    default="",
+                ),
+                "customer_id": customer_id,
+                "created_at": fmt_dt(field(case_raw, "opened_at", "created_at", default="")),
+                "closed_at": fmt_dt(field(case_raw, "closed_at", default="")),
                 "chat_transcript_hash": transcript_hash,
             },
-            "tickets": [
-                {
-                    "id": t.get("id", ""),
-                    "type": t.get("ticketType", t.get("type", "")),
-                    "subject": t.get("subject", ""),
-                    "state": t.get("state", "unknown"),
-                    "agent_id": t.get("agentId", ""),
-                }
-                for t in tickets
-            ],
+            "tickets": ticket_views,
+            "agents": agents,
             "notes": [
                 {
                     "id": n.get("id", ""),
                     "body": n.get("body", ""),
-                    "author": n.get("author") or n.get("createdBy") or "system",
-                    "at": n.get("createdAt", ""),
+                    "author": field(n, "author_agent_id", "author", "created_by", default="system"),
+                    "at": fmt_dt(field(n, "created_at", default="")),
                 }
                 for n in notes
             ],
             "transcript": transcript_view,
+            "flash": request.query_params.get("flash", ""),
+            "err": request.query_params.get("err", "")[:300],
+            **workbench_context(case_state, ticket_views),
         },
     )

@@ -20,7 +20,10 @@
     </div>
     <nav class="cockpit-header-nav">
       <a href="/" class="cockpit-nav-link {% if active_page == 'sessions' %}is-active{% endif %}">Sessions</a>
-      <a href="/search" class="cockpit-nav-link {% if active_page == 'search' %}is-active{% endif %}">Find customer</a>
+      <a href="/customers" class="cockpit-nav-link {% if active_page == 'customers' %}is-active{% endif %}">Customers</a>
+      <a href="/cases" class="cockpit-nav-link {% if active_page == 'cases' %}is-active{% endif %}">Cases</a>
+      <a href="/orders" class="cockpit-nav-link {% if active_page == 'orders' %}is-active{% endif %}">Orders</a>
+      <a href="/catalog" class="cockpit-nav-link {% if active_page == 'catalog' %}is-active{% endif %}">Catalog</a>
       <form method="post" action="/cockpit/new" class="cockpit-nav-form">
         <button type="submit" class="cockpit-nav-cta">+ New conversation</button>
       </form>

@@ -40,8 +40,10 @@ from bss_cockpit import (
     Conversation,
     ConversationSummary,
     build_cockpit_prompt,
-    current as cockpit_config_current,
     knowledge_called,
+)
+from bss_cockpit import (
+    current as cockpit_config_current,
 )
 from bss_cockpit.chrome_filter import strip_fake_propose
 from bss_cockpit.renderers import render_tool_result
@@ -125,9 +127,9 @@ def _is_destructive(tool_name: str) -> bool:
 #
 # Source of truth is the renderer dispatch — keep this in sync by
 # importing the dispatch table.
-from bss_cockpit.renderers import RENDERER_DISPATCH as _RENDERED_TOOLS
-
 import re as _re
+
+from bss_cockpit.renderers import RENDERER_DISPATCH as _RENDERED_TOOLS
 
 # Heuristics that flag an assistant bubble as a tool-result mimic.
 # Each pattern is conservative — only fires when the bubble is clearly
@@ -581,6 +583,9 @@ async def cockpit_thread(
             "focus_label": focus_label,
             "transcript_blocks": blocks,
             "stream_session_id": request.query_params.get("turn", ""),
+            # v1.6 — CRM screens hand off with a drafted message; it
+            # lands in the compose box, never auto-sends.
+            "draft": request.query_params.get("draft", "")[:2000],
         },
     )
 
@@ -1066,7 +1071,7 @@ async def cockpit_events(
                     return
         except asyncio.CancelledError:
             raise
-        except Exception as exc:  # noqa: BLE001
+        except Exception:  # noqa: BLE001
             log.exception("cockpit.stream_crashed")
             yield _sse_frame("status", _status_html("error"))
 

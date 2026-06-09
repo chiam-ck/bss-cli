@@ -9,7 +9,7 @@ from app.schemas.internal.case import (
     CaseResponse,
     CloseCaseRequest,
     OpenCaseRequest,
-    TransitionCaseRequest,
+    PatchCaseRequest,
     to_case_note_response,
     to_case_response,
 )
@@ -69,15 +69,25 @@ async def get_case(
 @router.patch("/case/{case_id}", response_model=CaseResponse)
 async def update_case(
     case_id: str,
-    body: TransitionCaseRequest,
+    body: PatchCaseRequest,
     svc: CaseService = Depends(get_case_service),
 ) -> CaseResponse:
-    case = await svc.transition_case(
-        case_id,
-        body.trigger,
-        resolution_code=body.resolution_code,
-    )
-    case = await svc.get_case(case.id)
+    if body.trigger:
+        case = await svc.transition_case(
+            case_id,
+            body.trigger,
+            resolution_code=body.resolution_code,
+        )
+    if body.priority is not None or body.category is not None:
+        case = await svc.update_case_fields(
+            case_id, priority=body.priority, category=body.category
+        )
+    if not body.trigger and body.priority is None and body.category is None:
+        raise HTTPException(
+            status_code=400,
+            detail="PATCH body must carry a trigger and/or priority/category",
+        )
+    case = await svc.get_case(case_id)
     return to_case_response(case)
 
 

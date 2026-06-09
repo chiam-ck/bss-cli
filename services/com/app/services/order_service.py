@@ -1,15 +1,13 @@
 """Order orchestration service — calls policies, not repositories directly."""
 
-from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
 from bss_clients import ClientError, PolicyViolationFromServer
 from bss_clock import now as clock_now
+from bss_models.order_mgmt import OrderItem, ProductOrder
 from bss_telemetry import semconv, tracer
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.order_mgmt import OrderItem, ProductOrder
 
 from app.events.publisher import publish
 from app.policies.base import PolicyViolation
@@ -18,7 +16,6 @@ from app.policies.order import (
     check_customer_exists,
     check_customer_has_payment_method,
     check_offering_currently_sellable,
-    check_offering_exists,
     check_order_transition,
 )
 from app.repositories.order_repo import OrderRepository
@@ -564,3 +561,20 @@ class OrderService:
     async def list_orders_for_customer(self, customer_id: str) -> list[ProductOrder]:
         """Read-only: list orders for a customer."""
         return await self._repo.list_by_customer(customer_id)
+
+    async def list_orders(
+        self,
+        *,
+        customer_id: str | None = None,
+        state: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[ProductOrder]:
+        """Read-only: list orders newest-first, optionally filtered.
+
+        v1.6 — the cockpit CRM order queue needs a cross-customer view;
+        reads are free (motto #7), so no policy gate on listing.
+        """
+        return await self._repo.list(
+            customer_id=customer_id, state=state, limit=limit, offset=offset
+        )

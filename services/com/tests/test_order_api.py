@@ -176,6 +176,37 @@ async def test_list_orders_by_customer(client):
     assert all(o["customerId"] == "CUST-0001" for o in body)
 
 
+# ── v1.6 — cross-customer queue (cockpit CRM) ────────────────────────
+
+async def test_list_orders_without_customer_returns_all(client):
+    await _create_order(client)
+    resp = await client.get(f"{TMF}/productOrder")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert isinstance(body, list)
+    assert len(body) >= 1
+
+
+async def test_list_orders_state_filter_and_paging(client):
+    # Runs against the shared dev DB — assert relative properties, not
+    # absolute counts (other suites/scenarios leave orders behind).
+    await _create_order(client)
+    resp = await client.get(
+        f"{TMF}/productOrder",
+        params={"state": "acknowledged", "limit": 1, "offset": 0},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["state"] == "acknowledged"
+
+    resp = await client.get(
+        f"{TMF}/productOrder", params={"state": "no_such_state"}
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
 # ── State Machine Violations ─────────────────────────────────────────
 
 async def test_cannot_submit_cancelled_order(client):

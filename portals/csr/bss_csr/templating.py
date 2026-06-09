@@ -27,3 +27,11 @@ templates.env.loader = ChoiceLoader(
 )
 # v0.14 — every template gets ``bss_release`` for the brand-tag.
 templates.env.globals["bss_release"] = BSS_RELEASE
+
+# v1.6 — CRM screens share the lenient payload helpers as filters so
+# templates can badge states and format timestamps without per-route
+# plumbing.
+from .views import fmt_dt, state_tone  # noqa: E402
+
+templates.env.filters["fmt_dt"] = fmt_dt
+templates.env.filters["tone"] = state_tone

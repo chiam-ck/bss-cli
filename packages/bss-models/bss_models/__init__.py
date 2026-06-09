@@ -10,7 +10,7 @@ service ``/health`` versions). One bump per release; doctrine.
 # Single source of truth for the platform release version. Every surface
 # (REPL, CSR cockpit, self-serve portal, service /health) imports this
 # so a release bump is one line. Bump on every release tag.
-BSS_RELEASE = "1.5.0"
+BSS_RELEASE = "1.6.0"
 
 from .base import Base, TenantMixin, TimestampMixin
 

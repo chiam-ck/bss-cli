@@ -1,0 +1,96 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, handoff, balance_bars %}
+{% block title_suffix %} · {{ sub.id }}{% endblock %}
+
+{% block main %}
+<a class="back-link" href="/customers/{{ sub.customer_id }}">← {{ sub.customer_id }}</a>
+
+<header class="case-header">
+  <div class="case-header-row">
+    <h1 class="page-title">Subscription {{ sub.id }}</h1>
+    {{ badge(sub.state) }}
+    {% if sub.state_reason %}<span class="crm-muted">({{ sub.state_reason }})</span>{% endif %}
+  </div>
+  <dl class="customer-summary-meta">
+    <div><dt>Customer</dt><dd><a href="/customers/{{ sub.customer_id }}">{{ sub.customer_name }} <code>{{ sub.customer_id }}</code></a></dd></div>
+    <div><dt>MSISDN</dt><dd><code>{{ sub.msisdn }}</code></dd></div>
+    <div><dt>Plan</dt><dd><a href="/catalog/{{ sub.offering_id }}">{{ sub.offering_name or sub.offering_id }}</a></dd></div>
+    <div><dt>Price</dt><dd>{{ sub.price }}</dd></div>
+    <div><dt>Activated</dt><dd><code>{{ sub.activated_at }}</code></dd></div>
+    <div><dt>Renews</dt><dd><code>{{ sub.next_renewal }}</code></dd></div>
+    {% if sub.pending_offering_id %}
+    <div><dt>Plan change</dt><dd>→ {{ sub.pending_offering_id }} at <code>{{ sub.pending_effective_at }}</code></dd></div>
+    {% endif %}
+  </dl>
+  <div class="crm-actions">
+    {{ handoff("Top up (VAS)", "Purchase a VAS top-up on " ~ sub.id ~ ": ", sub.customer_id, small=True) }}
+    {{ handoff("Change plan", "Schedule a plan change on " ~ sub.id ~ " to PLAN_", sub.customer_id, small=True) }}
+    {{ handoff("Renew now", "Renew subscription " ~ sub.id ~ " now", sub.customer_id, small=True) }}
+    {{ handoff("Terminate", "Terminate subscription " ~ sub.id ~ " — reason: ", sub.customer_id, small=True) }}
+    {{ handoff("Ask the agent", "About subscription " ~ sub.id ~ ": ", sub.customer_id, small=True) }}
+  </div>
+</header>
+
+<section class="three-sixty-section">
+  <h2>Bundle</h2>
+  {{ balance_bars(balances) }}
+  <p class="crm-muted">Block-on-exhaust: service stops at zero; back to active via
+  renewal or VAS top-up only (motto #3).</p>
+</section>
+
+<section class="three-sixty-section">
+  <h2>Services (SOM)</h2>
+  {% if services %}
+  <table class="crm-table">
+    <thead><tr><th>ID</th><th>Type</th><th>Spec</th><th>State</th></tr></thead>
+    <tbody>
+      {% for s in services %}
+      <tr>
+        <td><code>{{ s.id }}</code></td>
+        <td>{{ s.type }}</td>
+        <td><code>{{ s.spec_id }}</code></td>
+        <td>{{ badge(s.state) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No service inventory (or SOM unavailable).</p>
+  {% endif %}
+</section>
+
+<section class="three-sixty-section">
+  <h2>Recent usage</h2>
+  {% if usage %}
+  <table class="crm-table">
+    <thead><tr><th>When</th><th>Type</th><th>Quantity</th><th>Roaming</th></tr></thead>
+    <tbody>
+      {% for u in usage %}
+      <tr>
+        <td><code>{{ u.at }}</code></td>
+        <td>{{ u.type }}</td>
+        <td>{{ u.quantity }}</td>
+        <td>{% if u.roaming %}✈ roaming{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No rated usage events (or mediation unavailable).</p>
+  {% endif %}
+</section>
+
+{% if esim and esim.iccid %}
+<section class="three-sixty-section">
+  <h2>eSIM</h2>
+  <dl class="customer-summary-meta">
+    <div><dt>ICCID</dt><dd><code>{{ esim.iccid }}</code></dd></div>
+    {% if esim.activation_code %}
+    <div><dt>LPA</dt><dd><code>{{ esim.activation_code }}</code></dd></div>
+    {% endif %}
+  </dl>
+  <p class="crm-muted">Read-only re-display of the issued profile — not a
+  SGP.22 re-arm (DECISIONS 2026-04-27).</p>
+</section>
+{% endif %}
+{% endblock %}

@@ -937,3 +937,255 @@ body { margin: 0; }
     max-height: 320px;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   v1.6 — cockpit CRM screens (customers / cases / orders / catalog /
+   subscription detail). Reuses the portal_base palette; chat keeps its
+   own styles above — these are deliberately quieter so the thread
+   stays the visual centerpiece.
+   ════════════════════════════════════════════════════════════════════ */
+
+.crm-page { gap: 20px; }
+
+.crm-filter-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.crm-filter-form input,
+.crm-filter-form select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
+  padding: 7px 10px;
+}
+.crm-filter-form input:focus,
+.crm-filter-form select:focus { border-color: var(--accent); outline: none; }
+.crm-filter-form button {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 14px;
+}
+.crm-filter-form button:hover { border-color: var(--accent); color: var(--accent); }
+.crm-jump-form { margin-left: auto; }
+
+.crm-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+.crm-table th {
+  border-bottom: 1px solid var(--border-strong);
+  color: var(--fg-muted);
+  font-weight: 500;
+  letter-spacing: 0.4px;
+  padding: 8px 10px;
+  text-align: left;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.crm-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  vertical-align: top;
+}
+.crm-table tr:hover td { background: var(--bg-inset); }
+.crm-table a { color: var(--fg); text-decoration: none; }
+.crm-table a:hover { color: var(--accent); }
+.crm-table code { font-size: 12px; }
+.crm-table--nested { margin: 8px 0 4px; }
+.crm-table--nested tr:hover td { background: transparent; }
+.crm-row-link { border-bottom: 1px dotted var(--border-strong); }
+.crm-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.crm-badge {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.crm-badge--ok { color: var(--accent); border-color: var(--accent); }
+.crm-badge--warn { color: var(--accent-amber); border-color: var(--accent-amber); }
+.crm-badge--err { color: var(--accent-error); border-color: var(--accent-error); }
+.crm-badge--muted { color: var(--fg-muted); }
+
+.crm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+.crm-mini-btn {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+.crm-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* "Ask the agent" handoff — visibly different from direct-write
+   buttons: these open a chat with the verb drafted, never execute. */
+.handoff-form { display: inline-flex; margin: 0; }
+.handoff-btn {
+  background: transparent;
+  border: 1px dashed var(--accent);
+  border-radius: 5px;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+}
+.handoff-btn:hover { background: var(--bg-inset); border-style: solid; }
+.handoff-btn--small { font-size: 12px; padding: 4px 10px; }
+
+.crm-flash {
+  background: var(--bg-inset);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 13px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+}
+.crm-flash--err { border-color: var(--accent-error); color: var(--accent-error); }
+.crm-section-warn { color: var(--accent-amber); font-size: 12px; margin: 0 0 8px; }
+.crm-muted { color: var(--fg-dim); font-size: 12px; }
+
+.crm-pager {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+}
+.crm-pager a { color: var(--accent); text-decoration: none; }
+.crm-pager a:hover { color: var(--accent-bright); }
+.crm-pager-page { color: var(--fg-muted); font-size: 12px; }
+
+.crm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  max-width: 520px;
+}
+.crm-form label { display: flex; flex-direction: column; gap: 4px; }
+.crm-form label span { color: var(--fg-muted); font-size: 12px; }
+.crm-form input,
+.crm-form select,
+.crm-form textarea {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit;
+  padding: 7px 10px;
+}
+.crm-form input:focus,
+.crm-form select:focus,
+.crm-form textarea:focus { border-color: var(--accent); outline: none; }
+.crm-form button { align-self: flex-start; }
+.crm-note-form { max-width: 680px; }
+
+.crm-inline-form { margin-top: 12px; }
+.crm-inline-form > summary {
+  color: var(--fg-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+.crm-inline-form > summary:hover { color: var(--accent); }
+.crm-inline-form[open] > summary { color: var(--accent); }
+
+.crm-row-form { display: inline-block; position: relative; }
+.crm-row-form > summary { list-style: none; display: inline-block; }
+.crm-row-form > summary::-webkit-details-marker { display: none; }
+.crm-row-form[open] > .crm-form {
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  width: 280px;
+  z-index: 10;
+}
+
+.crm-priority-form {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  margin: 0;
+}
+.crm-priority-form select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.crm-balances {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.crm-balances li {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+.crm-balance-label {
+  color: var(--fg-muted);
+  flex: 0 0 70px;
+  text-transform: capitalize;
+}
+.crm-balance-bar {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  flex: 0 0 160px;
+  height: 10px;
+  overflow: hidden;
+}
+.crm-balance-fill {
+  background: var(--accent);
+  display: block;
+  height: 100%;
+}
+.crm-balance-bar--exhausted .crm-balance-fill { background: var(--accent-error); }
+.crm-balance-nums { color: var(--fg-muted); font-family: var(--mono); }
+.crm-balance-unlimited { color: var(--accent); font-family: var(--mono); }
+
+.case-description {
+  color: var(--fg-muted);
+  font-size: 13px;
+  margin: 10px 0 0;
+  max-width: 720px;
+}

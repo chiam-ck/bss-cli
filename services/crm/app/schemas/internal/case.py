@@ -60,6 +60,21 @@ class TransitionCaseRequest(BaseModel):
     resolution_code: str | None = None
 
 
+class PatchCaseRequest(BaseModel):
+    """Unified PATCH body — a transition (trigger) and/or field updates.
+
+    v1.6 — the endpoint previously deserialized ``TransitionCaseRequest``
+    only, so ``{"priority": ...}`` PATCHes (the bss-clients
+    ``update_case_priority`` shape since v0.13) failed validation before
+    reaching the service.
+    """
+
+    trigger: str | None = None
+    resolution_code: str | None = None
+    priority: str | None = None
+    category: str | None = None
+
+
 class AddNoteRequest(BaseModel):
     body: str
     author_agent_id: str | None = None

@@ -85,7 +85,7 @@
       placeholder="Ask the agent…  (Enter to send, Shift+Enter for newline)"
       required
       autocomplete="off"
-    ></textarea>
+    >{{ draft or "" }}</textarea>
     <button type="submit" class="thread-send-btn">Send</button>
   </form>
 </section>
@@ -115,6 +115,9 @@
       }
     });
     input.focus();
+    // v1.6 — handoff drafts prefill the box; put the cursor at the end
+    // so the operator can edit or just hit Enter.
+    input.setSelectionRange(input.value.length, input.value.length);
   }
 })();
 </script>

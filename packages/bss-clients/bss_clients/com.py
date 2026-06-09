@@ -68,12 +68,33 @@ class COMClient(BSSClient):
         )
         return resp.json()
 
-    async def list_orders(self, customer_id: str) -> list[dict[str, Any]]:
-        """GET /tmf-api/productOrderingManagement/v4/productOrder?customerId={id}."""
+    async def list_orders(
+        self,
+        customer_id: str | None = None,
+        *,
+        state: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """GET /tmf-api/productOrderingManagement/v4/productOrder.
+
+        v1.6 — ``customerId`` is optional; without it the endpoint
+        returns orders across customers, newest first (cockpit CRM
+        order queue). ``state``/``limit``/``offset`` filter and page.
+        """
+        params: dict[str, Any] = {}
+        if customer_id:
+            params["customerId"] = customer_id
+        if state:
+            params["state"] = state
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
         resp = await self._request(
             "GET",
             "/tmf-api/productOrderingManagement/v4/productOrder",
-            params={"customerId": customer_id},
+            params=params,
         )
         return resp.json()
 

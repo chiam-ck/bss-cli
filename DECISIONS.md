@@ -3868,3 +3868,91 @@ hot-reload mechanisms.
 supported — it's just a default flip. Anyone running their own
 deployment can still set `BSS_LLM_MODEL` to whatever OpenRouter model
 they want; the rate table is a hint, not a gate.
+
+## 2026-06-10 — v1.6.0 — Phase 0 amendment: cockpit browser grows CRM screens; chat stays the write chokepoint
+
+**Context.** Operator directive (session goal): "enhance the operator
+cockpit to a full fledged CRM — the conversational based UX is still
+the centrepiece but the UI supplements it — basically customer,
+product, order, case management." The v0.13 doctrine described the
+browser at `localhost:9002` as "a thin veneer over the Conversation
+store"; daily operation showed the gap — scanning a case queue,
+eyeballing a customer 360, or comparing catalog rows through one chat
+bubble at a time is slower than a table, while the *write* story
+(propose-then-/confirm, policy gating, audit trail) is exactly right
+as-is.
+
+**Decision.** The cockpit browser becomes the operator CRM workbench
+*around* the chat, on three rules:
+
+1. **Reads are screens.** Customers (list + 360), Cases (queue +
+   detail), Orders (cross-customer queue + COM/SOM detail), Catalog
+   (plans/VAS/promotions), Subscription detail — all direct
+   `bss-clients` reads via `bss_orchestrator.clients.get_clients()`,
+   section-degrading (one service down ≠ blank page). Motto #7: reads
+   are free.
+2. **Routine writes are policy-gated forms.** Only the non-destructive
+   CRM verbs an operator reaches for constantly: log interaction, open
+   case, add note, case transitions (take/await/resume/resolve),
+   priority, open/assign/resolve/close ticket. One route → one
+   bss-clients call; `PolicyViolation` messages flash back verbatim.
+3. **Destructive / money-moving / compound verbs hand off to chat.**
+   Anything on `DESTRUCTIVE_TOOLS` (case.close, ticket.cancel,
+   order.cancel, subscription.terminate, customer.close…) plus charges
+   (order submit, VAS top-up, renew-now) renders as an "Ask the agent"
+   button that POSTs `/cockpit/handoff`: a fresh session opens pinned
+   to the customer with the verb DRAFTED in the compose box — never
+   auto-sent. The conversation keeps its single propose-then-/confirm
+   chokepoint; the CRM screens cannot route around it. A doctrine test
+   (`test_crm_routes_never_call_destructive_clients`) pins rule 3.
+
+**Also fixed while building (real bugs the workbench surfaced):**
+- CRM `PATCH /case/{id}` only deserialized triggers →
+  `update_case_priority` 422'd since v0.13. PATCH now takes trigger
+  and/or priority/category; field updates are policy-gated
+  (`case.update.case_is_closed`, `case.update.invalid_priority`) and
+  emit `case.updated`.
+- `CRMClient.list_cases` sent `agentId`; the service reads
+  `assignedAgentId` — the filter was silently ignored. Client fixed +
+  `limit`/`offset` added.
+- `CRMClient.transition_case` couldn't express `resume`
+  (pending_customer → in_progress); it now accepts a direct
+  `trigger=` override.
+- The case page read TMF camelCase keys from the snake_case Case DTO,
+  silently blanking customer/opened-at fields; `bss_csr.views.field`
+  reads both spellings everywhere now.
+- COM `GET /productOrder` required `customerId`; it's optional now
+  with `state`/`limit`/`offset` (newest-first) for the cross-customer
+  order queue.
+- The whole ticket client surface had drifted from the CRM service
+  (found by the live workbench smoke, invisible to mocked tests):
+  `open_ticket` sent only `relatedEntity` (service requires
+  `customerId`/`caseId` fields → 422 every time), `assign_ticket`
+  sent `assignedAgent` (service reads `assignedToAgentId` → silent
+  no-op), `transition_ticket` sent `{"toState"}` (service wants
+  `{"trigger"}` → 422 every time). All three fixed; ticket
+  transitions get a state→trigger map like cases, with the ambiguous
+  `in_progress` target resolved via one `get_ticket` read
+  (start/resume/reopen by source state).
+
+**Alternatives rejected.**
+- *Forms for everything, chat as helper.* Re-implements the destructive
+  confirm gate a second time in HTML and forks the safety story; the
+  v1.5 ITERATIVE FLOW work all lives on the conversational path.
+- *Chat-only, no screens (status quo).* Tables beat bubbles for queue
+  triage and 360 scanning; "CLI-first, LLM-native" constrains the
+  write path, not the operator's eyes.
+- *New CRM portal container.* The cockpit already has the perimeter
+  trust model, clients bundle, and Conversation store; a third portal
+  adds an auth surface and violates lightweight (motto #6).
+
+**Consequences.**
+- The v0.13 "thin veneer" sentence is retired; the REPL remains the
+  canonical *conversational* surface and slash-command parity still
+  holds (focus/confirm/reset all have browser equivalents). The CRM
+  screens are browser-only by design — the REPL equivalent is asking
+  the agent, which renders the same data as ASCII.
+- `/search` stays routable but leaves the nav (Customers subsumes it).
+- The handoff draft is the new UI↔chat seam: screens may prefill
+  drafts, only the operator sends them. If a CRM screen ever executes
+  a destructive verb directly, that's a doctrine bug (test-pinned).

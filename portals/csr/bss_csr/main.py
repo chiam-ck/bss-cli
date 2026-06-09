@@ -19,11 +19,11 @@ login. ``actor`` for cockpit turns comes from
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import os
 import structlog
 from bss_cockpit import ConversationStore, configure_store
 from bss_orchestrator.autonomy import read_autonomy_mode
@@ -105,10 +105,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
-    from .routes import case, cockpit, search, settings as settings_routes
+    from .routes import (
+        case,
+        cases,
+        catalog,
+        cockpit,
+        customers,
+        handoff,
+        orders,
+        search,
+        subscriptions,
+    )
+    from .routes import (
+        settings as settings_routes,
+    )
 
     app.include_router(cockpit.router)
+    app.include_router(handoff.router)
     app.include_router(case.router)
+    app.include_router(cases.router)
+    app.include_router(customers.router)
+    app.include_router(catalog.router)
+    app.include_router(orders.router)
+    app.include_router(subscriptions.router)
     app.include_router(search.router)
     app.include_router(settings_routes.router)
 

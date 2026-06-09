@@ -132,7 +132,8 @@ Three layers, each with its own contract:
 - **(v0.7+) Subscription price is snapshotted at order time.** Renewal charges the snapshot, not the catalog. Catalog price changes affect new orders only; existing subscriptions migrate via an explicit operator-initiated flow (`subscription.migrate_to_new_price`) with regulatory notice.
 - **(v0.12+) Chat is one modality of access, not a privileged path.** The same tool surface, under the same server-side policies, viewed through a tighter prompt-visible window. Customer chat sees the `customer_self_serve` profile (ownership-bound `*.mine` wrappers + public catalog reads); CSR/CLI/scenario callers keep full surface access. If the chat ever has a tool the customer's direct UI doesn't, that's a doctrine bug.
 - **(v0.12+) The five escalation categories are not negotiable.** Fraud, billing dispute, regulator complaint, identity recovery, bereavement — all are `case.open_for_me` calls with no AI-side resolution attempt. The `EscalationCategory` Literal, the soak corpus, and the customer-chat system prompt encode the same list. Adding a sixth is a doctrine decision, not a scope decision.
-- **(v0.13+) The REPL is the canonical operator cockpit.** The browser at `localhost:9002/cockpit/<id>` is a thin veneer over the same `Conversation` store. Slash-command parity is a doctrine target — if the REPL has `/focus` and the browser has no equivalent button, that's a doctrine bug to fix in the next sprint.
+- **(v0.13+) The REPL is the canonical operator cockpit.** The browser at `localhost:9002/cockpit/<id>` shares the same `Conversation` store. Slash-command parity is a doctrine target — if the REPL has `/focus` and the browser has no equivalent button, that's a doctrine bug to fix in the next sprint. (Amended v1.6: the browser is no longer *only* a veneer — see next rule and DECISIONS 2026-06-10.)
+- **(v1.6+) CRM screens supplement chat; they never bypass it for destructive verbs.** The cockpit browser carries Customers/Cases/Orders/Catalog/Subscription screens: direct `bss-clients` reads (section-degrading) plus the non-destructive case-workbench writes (note, transition, priority, ticket lifecycle, open case, log interaction) — one route → one policy-gated call. Anything on `DESTRUCTIVE_TOOLS` or money-moving (order submit, VAS, renew-now, terminate, close) renders as an "Ask the agent" handoff: `POST /cockpit/handoff` opens a focused session with the verb **drafted, never auto-sent**, so propose-then-`/confirm` stays the single destructive chokepoint. Test-pinned by `portals/csr/tests/test_routes_crm.py`.
 - **(v0.13+) Operator persona lives in `OPERATOR.md`.** Prepended verbatim to every cockpit system prompt. House rules are operator-editable; the cockpit's safety contract (propose-then-confirm, escalation list, ASCII rules) is code-defined in `bss_cockpit.prompts._COCKPIT_INVARIANTS`. An operator who wants to weaken the contract has to edit code, not a markdown file.
 
 ## Call patterns (HTTP vs events)
@@ -179,7 +180,7 @@ Two distinct planes:
 
 ## Deployment model
 
-9 service containers + 2 portal containers (self-serve 9001, cockpit veneer 9002) + three optional infra containers (Postgres, RabbitMQ, Jaeger). Billing deferred to v0.2 — port 8009 reserved (DECISIONS 2026-04-13). REPL (`bss`) is canonical cockpit; browser is the same Conversation viewed in HTML. See `ARCHITECTURE.md` for topology, compose profiles, and the AWS path.
+9 service containers + 2 portal containers (self-serve 9001, cockpit 9002) + three optional infra containers (Postgres, RabbitMQ, Jaeger). Billing deferred to v0.2 — port 8009 reserved (DECISIONS 2026-04-13). REPL (`bss`) is the canonical conversational cockpit; the browser shares the same Conversation and (v1.6) adds the CRM screens around it. See `ARCHITECTURE.md` for topology, compose profiles, and the AWS path.
 
 ## Naming conventions
 
@@ -255,6 +256,14 @@ Two distinct planes:
 - Don't add the `ITERATIVE FLOW` prompt block to the `customer_self_serve` chat surface (`orchestrator/bss_orchestrator/customer_chat_prompt.py`). Compound actions are an operator capability — the v0.12 chat caps + ownership trip-wire were never stress-tested against agent-driven write chains. Doctrine guard: `orchestrator/tests/test_iterative_flow_scope.py` asserts the absence in customer chat AND the presence in the operator prompt.
 - Don't change `MAX_CONSECUTIVE_TOOL_FAILURES` from 3 without updating the test guard, the soak corpus expectations, and the cockpit's "couldn't recover" panel copy. Three is the lift from loyalty-cli; raising it invites longer thrash, lowering it cuts off healthy investigation loops.
 - Don't extend the cockpit's emit-chrome set without adding the new prefix to `bss_cockpit.chrome_filter._ASSISTANT_CHROME_PREFIXES`. The inventory-lock test pins the set; an omission lets chrome back into LLM history and re-opens the mimicry/state-confusion/citation-thrash failure modes from v1.5's design notes.
+
+**Cockpit CRM screens (v1.6):**
+
+- Don't call a `DESTRUCTIVE_TOOLS` verb (or any charge — order submit, VAS, renew) from a CRM-screen route. Render an "Ask the agent" handoff instead; `test_routes_crm.py` greps the route sources.
+- Don't auto-send handoff drafts. `POST /cockpit/handoff` prefills the compose box; only the operator sends.
+- One CRM-screen POST → one `bss-clients` write. Compositions belong to the agent (ITERATIVE FLOW).
+- Read payload keys through `bss_csr.views.field` — the Case/port-request APIs are snake_case, TMF surfaces are camelCase; hardcoding one family blanks fields silently (the v0.13 case page did exactly that).
+- New screens stay section-degrading: one downstream service down must not 500 the page.
 
 **Provider adapters & webhooks (v0.14):**
 

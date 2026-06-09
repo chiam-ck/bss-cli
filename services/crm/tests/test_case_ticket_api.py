@@ -290,3 +290,67 @@ class TestInvalidTransitions:
         )
         assert r.status_code == 422
         assert r.json()["reason"] == "case.transition.valid_from_state"
+
+
+class TestCaseFieldUpdates:
+    """v1.6 — PATCH carries priority/category field updates, not just
+    triggers (the cockpit CRM workbench path; previously 422'd)."""
+
+    async def _open_case(self, client: AsyncClient, suffix: str) -> str:
+        cust_id = await _create_customer(client, suffix)
+        r = await client.post(
+            f"{CASE_PREFIX}/case",
+            json={"customer_id": cust_id, "subject": f"Fields {suffix}"},
+        )
+        assert r.status_code == 201
+        return r.json()["id"]
+
+    async def test_patch_priority(self, client: AsyncClient):
+        case_id = await self._open_case(client, ".prio")
+        r = await client.patch(
+            f"{CASE_PREFIX}/case/{case_id}",
+            json={"priority": "high"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["priority"] == "high"
+        assert body["state"] == "open"  # no transition side effect
+
+    async def test_patch_invalid_priority_rejected(self, client: AsyncClient):
+        case_id = await self._open_case(client, ".prio-bad")
+        r = await client.patch(
+            f"{CASE_PREFIX}/case/{case_id}",
+            json={"priority": "ludicrous"},
+        )
+        assert r.status_code == 422
+        assert r.json()["reason"] == "case.update.invalid_priority"
+
+    async def test_patch_on_closed_case_rejected(self, client: AsyncClient):
+        case_id = await self._open_case(client, ".prio-closed")
+        r = await client.post(
+            f"{CASE_PREFIX}/case/{case_id}/close",
+            json={"resolution_code": "no_fault_found"},
+        )
+        assert r.status_code == 200
+        r = await client.patch(
+            f"{CASE_PREFIX}/case/{case_id}",
+            json={"priority": "high"},
+        )
+        assert r.status_code == 422
+        assert r.json()["reason"] == "case.update.case_is_closed"
+
+    async def test_patch_empty_body_rejected(self, client: AsyncClient):
+        case_id = await self._open_case(client, ".prio-empty")
+        r = await client.patch(f"{CASE_PREFIX}/case/{case_id}", json={})
+        assert r.status_code == 400
+
+    async def test_patch_trigger_and_priority_together(self, client: AsyncClient):
+        case_id = await self._open_case(client, ".prio-both")
+        r = await client.patch(
+            f"{CASE_PREFIX}/case/{case_id}",
+            json={"trigger": "take", "priority": "critical"},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["state"] == "in_progress"
+        assert body["priority"] == "critical"

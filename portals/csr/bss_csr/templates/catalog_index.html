@@ -1,0 +1,91 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, handoff %}
+{% block title_suffix %} · Catalog{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  <header class="cockpit-page-header">
+    <h1 class="cockpit-page-title">Product catalog</h1>
+    <div class="crm-actions">
+      {{ handoff("Add an offering", "Add a catalog offering: id PLAN_, name , monthly price SGD , data  GB, voice  min, sms ", small=True) }}
+      {{ handoff("Change a price", "Add a new price to offering PLAN_: SGD , effective from ", small=True) }}
+    </div>
+  </header>
+
+  <section class="three-sixty-section">
+    <h2>Plans</h2>
+    {% if plans %}
+    <table class="crm-table">
+      <thead>
+        <tr><th>ID</th><th>Name</th><th>Price</th><th>Data</th><th>Voice</th><th>SMS</th><th>Roaming</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for p in plans %}
+        <tr>
+          <td><a href="/catalog/{{ p.id }}"><code>{{ p.id }}</code></a></td>
+          <td><a href="/catalog/{{ p.id }}" class="crm-row-link">{{ p.name }}</a></td>
+          <td>{{ p.price }}</td>
+          <td>{{ p.data }}</td>
+          <td>{{ p.voice }}</td>
+          <td>{{ p.sms }}</td>
+          <td>{{ p.roaming }}</td>
+          <td>{{ badge(p.lifecycle) }}{% if not p.sellable %} <span class="crm-muted">(not sellable)</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">Catalog is empty.</p>
+    {% endif %}
+  </section>
+
+  <section class="three-sixty-section">
+    <h2>VAS top-ups</h2>
+    {% if vas %}
+    <table class="crm-table">
+      <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Allowance</th><th>Expiry</th></tr></thead>
+      <tbody>
+        {% for v in vas %}
+        <tr>
+          <td><code>{{ v.id }}</code></td>
+          <td>{{ v.name }}</td>
+          <td>{{ v.price }}</td>
+          <td>{{ v.allowance }}</td>
+          <td>{{ v.expiry }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No VAS offerings.</p>
+    {% endif %}
+  </section>
+
+  <section class="three-sixty-section">
+    <h2>Promotions</h2>
+    {% if promotions %}
+    <table class="crm-table">
+      <thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Discount</th><th>Audience</th><th>State</th><th>Valid to</th></tr></thead>
+      <tbody>
+        {% for p in promotions %}
+        <tr>
+          <td><code>{{ p.id }}</code></td>
+          <td>{{ p.name }}</td>
+          <td><code>{{ p.code }}</code></td>
+          <td>{{ p.discount }}</td>
+          <td>{{ p.audience }}</td>
+          <td>{{ badge(p.state) }}</td>
+          <td><code>{{ p.valid_to }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No promotions.</p>
+    {% endif %}
+    <div class="crm-actions">
+      {{ handoff("Assign a promo", "Assign promotion  to customer CUST-", small=True) }}
+    </div>
+  </section>
+</section>
+{% endblock %}

@@ -1,10 +1,10 @@
 """Case service — orchestrates policies, repos, events."""
 
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import structlog
 from bss_clock import now as clock_now
+from bss_models.crm import Case, CaseNote, Interaction
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
@@ -15,7 +15,6 @@ from app.repositories.case_repo import CaseRepository
 from app.repositories.customer_repo import CustomerRepository
 from app.repositories.interaction_repo import InteractionRepository
 from app.repositories.ticket_repo import TicketRepository
-from bss_models.crm import Case, CaseNote, Interaction
 
 log = structlog.get_logger()
 
@@ -209,6 +208,51 @@ class CaseService:
         return await self.transition_case(
             case_id, "close", resolution_code=resolution_code
         )
+
+    async def update_case_fields(
+        self,
+        case_id: str,
+        *,
+        priority: str | None = None,
+        category: str | None = None,
+    ) -> Case:
+        """Update mutable case fields (priority/category) — no transition.
+
+        v1.6 — first real write path for `case.update_priority`; the
+        PATCH endpoint previously only deserialized triggers, so field
+        updates were rejected before reaching the service.
+        """
+        case = await self._case_repo.get(case_id)
+        if not case:
+            from app.policies.base import PolicyViolation
+            raise PolicyViolation(
+                rule="case.not_found",
+                message=f"Case {case_id} not found",
+                context={"case_id": case_id},
+            )
+        case_policies.check_case_not_closed(case_id, case.state)
+        if priority is not None:
+            case_policies.check_priority_valid(priority)
+
+        changed: dict[str, dict[str, str | None]] = {}
+        if priority is not None and priority != case.priority:
+            changed["priority"] = {"from": case.priority, "to": priority}
+            case.priority = priority
+        if category is not None and category != case.category:
+            changed["category"] = {"from": case.category, "to": category}
+            case.category = category
+
+        if changed:
+            await self._case_repo.update(case)
+            await publisher.publish(
+                self._session,
+                event_type="case.updated",
+                aggregate_type="case",
+                aggregate_id=case_id,
+                payload={"changed": changed},
+            )
+            await self._session.commit()
+        return case
 
     async def add_note(
         self, case_id: str, *, body: str, author_agent_id: str | None = None

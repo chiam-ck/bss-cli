@@ -60,8 +60,13 @@ async def get_order(
 
 @router.get("/productOrder", response_model=list[ProductOrderResponse])
 async def list_orders(
-    customer_id: str = Query(alias="customerId"),
+    customer_id: str | None = Query(default=None, alias="customerId"),
+    state: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
     svc: OrderService = Depends(get_order_service),
 ):
-    orders = await svc.list_orders_for_customer(customer_id)
+    orders = await svc.list_orders(
+        customer_id=customer_id, state=state, limit=limit, offset=offset
+    )
     return [to_product_order_response(o) for o in orders]
