@@ -1,0 +1,227 @@
+name: site_demo_seed
+description: |
+  Build the bss-cli.com screenshot dataset: five personas with staggered
+  bundle consumption (healthy / heavy / exhausted-blocked), a pending
+  plan change, cases in three lifecycle states with tickets + notes,
+  and a paper trail of interactions. Deterministic, tool-driven, no LLM.
+
+  Run standalone when refreshing site/screenshot assets:
+      make scenarios-site-demo
+  (resets operational data first — same contract as the hero suite).
+
+tags: [site_demo]
+
+setup:
+  reset_operational_data: true
+  freeze_clock_at: "2026-06-01T02:00:00+00:00"
+
+variables:
+  email_mei: "mei.tan-{{ run_id }}@example.sg"
+  email_raj: "rajesh.kumar-{{ run_id }}@example.sg"
+  email_sofia: "sofia.lim-{{ run_id }}@example.sg"
+  email_daniel: "daniel.wong-{{ run_id }}@example.sg"
+  email_aisha: "aisha.rahman-{{ run_id }}@example.sg"
+
+steps:
+  # ── Persona 1: Mei Lin Tan — PLAN_M, healthy, light usage ──────────
+  - name: create Mei
+    action: customer.create
+    args: {name: "Mei Lin Tan", email: "{{ email_mei }}", phone: "+6590110001"}
+    capture: {mei_id: "$.id"}
+  - name: Mei KYC
+    action: customer.attest_kyc
+    args: {customer_id: "{{ mei_id }}", provider: prebaked, attestation_token: "stub-signed-jwt-mei-{{ run_id }}"}
+  - name: Mei card on file
+    action: payment.add_card
+    args: {customer_id: "{{ mei_id }}", card_number: "4242424242424242"}
+  - name: Mei orders PLAN_M
+    action: order.create
+    args: {customer_id: "{{ mei_id }}", offering_id: PLAN_M}
+    capture: {mei_order: "$.id"}
+  - name: Mei order completes
+    action: order.wait_until
+    args: {order_id: "{{ mei_order }}", target_state: completed, timeout_s: 30}
+  - name: Mei subscription
+    action: subscription.list_for_customer
+    args: {customer_id: "{{ mei_id }}"}
+    capture: {mei_sub: "$[0].id", mei_msisdn: "$[0].msisdn"}
+  - name: Mei browses ~2 GB
+    action: usage.simulate
+    args: {msisdn: "{{ mei_msisdn }}", event_type: data, quantity: 2048, unit: mb}
+  - name: log Mei onboarding call
+    action: interaction.log
+    args:
+      customer_id: "{{ mei_id }}"
+      summary: "Welcome call — walked through eSIM install on iPhone, all good"
+
+  # ── Persona 2: Rajesh Kumar — PLAN_L, heavy user (~80% burned) ─────
+  - name: create Rajesh
+    action: customer.create
+    args: {name: "Rajesh Kumar", email: "{{ email_raj }}", phone: "+6590110002"}
+    capture: {raj_id: "$.id"}
+  - name: Rajesh KYC
+    action: customer.attest_kyc
+    args: {customer_id: "{{ raj_id }}", provider: prebaked, attestation_token: "stub-signed-jwt-raj-{{ run_id }}"}
+  - name: Rajesh card on file
+    action: payment.add_card
+    args: {customer_id: "{{ raj_id }}", card_number: "4242424242424242"}
+  - name: Rajesh orders PLAN_L
+    action: order.create
+    args: {customer_id: "{{ raj_id }}", offering_id: PLAN_L}
+    capture: {raj_order: "$.id"}
+  - name: Rajesh order completes
+    action: order.wait_until
+    args: {order_id: "{{ raj_order }}", target_state: completed, timeout_s: 30}
+  - name: Rajesh subscription
+    action: subscription.list_for_customer
+    args: {customer_id: "{{ raj_id }}"}
+    capture: {raj_sub: "$[0].id", raj_msisdn: "$[0].msisdn"}
+  - name: Rajesh streams 12 GB
+    action: usage.simulate
+    args: {msisdn: "{{ raj_msisdn }}", event_type: data, quantity: 12288, unit: mb}
+  - name: Rajesh streams 4 GB more
+    action: usage.simulate
+    args: {msisdn: "{{ raj_msisdn }}", event_type: data, quantity: 4096, unit: mb}
+
+  # ── Persona 3: Sofia Lim — PLAN_S, exhausted → blocked ─────────────
+  - name: create Sofia
+    action: customer.create
+    args: {name: "Sofia Lim", email: "{{ email_sofia }}", phone: "+6590110003"}
+    capture: {sofia_id: "$.id"}
+  - name: Sofia KYC
+    action: customer.attest_kyc
+    args: {customer_id: "{{ sofia_id }}", provider: prebaked, attestation_token: "stub-signed-jwt-sofia-{{ run_id }}"}
+  - name: Sofia card on file
+    action: payment.add_card
+    args: {customer_id: "{{ sofia_id }}", card_number: "4242424242424242"}
+  - name: Sofia orders PLAN_S
+    action: order.create
+    args: {customer_id: "{{ sofia_id }}", offering_id: PLAN_S}
+    capture: {sofia_order: "$.id"}
+  - name: Sofia order completes
+    action: order.wait_until
+    args: {order_id: "{{ sofia_order }}", target_state: completed, timeout_s: 30}
+  - name: Sofia subscription
+    action: subscription.list_for_customer
+    args: {customer_id: "{{ sofia_id }}"}
+    capture: {sofia_sub: "$[0].id", sofia_msisdn: "$[0].msisdn"}
+  - name: Sofia burns the whole bundle
+    action: usage.simulate
+    args: {msisdn: "{{ sofia_msisdn }}", event_type: data, quantity: 5120, unit: mb}
+  - name: Sofia is blocked on exhaust
+    assert:
+      tool: subscription.get
+      args: {subscription_id: "{{ sofia_sub }}"}
+      expect: {state: blocked}
+      poll: {interval_ms: 200, timeout_seconds: 10}
+
+  # Sofia calls support — case + ticket, worked by an agent
+  - name: find an active agent
+    action: agents.list
+    capture: {agent_id: "$[0].id"}
+  - name: Sofia opens a case
+    action: case.open
+    args:
+      customer_id: "{{ sofia_id }}"
+      subject: "Data stopped mid-day — line shows blocked"
+      category: technical
+      priority: high
+    capture: {sofia_case: "$.id"}
+  - name: ticket under Sofia's case
+    action: ticket.open
+    args:
+      ticket_type: technical
+      subject: "Verify rating decrement + advise top-up options"
+      case_id: "{{ sofia_case }}"
+      customer_id: "{{ sofia_id }}"
+    capture: {sofia_ticket: "$.id"}
+  - name: assign the ticket
+    action: ticket.assign
+    args: {ticket_id: "{{ sofia_ticket }}", agent_id: "{{ agent_id }}"}
+  - name: take the case
+    action: case.transition
+    args: {case_id: "{{ sofia_case }}", to_state: in_progress}
+  - name: diagnosis note
+    action: case.add_note
+    args:
+      case_id: "{{ sofia_case }}"
+      body: "Bundle exhausted at 14:05 — block-on-exhaust working as designed. Offered VAS_DATA_1GB top-up or wait for renewal on 1 Jul."
+
+  # ── Persona 4: Daniel Wong — PLAN_M, pending plan change + billing case
+  - name: create Daniel
+    action: customer.create
+    args: {name: "Daniel Wong", email: "{{ email_daniel }}", phone: "+6590110004"}
+    capture: {daniel_id: "$.id"}
+  - name: Daniel KYC
+    action: customer.attest_kyc
+    args: {customer_id: "{{ daniel_id }}", provider: prebaked, attestation_token: "stub-signed-jwt-daniel-{{ run_id }}"}
+  - name: Daniel card on file
+    action: payment.add_card
+    args: {customer_id: "{{ daniel_id }}", card_number: "4242424242424242"}
+  - name: Daniel orders PLAN_M
+    action: order.create
+    args: {customer_id: "{{ daniel_id }}", offering_id: PLAN_M}
+    capture: {daniel_order: "$.id"}
+  - name: Daniel order completes
+    action: order.wait_until
+    args: {order_id: "{{ daniel_order }}", target_state: completed, timeout_s: 30}
+  - name: Daniel subscription
+    action: subscription.list_for_customer
+    args: {customer_id: "{{ daniel_id }}"}
+    capture: {daniel_sub: "$[0].id", daniel_msisdn: "$[0].msisdn"}
+  - name: Daniel uses ~5 GB
+    action: usage.simulate
+    args: {msisdn: "{{ daniel_msisdn }}", event_type: data, quantity: 5300, unit: mb}
+  - name: Daniel upgrades to PLAN_L at next renewal
+    action: subscription.schedule_plan_change
+    args: {subscription_id: "{{ daniel_sub }}", new_offering_id: PLAN_L}
+  - name: Daniel asks about the upgrade price
+    action: case.open
+    args:
+      customer_id: "{{ daniel_id }}"
+      subject: "Confirm first charge after PLAN_L upgrade"
+      category: billing
+      priority: medium
+    capture: {daniel_case: "$.id"}
+  - name: answer + resolve Daniel's case
+    action: case.add_note
+    args:
+      case_id: "{{ daniel_case }}"
+      body: "Confirmed: current period stays on the PLAN_M snapshot; PLAN_L price applies from the 1 Jul renewal. No proration, no mid-cycle charge."
+  - name: Daniel case resolved
+    action: case.transition
+    args: {case_id: "{{ daniel_case }}", to_state: resolved}
+
+  # ── Persona 5: Aisha Rahman — fresh PLAN_S, barely used ────────────
+  - name: create Aisha
+    action: customer.create
+    args: {name: "Aisha Rahman", email: "{{ email_aisha }}", phone: "+6590110005"}
+    capture: {aisha_id: "$.id"}
+  - name: Aisha KYC
+    action: customer.attest_kyc
+    args: {customer_id: "{{ aisha_id }}", provider: prebaked, attestation_token: "stub-signed-jwt-aisha-{{ run_id }}"}
+  - name: Aisha card on file
+    action: payment.add_card
+    args: {customer_id: "{{ aisha_id }}", card_number: "4242424242424242"}
+  - name: Aisha orders PLAN_S
+    action: order.create
+    args: {customer_id: "{{ aisha_id }}", offering_id: PLAN_S}
+    capture: {aisha_order: "$.id"}
+  - name: Aisha order completes
+    action: order.wait_until
+    args: {order_id: "{{ aisha_order }}", target_state: completed, timeout_s: 30}
+  - name: Aisha subscription
+    action: subscription.list_for_customer
+    args: {customer_id: "{{ aisha_id }}"}
+    capture: {aisha_msisdn: "$[0].msisdn"}
+  - name: Aisha first browse
+    action: usage.simulate
+    args: {msisdn: "{{ aisha_msisdn }}", event_type: data, quantity: 300, unit: mb}
+  - name: log Aisha eSIM activation
+    action: interaction.log
+    args:
+      customer_id: "{{ aisha_id }}"
+      summary: "Inbound chat — helped scan the LPA QR on a Pixel, activation OK"
+
+teardown:
+  unfreeze_clock: true

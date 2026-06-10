@@ -1,4 +1,4 @@
-.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero e2e e2e-down
+.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
 
 help:
 	@echo "  up                  — 10 BSS services (BYOI Postgres/RabbitMQ)"
@@ -109,6 +109,11 @@ doctrine-check: check-clock
 	@# (for sensitive post-login routes) the SENSITIVE_ACTION_LABELS
 	@# catalogue in security.py. The chat surface (when it lands in
 	@# v0.12+) stays orchestrator-mediated and would NOT join this list.
+	@# v1.6.1 — cockpit CRM screens write direct via bss-clients
+	@# (CLAUDE.md "Cockpit CRM screens"); destructive/money verbs gate
+	@# on the two-step confirm field, pinned by
+	@# portals/csr/tests/test_routes_crm.py. Only routes/cockpit.py
+	@# remains orchestrator-mediated on the CSR portal.
 	@hits=$$(grep -rnE '\.(create|charge|purchase_vas|terminate|add_card|remove_method|cancel)\(' \
 		--include='*.py' portals/*/bss_*/routes/ 2>/dev/null \
 		| grep -v 'session_store.create\|store.create\|ask_about_customer' \
@@ -120,6 +125,11 @@ doctrine-check: check-clock
 		| grep -v 'portals/self-serve/bss_self_serve/routes/profile\.py' \
 		| grep -v 'portals/self-serve/bss_self_serve/routes/billing\.py' \
 		| grep -v 'portals/self-serve/bss_self_serve/routes/plan_change\.py' \
+		| grep -v 'portals/csr/bss_csr/routes/customers\.py' \
+		| grep -v 'portals/csr/bss_csr/routes/cases\.py' \
+		| grep -v 'portals/csr/bss_csr/routes/orders\.py' \
+		| grep -v 'portals/csr/bss_csr/routes/catalog\.py' \
+		| grep -v 'portals/csr/bss_csr/routes/subscriptions\.py' \
 		|| true); \
 	if [ -n "$$hits" ]; then \
 		echo "✗ portal route handlers must not call mutating bss-clients on the chat surface:"; \
@@ -491,6 +501,13 @@ scenarios:
 
 scenarios-hero:
 	$(call SCENARIOS_RUN,--tag hero)
+
+# v1.6 — rebuild the bss-cli.com screenshot dataset (five personas,
+# staggered bundle burn, cases/tickets in three lifecycle states).
+# Resets operational data first; same provider-flip wrapper as the
+# hero suite.
+scenarios-site-demo:
+	$(call SCENARIOS_RUN,--tag site_demo)
 
 # v1.4 — Playwright end-to-end suite. Brings up the stack with
 # docker-compose.e2e.yml overlaid (payment=mock, kyc=prebaked,
