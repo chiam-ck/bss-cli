@@ -28,7 +28,7 @@ Same `Conversation` store as the REPL; exit `bss`, open `localhost:9002`, see th
 
   ![cockpit conversation](docs/screenshots/portal_csr_cockpit_session_v1.jpg)
 
-- **CRM screens (v1.6)** — Customers (search + 360 with balance bars, orders, cases, card-on-file), Cases (queue + workbench: notes, transitions, priority, ticket lifecycle), Orders (cross-customer queue + COM/SOM decomposition detail), Catalog (plans/VAS/promotions), Subscription detail (balances, usage tail, eSIM re-display). Chat stays the centrepiece: destructive or money-moving verbs render as **"Ask the agent"** handoffs that open a focused session with the message drafted — the operator reviews and sends, so propose-then-`/confirm` remains the single chokepoint.
+- **CRM screens (v1.6)** — Customers (search + 360 with balance bars, name/contact CRUD, card-on-file), Cases (queue + workbench: notes, transitions, priority, close, full ticket lifecycle), Orders (create/submit/cancel + cross-customer queue + COM/SOM decomposition detail), Catalog (plans/VAS/promotions + offering/price/window admin), Subscription detail (balances, usage tail, eSIM, plan change/renew/VAS/terminate). Destructive and money-moving verbs are direct CRUD behind a **two-step confirm panel**; every screen also carries **"Ask the agent"** handoffs that open a focused chat session with the message drafted — the operator reviews and sends.
 
 ### Self-serve portal (customer-facing)
 

@@ -1,20 +1,23 @@
 """Order screens — cross-customer queue + COM/SOM detail (v1.6 cockpit CRM).
 
-Read-only: order submit moves money (COF charge on activation) and
-order cancel is on the orchestrator's destructive list, so both render
-as "Ask the agent" handoffs, never buttons. The queue rides the v1.6
-COM extension (``GET /productOrder`` without ``customerId``).
+The queue rides the v1.6 COM extension (``GET /productOrder`` without
+``customerId``). v1.6.1 (operator directive) — full order CRUD is
+direct: create from the queue page, submit/cancel from the detail page.
+Submit charges the card-on-file at activation and cancel is on the
+destructive list, so both sit behind the two-step UI confirm
+(``confirm=yes``); the COM policy layer stays the server-side gate.
 """
 
 from __future__ import annotations
 
 import asyncio
 from typing import Any
+from urllib.parse import urlencode
 
 import structlog
-from bss_clients.errors import ClientError
+from bss_clients.errors import ClientError, PolicyViolationFromServer
 from bss_orchestrator.clients import get_clients
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..templating import templates
@@ -54,6 +57,16 @@ async def orders_list(
     has_next = len(raw or []) > PAGE_SIZE
     rows = [flatten_order(o) for o in (raw or [])[:PAGE_SIZE]]
 
+    # Plan ids for the create-order select — best-effort.
+    try:
+        plans = [
+            o.get("id", "")
+            for o in await clients.catalog.list_active_offerings() or []
+            if o.get("isBundle", True)
+        ]
+    except Exception:  # noqa: BLE001
+        plans = []
+
     return templates.TemplateResponse(
         request,
         "orders_list.html",
@@ -64,11 +77,81 @@ async def orders_list(
             "state": state_clean,
             "states": ORDER_STATES,
             "rows": rows,
+            "plans": plans,
             "page": page,
             "has_prev": page > 0,
             "has_next": has_next,
+            "flash": request.query_params.get("flash", ""),
+            "err": request.query_params.get("err", "")[:300],
         },
     )
+
+
+CONFIRM_REQUIRED = "This action needs the expanded confirm step."
+
+
+def _back_to_order(order_id: str, **params: str) -> RedirectResponse:
+    url = f"/orders/{order_id}"
+    filtered = {k: v for k, v in params.items() if v}
+    if filtered:
+        url += "?" + urlencode(filtered)
+    return RedirectResponse(url=url, status_code=303)
+
+
+@router.post("/orders/create", response_model=None)
+async def create_order(
+    customer_id: str = Form(...),
+    offering_id: str = Form(...),
+    msisdn_preference: str = Form(default=""),
+    discount_code: str = Form(default=""),
+) -> RedirectResponse:
+    try:
+        order = await get_clients().com.create_order(
+            customer_id=customer_id.strip(),
+            offering_id=offering_id.strip(),
+            msisdn_preference=msisdn_preference.strip() or None,
+            discount_code=discount_code.strip() or None,
+        )
+    except PolicyViolationFromServer as exc:
+        return RedirectResponse(
+            url="/orders?" + urlencode({"err": exc.detail}), status_code=303
+        )
+    except ClientError as exc:
+        return RedirectResponse(
+            url="/orders?" + urlencode({"err": f"COM error ({exc.status_code})"}),
+            status_code=303,
+        )
+    return _back_to_order(order.get("id", ""), flash="order_created")
+
+
+@router.post("/orders/{order_id}/submit", response_model=None)
+async def submit_order(
+    order_id: str, confirm: str = Form(default="")
+) -> RedirectResponse:
+    if confirm != "yes":
+        return _back_to_order(order_id, err=CONFIRM_REQUIRED)
+    try:
+        await get_clients().com.submit_order(order_id)
+    except PolicyViolationFromServer as exc:
+        return _back_to_order(order_id, err=exc.detail)
+    except ClientError as exc:
+        return _back_to_order(order_id, err=f"COM error ({exc.status_code})")
+    return _back_to_order(order_id, flash="order_submitted")
+
+
+@router.post("/orders/{order_id}/cancel", response_model=None)
+async def cancel_order(
+    order_id: str, confirm: str = Form(default="")
+) -> RedirectResponse:
+    if confirm != "yes":
+        return _back_to_order(order_id, err=CONFIRM_REQUIRED)
+    try:
+        await get_clients().com.cancel_order(order_id)
+    except PolicyViolationFromServer as exc:
+        return _back_to_order(order_id, err=exc.detail)
+    except ClientError as exc:
+        return _back_to_order(order_id, err=f"COM error ({exc.status_code})")
+    return _back_to_order(order_id, flash="order_cancelled")
 
 
 @router.get("/orders/jump", response_model=None)
@@ -168,5 +251,7 @@ async def order_detail(request: Request, order_id: str) -> HTMLResponse:
             },
             "items": items,
             "service_orders": so_views,
+            "flash": request.query_params.get("flash", ""),
+            "err": request.query_params.get("err", "")[:300],
         },
     )

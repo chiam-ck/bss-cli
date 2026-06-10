@@ -309,12 +309,25 @@
    v0.13.1 — Operator cockpit (chat-shaped, full-bleed redesign)
    ============================================================ */
 
-body { margin: 0; }
+/* v1.6.1 — fixed-viewport app shell. The PAGE never scrolls; panes
+   scroll internally. This is what keeps the chat compose box on
+   screen on an iPad: 100dvh tracks the *visible* viewport (Safari's
+   toolbars and the soft keyboard shrink it), and the header is a
+   flex row instead of a hardcoded 53px subtraction — so the math
+   holds when the nav wraps to two rows on narrow screens. */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: flex; flex-direction: column;
+  height: 100vh;   /* fallback */
+  height: 100dvh;  /* iPadOS/iOS dynamic viewport */
+  overflow: hidden;
+}
 
 /* ── Top nav ──────────────────────────────────────────────── */
 
 .cockpit-header {
-  position: sticky; top: 0; z-index: 50;
+  flex: 0 0 auto; z-index: 50;
   display: flex; align-items: center; gap: 24px;
   padding: 10px 24px;
   background: var(--bg-elev);
@@ -363,8 +376,11 @@ body { margin: 0; }
 /* ── Page shell ──────────────────────────────────────────── */
 
 .cockpit-main {
-  min-height: calc(100vh - 53px);
+  /* The single internal scroll region for list/detail pages; the
+     thread page opts out (its stream pane scrolls instead). */
+  flex: 1; min-height: 0;
   display: flex; flex-direction: column;
+  overflow-y: auto;
 }
 .cockpit-page {
   flex: 1; display: flex; flex-direction: column;
@@ -474,12 +490,17 @@ body { margin: 0; }
   /* v0.20.1 — widened from 880px to match the wider cockpit-page
      cap. The thread is the operator's primary canvas; reclaiming
      the side gutters means more of the LLM's prose / tool-result
-     blocks fit on screen without horizontal scroll. */
+     blocks fit on screen without horizontal scroll.
+     v1.6.1 — height comes from the flex app shell (no more
+     calc(100vh - 53px), which broke whenever the header wrapped
+     and on iPad's dynamic toolbars). The stream scrolls; header
+     and compose are always on screen. */
   max-width: 1280px;
-  padding: 16px 24px 24px;
+  padding: 12px 24px 16px;
   display: flex; flex-direction: column;
   gap: 0;
-  height: calc(100vh - 53px);
+  flex: 1; min-height: 0;
+  height: auto;
 }
 
 .thread-header {
@@ -939,19 +960,104 @@ body { margin: 0; }
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   v1.6 — cockpit CRM screens (customers / cases / orders / catalog /
-   subscription detail). Reuses the portal_base palette; chat keeps its
-   own styles above — these are deliberately quieter so the thread
-   stays the visual centerpiece.
+   v1.6.1 — cockpit CRM design system
+   (customers / cases / orders / catalog / subscription detail)
+
+   Principles:
+   - one accent does the talking: interactive = green, danger = red,
+     everything else stays in the grey ramp. No browser-default blue.
+   - panels, not walls of text: every section sits in an elevated card
+     with a small-caps label, consistent 16px internal rhythm.
+   - three button weights: solid accent (primary action), outlined
+     (secondary verb), dashed ghost (chat handoff). Danger is solid red
+     and only ever lives inside a two-step confirm.
+   - tables are dense, mono for identifiers, numeric right-aligned.
    ════════════════════════════════════════════════════════════════════ */
 
-.crm-page { gap: 20px; }
+/* ── Links: never default blue on this background ─────────── */
+
+.cockpit-main a { color: var(--accent); text-decoration: none; }
+.cockpit-main a:hover { color: var(--accent-bright); text-decoration: underline; }
+.cockpit-main a code { color: inherit; }
+
+/* ── Page scaffolding ─────────────────────────────────────── */
+
+.crm-page { gap: 16px; }
+.crm-page-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.crm-page-toolbar .cockpit-page-title { margin-right: auto; }
+
+/* Two-column detail layout: flowing main column + sticky-ish side
+   rail for identity/actions. Collapses to one column < 1080px. */
+.crm-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+.crm-grid-main, .crm-grid-side {
+  display: flex; flex-direction: column; gap: 16px; min-width: 0;
+}
+
+/* ── Section panels ───────────────────────────────────────── */
+
+.crm-panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+}
+.crm-panel > h2 {
+  margin: 0 0 12px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--fg-muted);
+  display: flex; align-items: center; gap: 8px;
+}
+.crm-panel > h2 .crm-count {
+  color: var(--fg-dim); font-weight: 400; letter-spacing: 0;
+}
+.crm-panel .empty-state {
+  margin: 0; padding: 14px 0 4px;
+  color: var(--fg-dim); font-size: 13px; font-style: normal;
+}
+
+/* ── Detail header (entity title bar) ─────────────────────── */
+
+.crm-detail-header {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.crm-detail-title-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.crm-detail-title-row .page-title { margin: 0; font-size: 20px; }
+.crm-detail-id {
+  font-family: var(--mono); font-size: 13px;
+  color: var(--fg-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 5px; padding: 2px 8px;
+}
+.crm-meta-strip {
+  display: flex; flex-wrap: wrap; gap: 4px 24px;
+  margin: 0; font-size: 13px;
+}
+.crm-meta-strip > div { display: flex; gap: 8px; align-items: baseline; }
+.crm-meta-strip dt {
+  color: var(--fg-dim); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.crm-meta-strip dd { margin: 0; color: var(--fg); }
+.crm-meta-strip dd code { font-size: 12px; }
+
+/* ── Filter / toolbar forms ───────────────────────────────── */
 
 .crm-filter-form {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
 }
 .crm-filter-form input,
 .crm-filter-form select {
@@ -959,22 +1065,68 @@ body { margin: 0; }
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--fg);
-  font: inherit;
-  padding: 7px 10px;
+  font: inherit; font-size: 13px;
+  padding: 8px 12px;
 }
+.crm-filter-form input { min-width: 220px; }
 .crm-filter-form input:focus,
 .crm-filter-form select:focus { border-color: var(--accent); outline: none; }
-.crm-filter-form button {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-strong);
+.crm-jump-form { margin-left: auto; }
+.crm-jump-form input { min-width: 120px; }
+
+/* ── Buttons: three weights + danger ──────────────────────── */
+
+.btn-primary, .crm-filter-form button {
+  background: var(--accent); color: var(--bg);
+  border: 1px solid var(--accent);
   border-radius: 6px;
+  font-family: var(--mono); font-weight: 600; font-size: 13px;
+  padding: 8px 16px; cursor: pointer;
+}
+.btn-primary:hover, .crm-filter-form button:hover {
+  background: var(--accent-bright); border-color: var(--accent-bright);
+}
+.crm-mini-btn {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
   color: var(--fg);
   cursor: pointer;
-  font: inherit;
-  padding: 7px 14px;
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 12px;
+  white-space: nowrap;
 }
-.crm-filter-form button:hover { border-color: var(--accent); color: var(--accent); }
-.crm-jump-form { margin-left: auto; }
+.crm-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger {
+  background: var(--accent-error); color: var(--bg);
+  border: 1px solid var(--accent-error);
+  border-radius: 6px;
+  font-family: var(--mono); font-weight: 600; font-size: 12px;
+  padding: 6px 14px; cursor: pointer;
+}
+.btn-danger:hover { filter: brightness(1.15); }
+
+/* "Ask the agent" handoff — visibly different from direct writes:
+   opens a chat with the verb drafted, never executes. */
+.handoff-form { display: inline-flex; margin: 0; }
+.handoff-btn {
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 5px;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.handoff-btn:hover { border-style: solid; border-color: var(--accent); background: var(--bg-inset); }
+.handoff-btn--small { font-size: 12px; padding: 5px 12px; }
+
+.crm-actions {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+
+/* ── Tables ───────────────────────────────────────────────── */
 
 .crm-table {
   border-collapse: collapse;
@@ -982,210 +1134,278 @@ body { margin: 0; }
   width: 100%;
 }
 .crm-table th {
-  border-bottom: 1px solid var(--border-strong);
-  color: var(--fg-muted);
-  font-weight: 500;
-  letter-spacing: 0.4px;
-  padding: 8px 10px;
+  color: var(--fg-dim);
+  font-weight: 500; font-size: 10.5px;
+  letter-spacing: 0.7px; text-transform: uppercase;
   text-align: left;
-  text-transform: uppercase;
-  font-size: 11px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
 }
 .crm-table td {
-  border-bottom: 1px solid var(--border);
   padding: 8px 10px;
-  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
 }
-.crm-table tr:hover td { background: var(--bg-inset); }
-.crm-table a { color: var(--fg); text-decoration: none; }
-.crm-table a:hover { color: var(--accent); }
+.crm-table tbody tr:last-child td { border-bottom: none; }
+.crm-table tbody tr:hover td { background: var(--bg-inset); }
 .crm-table code { font-size: 12px; }
-.crm-table--nested { margin: 8px 0 4px; }
-.crm-table--nested tr:hover td { background: transparent; }
-.crm-row-link { border-bottom: 1px dotted var(--border-strong); }
+.crm-table .num { text-align: right; font-family: var(--mono); }
+.crm-table--nested { margin: 10px 0 2px; font-size: 12px; }
+.crm-table--nested tbody tr:hover td { background: transparent; }
+.crm-row-link { color: var(--fg) !important; }
+.crm-row-link:hover { color: var(--accent) !important; text-decoration: none !important; }
 .crm-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: flex-start;
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  justify-content: flex-end;
 }
+
+/* ── Badges ───────────────────────────────────────────────── */
 
 .crm-badge {
   border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 11px;
+  border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: 0.4px;
   line-height: 1;
-  padding: 3px 8px;
+  padding: 4px 9px;
   white-space: nowrap;
+  color: var(--fg-muted);
+  background: var(--bg-inset);
 }
-.crm-badge--ok { color: var(--accent); border-color: var(--accent); }
-.crm-badge--warn { color: var(--accent-amber); border-color: var(--accent-amber); }
-.crm-badge--err { color: var(--accent-error); border-color: var(--accent-error); }
+.crm-badge::before { content: "●"; font-size: 7px; }
+.crm-badge--ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.crm-badge--warn { color: var(--accent-amber); border-color: color-mix(in srgb, var(--accent-amber) 45%, transparent); }
+.crm-badge--err { color: var(--accent-error); border-color: color-mix(in srgb, var(--accent-error) 45%, transparent); }
 .crm-badge--muted { color: var(--fg-muted); }
 
-.crm-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-  align-items: center;
-}
-.crm-mini-btn {
-  background: var(--bg-elev);
-  border: 1px solid var(--border-strong);
-  border-radius: 5px;
-  color: var(--fg);
-  cursor: pointer;
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 10px;
-}
-.crm-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-/* "Ask the agent" handoff — visibly different from direct-write
-   buttons: these open a chat with the verb drafted, never execute. */
-.handoff-form { display: inline-flex; margin: 0; }
-.handoff-btn {
-  background: transparent;
-  border: 1px dashed var(--accent);
-  border-radius: 5px;
-  color: var(--accent);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-  padding: 6px 12px;
-}
-.handoff-btn:hover { background: var(--bg-inset); border-style: solid; }
-.handoff-btn--small { font-size: 12px; padding: 4px 10px; }
+/* ── Flash + section-degradation notes ────────────────────── */
 
 .crm-flash {
-  background: var(--bg-inset);
-  border: 1px solid var(--accent);
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 8px;
   color: var(--accent);
   font-size: 13px;
-  margin: 0 0 12px;
-  padding: 8px 12px;
+  margin: 0 0 4px;
+  padding: 10px 14px;
 }
-.crm-flash--err { border-color: var(--accent-error); color: var(--accent-error); }
+.crm-flash--err {
+  background: color-mix(in srgb, var(--accent-error) 8%, var(--bg-elev));
+  border-color: color-mix(in srgb, var(--accent-error) 50%, transparent);
+  color: var(--accent-error);
+}
 .crm-section-warn { color: var(--accent-amber); font-size: 12px; margin: 0 0 8px; }
 .crm-muted { color: var(--fg-dim); font-size: 12px; }
+.crm-panel > .crm-muted { margin: 10px 0 0; }
+
+/* ── Pager ────────────────────────────────────────────────── */
 
 .crm-pager {
-  align-items: center;
-  display: flex;
-  gap: 16px;
-  margin-top: 12px;
+  align-items: center; display: flex; gap: 16px; margin-top: 4px;
+  font-family: var(--mono); font-size: 13px;
 }
-.crm-pager a { color: var(--accent); text-decoration: none; }
-.crm-pager a:hover { color: var(--accent-bright); }
-.crm-pager-page { color: var(--fg-muted); font-size: 12px; }
+.crm-pager-page { color: var(--fg-dim); font-size: 12px; }
+
+/* ── Forms (inline CRUD) ──────────────────────────────────── */
 
 .crm-form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
-  max-width: 520px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 12px;
+  align-items: end;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
-.crm-form label { display: flex; flex-direction: column; gap: 4px; }
-.crm-form label span { color: var(--fg-muted); font-size: 12px; }
+.crm-form label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.crm-form label span {
+  color: var(--fg-dim); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
 .crm-form input,
 .crm-form select,
 .crm-form textarea {
-  background: var(--bg-inset);
-  border: 1px solid var(--border);
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
   border-radius: 6px;
   color: var(--fg);
-  font: inherit;
-  padding: 7px 10px;
+  font: inherit; font-size: 13px;
+  padding: 8px 10px;
+  min-width: 0;
 }
 .crm-form input:focus,
 .crm-form select:focus,
 .crm-form textarea:focus { border-color: var(--accent); outline: none; }
-.crm-form button { align-self: flex-start; }
-.crm-note-form { max-width: 680px; }
+.crm-form .crm-form-span { grid-column: 1 / -1; }
+.crm-form button { justify-self: start; }
+.crm-note-form { grid-template-columns: 1fr auto; align-items: end; }
+.crm-note-form textarea { resize: vertical; }
 
+.crm-checkbox {
+  flex-direction: row !important; align-items: center; gap: 8px !important;
+}
+.crm-checkbox input { width: auto; min-width: 0; }
+.crm-checkbox span { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--fg-muted); }
+
+/* Expandable inline form ("+ New order", "Open a case"…) */
 .crm-inline-form { margin-top: 12px; }
 .crm-inline-form > summary {
-  color: var(--fg-muted);
+  list-style: none;
+  display: inline-flex; align-items: center; gap: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--fg-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: 5px;
+  padding: 5px 12px;
 }
-.crm-inline-form > summary:hover { color: var(--accent); }
-.crm-inline-form[open] > summary { color: var(--accent); }
+.crm-inline-form > summary::-webkit-details-marker { display: none; }
+.crm-inline-form > summary::before { content: "+"; color: var(--accent); font-weight: 600; }
+.crm-inline-form > summary:hover { color: var(--fg); border-color: var(--accent); }
+.crm-inline-form[open] > summary { color: var(--accent); border-color: var(--accent); }
 
+/* Two-step destructive confirm: summary is the verb, the expanded
+   form is the consequence + a red button. confirm=yes rides along
+   as a hidden field — the route refuses without it. */
+.crm-danger-form { display: inline-block; }
+.crm-danger-form > summary {
+  list-style: none; display: inline-block; cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--accent-error);
+  border: 1px solid color-mix(in srgb, var(--accent-error) 50%, transparent);
+  border-radius: 5px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.crm-danger-form > summary::-webkit-details-marker { display: none; }
+.crm-danger-form > summary:hover { border-color: var(--accent-error); background: color-mix(in srgb, var(--accent-error) 8%, transparent); }
+.crm-danger-form[open] > summary { border-color: var(--accent-error); }
+.crm-danger-form > .crm-form {
+  border-color: color-mix(in srgb, var(--accent-error) 40%, transparent);
+}
+
+/* Row-level popover forms (assign / resolve in ticket rows) */
 .crm-row-form { display: inline-block; position: relative; }
 .crm-row-form > summary { list-style: none; display: inline-block; }
 .crm-row-form > summary::-webkit-details-marker { display: none; }
 .crm-row-form[open] > .crm-form {
+  position: absolute; right: 0; z-index: 10;
+  width: 300px;
+  grid-template-columns: 1fr;
   background: var(--bg-elev);
   border: 1px solid var(--border-strong);
-  border-radius: 6px;
-  padding: 10px;
-  position: absolute;
-  right: 0;
-  width: 280px;
-  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .crm-priority-form {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-  margin: 0;
+  align-items: center; display: inline-flex; gap: 6px; margin: 0;
 }
 .crm-priority-form select {
   background: var(--bg-inset);
   border: 1px solid var(--border);
   border-radius: 5px;
   color: var(--fg);
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 6px;
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px;
 }
 
+/* ── Balance bars ─────────────────────────────────────────── */
+
 .crm-balances {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
+  display: flex; flex-direction: column; gap: 8px;
+  list-style: none; margin: 4px 0 0; padding: 0;
 }
 .crm-balances li {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
+  align-items: center; display: flex; gap: 12px; font-size: 12px;
 }
 .crm-balance-label {
-  color: var(--fg-muted);
-  flex: 0 0 70px;
+  color: var(--fg-muted); flex: 0 0 64px;
   text-transform: capitalize;
 }
 .crm-balance-bar {
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 4px;
-  flex: 0 0 160px;
-  height: 10px;
+  border-radius: 999px;
+  flex: 0 1 180px;
+  height: 8px;
   overflow: hidden;
 }
 .crm-balance-fill {
   background: var(--accent);
-  display: block;
-  height: 100%;
+  border-radius: 999px;
+  display: block; height: 100%;
+  transition: width 0.2s ease;
 }
 .crm-balance-bar--exhausted .crm-balance-fill { background: var(--accent-error); }
-.crm-balance-nums { color: var(--fg-muted); font-family: var(--mono); }
-.crm-balance-unlimited { color: var(--accent); font-family: var(--mono); }
+.crm-balance-nums { color: var(--fg-muted); font-family: var(--mono); font-size: 11px; }
+.crm-balance-unlimited { color: var(--accent); font-family: var(--mono); font-size: 11px; }
+
+/* ── Cards inside panels (subscription per-line cards) ────── */
+
+.crm-line-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--bg-inset);
+}
+.crm-line-card + .crm-line-card { margin-top: 10px; }
+.crm-line-card--err { border-color: color-mix(in srgb, var(--accent-error) 45%, transparent); }
+.crm-line-card header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.crm-line-card header .crm-spacer { flex: 1; }
+.crm-line-card footer {
+  margin-top: 10px;
+  font-size: 12px; color: var(--fg-dim);
+  display: flex; gap: 12px; align-items: center;
+}
 
 .case-description {
-  color: var(--fg-muted);
-  font-size: 13px;
-  margin: 10px 0 0;
-  max-width: 720px;
+  color: var(--fg-muted); font-size: 13px;
+  margin: 2px 0 0; max-width: 720px; line-height: 1.5;
 }
+
+/* ── Payment method chips ─────────────────────────────────── */
+
+.crm-cof-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.crm-cof-card {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: var(--bg-inset);
+  font-size: 13px;
+}
+.crm-cof-brand { text-transform: uppercase; font-family: var(--mono); font-size: 11px; color: var(--fg-muted); }
+.crm-cof-pan { font-family: var(--mono); }
+.crm-cof-exp { color: var(--fg-dim); font-family: var(--mono); font-size: 12px; }
+.crm-cof-default {
+  margin-left: auto;
+  font-size: 10px; font-family: var(--mono);
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px; padding: 2px 8px;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .crm-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .crm-filter-form input { min-width: 0; flex: 1; }
+  .crm-jump-form { margin-left: 0; }
+  .crm-table th:nth-child(n+5), .crm-table td:nth-child(n+5) { display: none; }
+  .crm-row-actions { justify-content: flex-start; }
+}
+
+.crm-cm-row {
+  display: flex; align-items: end; gap: 8px;
+  margin-top: 8px;
+}
+.crm-cm-row .crm-form { flex: 1; margin-top: 0; grid-template-columns: 1fr auto; }
+.crm-cm-row .crm-danger-form { padding-bottom: 12px; }

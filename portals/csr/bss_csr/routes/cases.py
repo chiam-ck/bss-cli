@@ -1,16 +1,19 @@
 """Case queue + workbench actions (v1.6 cockpit CRM).
 
 The queue is a read view over ``crm.list_cases``. The workbench POST
-routes cover the non-destructive case/ticket verbs — note, transition,
-priority, open/assign/resolve/close ticket — each a single policy-gated
-``bss-clients`` call; ``PolicyViolation`` messages flash back onto the
-case page verbatim (they are operator-facing copy already).
+routes cover the case/ticket verbs — note, transition, priority,
+open/assign/resolve/close ticket, case close, ticket cancel — each a
+single policy-gated ``bss-clients`` call; ``PolicyViolation`` messages
+flash back onto the case page verbatim (they are operator-facing copy
+already).
 
-Deliberately NOT here: ``case.close`` and ``ticket.cancel``. Both sit
-on the orchestrator's ``DESTRUCTIVE_TOOLS`` list, and the v1.6 rule is
-that destructive verbs have exactly one chokepoint — the conversation's
-propose-then-``/confirm`` contract. The case page renders those as
-"Ask the agent" handoffs instead of buttons.
+v1.6.1 (operator directive) — destructive verbs are direct CRUD with a
+**two-step UI confirm**: the form must carry ``confirm=yes`` (rendered
+by the expanded ``crm-danger-form`` panel) or the route refuses. The
+human clicking through the expanded consequence IS the authorisation;
+the policy layer stays the server-side gate. The LLM path keeps its own
+propose-then-``/confirm`` contract unchanged, and "Ask the agent"
+handoffs remain available for narrative/compound work.
 """
 
 from __future__ import annotations
@@ -125,6 +128,37 @@ async def _run(case_id: str, action: str, coro) -> RedirectResponse:
     return _back_to_case(case_id, flash=action)
 
 
+CONFIRM_REQUIRED = "This action needs the expanded confirm step."
+
+
+@router.post("/case/{case_id}/close", response_model=None)
+async def case_close(
+    case_id: str,
+    resolution_code: str = Form(...),
+    confirm: str = Form(default=""),
+) -> RedirectResponse:
+    if confirm != "yes":
+        return _back_to_case(case_id, err=CONFIRM_REQUIRED)
+    return await _run(
+        case_id, "case_closed",
+        get_clients().crm.close_case(
+            case_id, resolution_code=resolution_code.strip()
+        ),
+    )
+
+
+@router.post("/case/{case_id}/ticket/{ticket_id}/cancel", response_model=None)
+async def ticket_cancel(
+    case_id: str, ticket_id: str, confirm: str = Form(default="")
+) -> RedirectResponse:
+    if confirm != "yes":
+        return _back_to_case(case_id, err=CONFIRM_REQUIRED)
+    return await _run(
+        case_id, "ticket_cancelled",
+        get_clients().crm.cancel_ticket(ticket_id),
+    )
+
+
 @router.post("/case/{case_id}/note", response_model=None)
 async def case_add_note(
     case_id: str, body: str = Form(...)
@@ -223,5 +257,4 @@ def workbench_context(case_state: str, tickets: list[dict[str, Any]]) -> dict[st
         "ticket_types": TICKET_TYPES,
         "priorities": PRIORITIES,
         "case_is_open": case_state not in ("closed",),
-        "case_is_resolvable_to_close": case_state == "resolved",
     }

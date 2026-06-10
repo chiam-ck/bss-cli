@@ -1,10 +1,12 @@
 {% extends "cockpit_layout.html" %}
-{% from "partials/crm_macros.html" import badge, pager %}
+{% from "partials/crm_macros.html" import badge, pager, flashes %}
 {% block title_suffix %} · Orders{% endblock %}
 
 {% block main %}
 <section class="cockpit-page crm-page">
-  <header class="cockpit-page-header">
+  {{ flashes(flash, err) }}
+
+  <header class="crm-page-toolbar">
     <h1 class="cockpit-page-title">Orders</h1>
     <form method="get" action="/orders" class="crm-filter-form">
       <input type="text" name="customer" value="{{ customer }}"
@@ -45,5 +47,24 @@
   {% else %}
   <p class="cockpit-empty">No orders match.</p>
   {% endif %}
+
+  <details class="crm-inline-form">
+    <summary>New order</summary>
+    <form method="post" action="/orders/create" class="crm-form">
+      <label><span>Customer</span><input type="text" name="customer_id" placeholder="CUST-…" required /></label>
+      <label><span>Offering</span>
+        {% if plans %}
+        <select name="offering_id" required>
+          {% for p in plans %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+        {% else %}
+        <input type="text" name="offering_id" placeholder="PLAN_M" required />
+        {% endif %}
+      </label>
+      <label><span>MSISDN preference</span><input type="text" name="msisdn_preference" placeholder="(optional)" /></label>
+      <label><span>Promo code</span><input type="text" name="discount_code" placeholder="(optional)" /></label>
+      <button type="submit" class="btn-primary">Create order</button>
+    </form>
+  </details>
 </section>
 {% endblock %}

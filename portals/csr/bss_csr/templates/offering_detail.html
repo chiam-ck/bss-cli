@@ -1,54 +1,79 @@
 {% extends "cockpit_layout.html" %}
-{% from "partials/crm_macros.html" import badge, handoff %}
+{% from "partials/crm_macros.html" import badge, handoff, flashes, panel %}
 {% block title_suffix %} · {{ offering.id }}{% endblock %}
 
 {% block main %}
-<a class="back-link" href="/catalog">← catalog</a>
+<section class="cockpit-page crm-page">
+  <a class="back-link" href="/catalog">← catalog</a>
 
-<header class="case-header">
-  <div class="case-header-row">
-    <h1 class="page-title">{{ offering.name or offering.id }}</h1>
-    <code class="customer-id">{{ offering.id }}</code>
-    {{ badge(offering.lifecycle) }}
-  </div>
-  <dl class="customer-summary-meta">
-    <div><dt>Price</dt><dd>{{ offering.price }} / month</dd></div>
-    <div><dt>Data</dt><dd>{{ offering.data }}</dd></div>
-    <div><dt>Voice</dt><dd>{{ offering.voice }}</dd></div>
-    <div><dt>SMS</dt><dd>{{ offering.sms }}</dd></div>
-    {% if offering.roaming != "—" %}<div><dt>Roaming</dt><dd>{{ offering.roaming }}</dd></div>{% endif %}
-    {% if offering.valid_from != "—" %}<div><dt>Valid from</dt><dd><code>{{ offering.valid_from }}</code></dd></div>{% endif %}
-    {% if offering.valid_to != "—" %}<div><dt>Valid to</dt><dd><code>{{ offering.valid_to }}</code></dd></div>{% endif %}
-  </dl>
-  {% if offering.description %}<p class="case-description">{{ offering.description }}</p>{% endif %}
-  <div class="crm-actions">
-    {{ handoff("Create order on this plan", "Create an order for CUST- on " ~ offering.id, small=True) }}
-    {{ handoff("Add a new price", "Add a new price to offering " ~ offering.id ~ ": SGD , effective from ", small=True) }}
-    {{ handoff("Change validity window", "Set the validity window on offering " ~ offering.id ~ ": from  to ", small=True) }}
-  </div>
-</header>
+  {{ flashes(flash, err) }}
 
-<section class="three-sixty-section">
-  <h2>Prices</h2>
-  {% if prices %}
-  <table class="crm-table">
-    <thead><tr><th>ID</th><th>Amount</th><th>Valid from</th><th>Valid to</th><th></th></tr></thead>
-    <tbody>
-      {% for p in prices %}
-      <tr>
-        <td><code>{{ p.id }}</code></td>
-        <td>{{ p.value }}</td>
-        <td><code>{{ p.valid_from }}</code></td>
-        <td><code>{{ p.valid_to }}</code></td>
-        <td>{% if p.id == active_price_id %}<span class="crm-badge crm-badge--ok">active</span>{% endif %}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-  <p class="crm-muted">Existing subscriptions charge their price snapshot — catalog
-  price changes affect new orders only (v0.7 doctrine).</p>
-  {% else %}
-  <p class="empty-state">No price rows on this offering.</p>
-  {% endif %}
+  <header class="crm-detail-header">
+    <div class="crm-detail-title-row">
+      <h1 class="page-title">{{ offering.name or offering.id }}</h1>
+      <span class="crm-detail-id">{{ offering.id }}</span>
+      {{ badge(offering.lifecycle) }}
+    </div>
+    <dl class="crm-meta-strip">
+      <div><dt>Price</dt><dd>{{ offering.price }} / month</dd></div>
+      <div><dt>Data</dt><dd>{{ offering.data }}</dd></div>
+      <div><dt>Voice</dt><dd>{{ offering.voice }}</dd></div>
+      <div><dt>SMS</dt><dd>{{ offering.sms }}</dd></div>
+      {% if offering.roaming != "—" %}<div><dt>Roaming</dt><dd>{{ offering.roaming }}</dd></div>{% endif %}
+      {% if offering.valid_from != "—" %}<div><dt>Valid from</dt><dd><code>{{ offering.valid_from }}</code></dd></div>{% endif %}
+      {% if offering.valid_to != "—" %}<div><dt>Valid to</dt><dd><code>{{ offering.valid_to }}</code></dd></div>{% endif %}
+    </dl>
+    {% if offering.description %}<p class="case-description">{{ offering.description }}</p>{% endif %}
+    <div class="crm-actions">
+      {{ handoff("Ask the agent", "About offering " ~ offering.id ~ ": ") }}
+    </div>
+  </header>
+
+  <div class="crm-grid">
+    <div class="crm-grid-main">
+      {% call panel("Prices", prices | length) %}
+        {% if prices %}
+        <table class="crm-table">
+          <thead><tr><th>ID</th><th>Amount</th><th>Valid from</th><th>Valid to</th><th></th></tr></thead>
+          <tbody>
+            {% for p in prices %}
+            <tr>
+              <td><code>{{ p.id }}</code></td>
+              <td class="num">{{ p.value }}</td>
+              <td><code>{{ p.valid_from }}</code></td>
+              <td><code>{{ p.valid_to }}</code></td>
+              <td>{% if p.id == active_price_id %}<span class="crm-badge crm-badge--ok">active</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No price rows on this offering.</p>
+        {% endif %}
+        <p class="crm-muted">Existing subscriptions charge their price snapshot — catalog
+        price changes affect new orders only (v0.7 doctrine).</p>
+        <details class="crm-inline-form">
+          <summary>Add a price row</summary>
+          <form method="post" action="/catalog/{{ offering.id }}/price" class="crm-form">
+            <label><span>Price ID</span><input type="text" name="price_id" placeholder="POP_{{ offering.id }}_2" required /></label>
+            <label><span>Amount (SGD)</span><input type="text" name="amount" required /></label>
+            <label><span>Valid from</span><input type="datetime-local" name="valid_from" /></label>
+            <label class="crm-checkbox"><input type="checkbox" name="retire_current" value="yes" /><span>retire current price</span></label>
+            <button type="submit" class="btn-primary">Add price</button>
+          </form>
+        </details>
+      {% endcall %}
+    </div>
+    <div class="crm-grid-side">
+      {% call panel("Validity window") %}
+        <form method="post" action="/catalog/{{ offering.id }}/window" class="crm-form" style="margin-top:0">
+          <label><span>Valid from</span><input type="datetime-local" name="valid_from" /></label>
+          <label><span>Valid to</span><input type="datetime-local" name="valid_to" /></label>
+          <button type="submit" class="crm-mini-btn">Set window</button>
+        </form>
+        <p class="crm-muted">Leave a field blank to clear that bound.</p>
+      {% endcall %}
+    </div>
+  </div>
 </section>
 {% endblock %}

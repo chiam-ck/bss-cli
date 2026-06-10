@@ -1,19 +1,16 @@
 {% extends "cockpit_layout.html" %}
-{% from "partials/crm_macros.html" import badge, handoff %}
+{% from "partials/crm_macros.html" import badge, handoff, flashes, panel %}
 {% block title_suffix %} · Catalog{% endblock %}
 
 {% block main %}
 <section class="cockpit-page crm-page">
-  <header class="cockpit-page-header">
+  {{ flashes(flash, err) }}
+
+  <header class="crm-page-toolbar">
     <h1 class="cockpit-page-title">Product catalog</h1>
-    <div class="crm-actions">
-      {{ handoff("Add an offering", "Add a catalog offering: id PLAN_, name , monthly price SGD , data  GB, voice  min, sms ", small=True) }}
-      {{ handoff("Change a price", "Add a new price to offering PLAN_: SGD , effective from ", small=True) }}
-    </div>
   </header>
 
-  <section class="three-sixty-section">
-    <h2>Plans</h2>
+  {% call panel("Plans", plans | length) %}
     {% if plans %}
     <table class="crm-table">
       <thead>
@@ -24,11 +21,11 @@
         <tr>
           <td><a href="/catalog/{{ p.id }}"><code>{{ p.id }}</code></a></td>
           <td><a href="/catalog/{{ p.id }}" class="crm-row-link">{{ p.name }}</a></td>
-          <td>{{ p.price }}</td>
-          <td>{{ p.data }}</td>
-          <td>{{ p.voice }}</td>
-          <td>{{ p.sms }}</td>
-          <td>{{ p.roaming }}</td>
+          <td class="num">{{ p.price }}</td>
+          <td class="num">{{ p.data }}</td>
+          <td class="num">{{ p.voice }}</td>
+          <td class="num">{{ p.sms }}</td>
+          <td class="num">{{ p.roaming }}</td>
           <td>{{ badge(p.lifecycle) }}{% if not p.sellable %} <span class="crm-muted">(not sellable)</span>{% endif %}</td>
         </tr>
         {% endfor %}
@@ -37,10 +34,22 @@
     {% else %}
     <p class="empty-state">Catalog is empty.</p>
     {% endif %}
-  </section>
+    <details class="crm-inline-form">
+      <summary>Add an offering</summary>
+      <form method="post" action="/catalog/offering" class="crm-form">
+        <label><span>ID</span><input type="text" name="offering_id" placeholder="PLAN_XL" required /></label>
+        <label><span>Name</span><input type="text" name="name" required /></label>
+        <label><span>Monthly price (SGD)</span><input type="text" name="amount" placeholder="42" required /></label>
+        <label><span>Data (MB)</span><input type="number" name="data_mb" min="0" placeholder="20480" /></label>
+        <label><span>Voice (min)</span><input type="number" name="voice_minutes" min="0" placeholder="600" /></label>
+        <label><span>SMS</span><input type="number" name="sms_count" min="0" placeholder="500" /></label>
+        <label><span>Roaming (MB)</span><input type="number" name="data_roaming_mb" min="0" placeholder="2048" /></label>
+        <button type="submit" class="btn-primary">Add offering</button>
+      </form>
+    </details>
+  {% endcall %}
 
-  <section class="three-sixty-section">
-    <h2>VAS top-ups</h2>
+  {% call panel("VAS top-ups", vas | length) %}
     {% if vas %}
     <table class="crm-table">
       <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Allowance</th><th>Expiry</th></tr></thead>
@@ -49,9 +58,9 @@
         <tr>
           <td><code>{{ v.id }}</code></td>
           <td>{{ v.name }}</td>
-          <td>{{ v.price }}</td>
-          <td>{{ v.allowance }}</td>
-          <td>{{ v.expiry }}</td>
+          <td class="num">{{ v.price }}</td>
+          <td class="num">{{ v.allowance }}</td>
+          <td class="num">{{ v.expiry }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -59,10 +68,9 @@
     {% else %}
     <p class="empty-state">No VAS offerings.</p>
     {% endif %}
-  </section>
+  {% endcall %}
 
-  <section class="three-sixty-section">
-    <h2>Promotions</h2>
+  {% call panel("Promotions", promotions | length) %}
     {% if promotions %}
     <table class="crm-table">
       <thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Discount</th><th>Audience</th><th>State</th><th>Valid to</th></tr></thead>
@@ -83,9 +91,12 @@
     {% else %}
     <p class="empty-state">No promotions.</p>
     {% endif %}
-    <div class="crm-actions">
-      {{ handoff("Assign a promo", "Assign promotion  to customer CUST-", small=True) }}
+    <div class="crm-actions" style="margin-top:12px">
+      {{ handoff("Assign a promo", "Assign promotion  to customer CUST-") }}
     </div>
-  </section>
+    <p class="crm-muted">Promo assignment stays conversational: <code>bss promo assign</code>
+    composes the loyalty pairing (v1.3) on top of the catalog write — a bare form here
+    would silently skip the loyalty mint.</p>
+  {% endcall %}
 </section>
 {% endblock %}

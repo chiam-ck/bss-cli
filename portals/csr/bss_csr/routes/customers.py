@@ -1,11 +1,12 @@
 """Customer screens — list/search + 360 detail (v1.6 cockpit CRM).
 
 Reads go direct via ``bss_orchestrator.clients.get_clients`` (same as
-the search and case routes since v0.13). The only writes here are the
-non-destructive CRM verbs an operator reaches for constantly — log an
-interaction, open a case — each a single policy-gated ``bss-clients``
-call. Destructive verbs (``customer.close``) hand off to chat where
-propose-then-``/confirm`` applies.
+the search and case routes since v0.13). Writes are single policy-gated
+``bss-clients`` calls: interactions, cases, name + contact-medium CRUD,
+and (v1.6.1, operator directive) ``customer.close`` /
+``remove_contact_medium`` as direct CRUD behind the two-step UI confirm
+(``confirm=yes`` from the expanded danger panel; routes refuse without
+it). "Ask the agent" handoffs remain for narrative/compound work.
 """
 
 from __future__ import annotations
@@ -170,6 +171,7 @@ async def customer_detail(
     ]
 
     flat = flatten_customer(cust)
+    individual = cust.get("individual") or {}
     contact_mediums = [
         {
             "id": cm.get("id", ""),
@@ -189,6 +191,8 @@ async def customer_detail(
             "model": "(env default)",
             "customer": flat,
             "customer_raw_name": customer_name(cust),
+            "given_name": individual.get("givenName", ""),
+            "family_name": individual.get("familyName", ""),
             "contact_mediums": contact_mediums,
             "kyc": kyc or {},
             "subscriptions": sub_views,
@@ -234,6 +238,94 @@ async def log_interaction(
     except ClientError as exc:
         return _back_to_customer(customer_id, err=f"CRM error ({exc.status_code})")
     return _back_to_customer(customer_id, flash="interaction_logged")
+
+
+CONFIRM_REQUIRED = "This action needs the expanded confirm step."
+
+
+async def _write(customer_id: str, action: str, coro) -> RedirectResponse:
+    """Run one customer write; flash the outcome back onto the 360."""
+    try:
+        await coro
+    except PolicyViolationFromServer as exc:
+        return _back_to_customer(customer_id, err=exc.detail)
+    except ClientError as exc:
+        return _back_to_customer(customer_id, err=f"CRM error ({exc.status_code})")
+    return _back_to_customer(customer_id, flash=action)
+
+
+@router.post("/customers/{customer_id}/name", response_model=None)
+async def update_name(
+    customer_id: str,
+    given_name: str = Form(...),
+    family_name: str = Form(...),
+) -> RedirectResponse:
+    return await _write(
+        customer_id, "name_updated",
+        get_clients().crm.update_individual(
+            customer_id,
+            given_name=given_name.strip(),
+            family_name=family_name.strip(),
+        ),
+    )
+
+
+@router.post("/customers/{customer_id}/contact", response_model=None)
+async def add_contact(
+    customer_id: str,
+    medium_type: str = Form(...),
+    value: str = Form(...),
+) -> RedirectResponse:
+    mtype = medium_type if medium_type in ("email", "mobile") else "email"
+    return await _write(
+        customer_id, "contact_added",
+        get_clients().crm.add_contact_medium(
+            customer_id, medium_type=mtype, value=value.strip()
+        ),
+    )
+
+
+@router.post("/customers/{customer_id}/contact/{medium_id}", response_model=None)
+async def update_contact(
+    customer_id: str,
+    medium_id: str,
+    value: str = Form(...),
+) -> RedirectResponse:
+    return await _write(
+        customer_id, "contact_updated",
+        get_clients().crm.update_contact_medium(
+            customer_id, medium_id, value=value.strip()
+        ),
+    )
+
+
+@router.post(
+    "/customers/{customer_id}/contact/{medium_id}/remove", response_model=None
+)
+async def remove_contact(
+    customer_id: str,
+    medium_id: str,
+    confirm: str = Form(default=""),
+) -> RedirectResponse:
+    if confirm != "yes":
+        return _back_to_customer(customer_id, err=CONFIRM_REQUIRED)
+    return await _write(
+        customer_id, "contact_removed",
+        get_clients().crm.remove_contact_medium(customer_id, medium_id),
+    )
+
+
+@router.post("/customers/{customer_id}/close", response_model=None)
+async def close_customer(
+    customer_id: str,
+    confirm: str = Form(default=""),
+) -> RedirectResponse:
+    if confirm != "yes":
+        return _back_to_customer(customer_id, err=CONFIRM_REQUIRED)
+    return await _write(
+        customer_id, "customer_closed",
+        get_clients().crm.close_customer(customer_id),
+    )
 
 
 @router.post("/customers/{customer_id}/case", response_model=None)

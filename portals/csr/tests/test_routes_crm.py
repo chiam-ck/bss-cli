@@ -2,10 +2,11 @@
 subscription routes, with mocked clients (pattern from
 test_routes_case.py).
 
-Doctrine pins at the bottom: destructive verbs (case.close,
-ticket.cancel, order.cancel, subscription.terminate, customer.close)
-must NOT have direct POST routes on the CRM screens — they hand off to
-chat where propose-then-/confirm applies.
+Doctrine pins at the bottom (v1.6.1, operator directive): destructive
+and money-moving verbs ARE direct CRUD, but every such POST must carry
+``confirm=yes`` (the expanded two-step confirm panel) — routes refuse
+without it. The policy layer stays the server-side gate; only
+cockpit.py talks to the orchestrator.
 """
 
 from __future__ import annotations
@@ -179,11 +180,18 @@ class StubBundle:
             add_case_note={"id": "NOTE-2"},
             transition_case=CASE,
             update_case_priority=CASE,
+            close_case=CASE,
             open_ticket={"id": "TKT-NEW"},
             assign_ticket=TICKET,
             transition_ticket=TICKET,
             resolve_ticket=TICKET,
+            cancel_ticket=TICKET,
             get_chat_transcript={},
+            update_individual=CUSTOMER,
+            add_contact_medium=CUSTOMER,
+            update_contact_medium=CUSTOMER,
+            remove_contact_medium=CUSTOMER,
+            close_customer=CUSTOMER,
         )
         self.subscription = _Stub(
             list_for_customer=[SUBSCRIPTION],
@@ -192,8 +200,19 @@ class StubBundle:
                 "iccid": "8965012026000000017",
                 "activationCode": "LPA:1$smdp.example$TOKEN",
             },
+            schedule_plan_change=SUBSCRIPTION,
+            cancel_plan_change=SUBSCRIPTION,
+            renew=SUBSCRIPTION,
+            purchase_vas={"id": "VP-1"},
+            terminate=SUBSCRIPTION,
         )
-        self.com = _Stub(list_orders=[ORDER], get_order=ORDER)
+        self.com = _Stub(
+            list_orders=[ORDER],
+            get_order=ORDER,
+            create_order={"id": "ORD-NEW", "state": "acknowledged"},
+            submit_order=ORDER,
+            cancel_order=ORDER,
+        )
         self.som = _Stub(
             list_for_order=[SERVICE_ORDER],
             get_service=SERVICE,
@@ -202,6 +221,7 @@ class StubBundle:
         self.payment = _Stub(list_methods=[PAYMENT_METHOD])
         self.catalog = _Stub(
             list_offerings=[OFFERING],
+            list_active_offerings=[OFFERING],
             get_offering=OFFERING,
             get_active_price={"id": "POP-1"},
             list_vas=[{"id": "VAS_1GB", "name": "1GB booster", "currency": "SGD",
@@ -211,6 +231,9 @@ class StubBundle:
                               "code": "LAUNCH10", "state": "active",
                               "discountType": "percent", "discountValue": "10",
                               "audience": "public"}],
+            admin_add_offering={"id": "PLAN_XL"},
+            admin_add_price={"id": "POP-2"},
+            admin_set_offering_window=OFFERING,
         )
         self.mediation = _Stub(list_usage=[USAGE])
         for name, value in overrides.items():
@@ -351,8 +374,9 @@ def test_case_page_shows_workbench_for_in_progress(crm_client) -> None:
     assert "Await customer" in body
     assert "Resolve" in body
     assert "Add note" in body
-    # destructive — handoff only, never a direct form action
-    assert "/case/CASE-042/close" not in body
+    # v1.6.1 — close is direct CRUD behind the two-step confirm panel
+    assert "/case/CASE-042/close" in body
+    assert 'name="confirm" value="yes"' in body
 
 
 def test_case_note_post_redirects(crm_client) -> None:
@@ -451,39 +475,137 @@ def test_subscription_detail_renders(crm_client) -> None:
     assert "SUB-007" in body
     assert "unlimited" in body          # voice balance
     assert "6591110001" in body
-    assert "Terminate" in body          # handoff button, not a form POST
-    assert "/subscriptions/SUB-007/terminate" not in body
+    # v1.6.1 — terminate is direct CRUD behind the two-step confirm
+    assert "/subscriptions/SUB-007/terminate" in body
     assert "LPA:1$smdp.example$TOKEN" in body
+
+
+# ─── CRUD (v1.6.1, operator directive) ───────────────────────────────
+
+
+def test_order_create_redirects_to_new_order(crm_client) -> None:
+    r = crm_client.post(
+        "/orders/create",
+        data={"customer_id": "CUST-001", "offering_id": "PLAN_M"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("/orders/ORD-NEW")
+
+
+def test_order_create_policy_violation_flashes_on_queue(crm_client, stub) -> None:
+    stub.com.create_order = _Stub(
+        x=PolicyViolationFromServer(
+            rule="order.create.no_payment_method",
+            message="Customer CUST-001 has no payment method on file",
+        )
+    ).x
+    r = crm_client.post(
+        "/orders/create",
+        data={"customer_id": "CUST-001", "offering_id": "PLAN_M"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"].startswith("/orders?")
+    assert "err=" in r.headers["location"]
+
+
+def test_catalog_add_offering(crm_client) -> None:
+    r = crm_client.post(
+        "/catalog/offering",
+        data={"offering_id": "PLAN_XL", "name": "Mobile XL", "amount": "42",
+              "data_mb": "20480"},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers["location"] == "/catalog/PLAN_XL?flash=offering_added"
+
+
+def test_catalog_add_price_and_window(crm_client) -> None:
+    r = crm_client.post(
+        "/catalog/PLAN_M/price",
+        data={"price_id": "POP-2", "amount": "24",
+              "valid_from": "2026-07-01T00:00", "retire_current": "yes"},
+        follow_redirects=False,
+    )
+    assert "flash=price_added" in r.headers["location"]
+    r = crm_client.post(
+        "/catalog/PLAN_M/window",
+        data={"valid_from": "2026-07-01T00:00", "valid_to": ""},
+        follow_redirects=False,
+    )
+    assert "flash=window_set" in r.headers["location"]
+
+
+def test_customer_name_and_contact_crud(crm_client) -> None:
+    r = crm_client.post(
+        "/customers/CUST-001/name",
+        data={"given_name": "Ada", "family_name": "Tan-Lim"},
+        follow_redirects=False,
+    )
+    assert "flash=name_updated" in r.headers["location"]
+    r = crm_client.post(
+        "/customers/CUST-001/contact",
+        data={"medium_type": "mobile", "value": "6590001111"},
+        follow_redirects=False,
+    )
+    assert "flash=contact_added" in r.headers["location"]
+    r = crm_client.post(
+        "/customers/CUST-001/contact/CM-1",
+        data={"value": "ada.new@example.com"},
+        follow_redirects=False,
+    )
+    assert "flash=contact_updated" in r.headers["location"]
+
+
+def test_subscription_plan_change_schedule_and_cancel(crm_client) -> None:
+    r = crm_client.post(
+        "/subscriptions/SUB-007/plan-change",
+        data={"new_offering_id": "PLAN_L"},
+        follow_redirects=False,
+    )
+    assert "flash=plan_change_scheduled" in r.headers["location"]
+    r = crm_client.post(
+        "/subscriptions/SUB-007/plan-change/cancel", follow_redirects=False
+    )
+    assert "flash=plan_change_cancelled" in r.headers["location"]
 
 
 # ─── Doctrine pins ───────────────────────────────────────────────────
 
 _ROUTES_DIR = Path(__file__).resolve().parents[1] / "bss_csr" / "routes"
 
-# Destructive verbs (orchestrator DESTRUCTIVE_TOOLS) must never be a
-# direct CRM-screen write — chat handoff is the single chokepoint.
-_FORBIDDEN_CLIENT_CALLS = [
-    ".close_case(",
-    ".cancel_ticket(",
-    ".cancel_order(",
-    ".terminate(",
-    ".close_customer(",
-    ".remove_method(",
-    ".remove_contact_medium(",
+# v1.6.1 — destructive + money-moving POSTs are direct CRUD, but every
+# one requires the two-step confirm field. The expanded danger panel
+# carries confirm=yes; a bare POST must bounce with an error flash and
+# MUST NOT execute. (LLM path keeps propose-then-/confirm separately.)
+_CONFIRM_GATED: list[tuple[str, dict[str, str]]] = [
+    ("/customers/CUST-001/close", {}),
+    ("/customers/CUST-001/contact/CM-1/remove", {}),
+    ("/case/CASE-042/close", {"resolution_code": "no_fault_found"}),
+    ("/case/CASE-042/ticket/TKT-101/cancel", {}),
+    ("/orders/ORD-014/submit", {}),
+    ("/orders/ORD-014/cancel", {}),
+    ("/subscriptions/SUB-007/renew", {}),
+    ("/subscriptions/SUB-007/vas", {"vas_offering_id": "VAS_1GB"}),
+    ("/subscriptions/SUB-007/terminate", {}),
 ]
 
 
-def test_crm_routes_never_call_destructive_clients() -> None:
-    offenders: list[str] = []
-    for py in _ROUTES_DIR.glob("*.py"):
-        src = py.read_text()
-        for needle in _FORBIDDEN_CLIENT_CALLS:
-            if needle in src:
-                offenders.append(f"{py.name}: {needle}")
-    assert not offenders, (
-        "Destructive verbs must hand off to chat (propose-then-/confirm), "
-        f"not run from CRM screens: {offenders}"
-    )
+def test_destructive_posts_refuse_without_confirm(crm_client) -> None:
+    for path, data in _CONFIRM_GATED:
+        r = crm_client.post(path, data=data, follow_redirects=False)
+        assert r.status_code == 303, path
+        assert "err=" in r.headers["location"], path
+
+
+def test_destructive_posts_execute_with_confirm(crm_client) -> None:
+    for path, data in _CONFIRM_GATED:
+        r = crm_client.post(
+            path, data={**data, "confirm": "yes"}, follow_redirects=False
+        )
+        assert r.status_code == 303, path
+        assert "flash=" in r.headers["location"], path
 
 
 def test_crm_routes_never_touch_orchestrator_stream() -> None:

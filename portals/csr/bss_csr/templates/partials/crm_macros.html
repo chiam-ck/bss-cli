@@ -1,12 +1,20 @@
 {# Shared macros for the v1.6 cockpit CRM screens.
 
-   `handoff` is the doctrine-bearing one: destructive / money-moving /
-   compound verbs never get a direct button on a CRM page — they open a
-   chat session with the verb DRAFTED in the compose box. The operator
-   reviews and presses Enter; propose-then-/confirm applies unchanged. #}
+   v1.6.1 — direct CRUD is first-class (operator directive). Destructive
+   and money-moving verbs render inside `danger()` — a two-step confirm
+   whose expanded form carries confirm=yes; the route refuses without
+   it. `handoff` remains the chat seam: opens a session with the verb
+   DRAFTED in the compose box, never executes. #}
 
 {% macro badge(state) -%}
 <span class="crm-badge crm-badge--{{ state | tone }}">{{ state }}</span>
+{%- endmacro %}
+
+{% macro panel(title, count=None) -%}
+<section class="crm-panel">
+  <h2>{{ title }}{% if count is not none %}<span class="crm-count">({{ count }})</span>{% endif %}</h2>
+  {{ caller() }}
+</section>
 {%- endmacro %}
 
 {% macro handoff(text, draft, customer_id="", label="", small=False) -%}
@@ -14,11 +22,28 @@
   <input type="hidden" name="draft" value="{{ draft }}" />
   {% if customer_id %}<input type="hidden" name="customer_id" value="{{ customer_id }}" />{% endif %}
   {% if label %}<input type="hidden" name="label" value="{{ label }}" />{% endif %}
-  <button type="submit" class="handoff-btn{% if small %} handoff-btn--small{% endif %}"
+  <button type="submit" class="handoff-btn"
           title="Opens a chat with this message drafted — review, edit, press Enter to send.">
     ⌁ {{ text }}
   </button>
 </form>
+{%- endmacro %}
+
+{# Two-step destructive confirm. Usage:
+   {% call danger("Terminate…", "/subscriptions/SUB-1/terminate",
+                  "Stops service immediately; the number is released.") %}
+     <label><span>Reason</span><input type="text" name="reason" /></label>
+   {% endcall %} #}
+{% macro danger(verb, action, consequence, button=None) -%}
+<details class="crm-danger-form">
+  <summary>{{ verb }}</summary>
+  <form method="post" action="{{ action }}" class="crm-form">
+    <input type="hidden" name="confirm" value="yes" />
+    <p class="crm-muted crm-form-span" style="margin:0">{{ consequence }}</p>
+    {{ caller() if caller else "" }}
+    <button type="submit" class="btn-danger">{{ button or verb }}</button>
+  </form>
+</details>
 {%- endmacro %}
 
 {% macro flashes(flash, err) -%}
@@ -31,8 +56,26 @@
         'ticket_assigned': 'Ticket assigned.',
         'ticket_transitioned': 'Ticket state updated.',
         'ticket_resolved': 'Ticket resolved.',
+        'ticket_cancelled': 'Ticket cancelled.',
+        'case_closed': 'Case closed.',
         'interaction_logged': 'Interaction logged.',
         'case_opened': 'Case opened.',
+        'name_updated': 'Name updated.',
+        'contact_added': 'Contact medium added.',
+        'contact_updated': 'Contact medium updated.',
+        'contact_removed': 'Contact medium removed.',
+        'customer_closed': 'Customer closed.',
+        'order_created': 'Order created (not yet submitted).',
+        'order_submitted': 'Order submitted — decomposition started.',
+        'order_cancelled': 'Order cancelled.',
+        'offering_added': 'Offering added to the catalog.',
+        'price_added': 'Price row added.',
+        'window_set': 'Validity window updated.',
+        'plan_change_scheduled': 'Plan change scheduled for next renewal.',
+        'plan_change_cancelled': 'Pending plan change cancelled.',
+        'renewed': 'Renewal executed — card on file charged.',
+        'vas_purchased': 'VAS top-up purchased — card on file charged.',
+        'terminated': 'Subscription terminated.',
     }.get(flash, flash) }}</p>
   {% endif %}
   {% if err %}<p class="crm-flash crm-flash--err" role="alert">{{ err }}</p>{% endif %}

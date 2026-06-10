@@ -1,21 +1,24 @@
 """Catalog screens — plans, VAS, promotions (v1.6 cockpit CRM).
 
-Strictly read-only. Catalog writes (add offering, price changes,
-validity windows, promotion lifecycle) stay on the conversational
-surface / ``bss admin`` CLI where the operator narrates intent and the
-policy layer arbitrates — the page offers "Ask the agent" drafts for
-the common ones instead of forms.
+v1.6.1 (operator directive) — catalog admin CRUD is direct: add an
+offering, add a price row, set a validity window; the same
+``admin_*`` client surface the ``bss admin catalog`` CLI uses, policy-
+gated server-side. Promotion lifecycle stays chat/CLI-only because
+``bss promo assign`` composes loyalty pairing (v1.3) on top of the
+catalog write — a bare UI form would silently skip the loyalty mint.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
+from urllib.parse import urlencode
 
 import structlog
-from bss_clients.errors import ClientError
+from bss_clients.errors import ClientError, PolicyViolationFromServer
 from bss_orchestrator.clients import get_clients
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from ..templating import templates
 from ..views import field, fmt_dt, offering_allowance, offering_price
@@ -93,8 +96,96 @@ async def catalog_index(request: Request) -> HTMLResponse:
             "plans": plans,
             "vas": vas_views,
             "promotions": promo_views,
+            "flash": request.query_params.get("flash", ""),
+            "err": request.query_params.get("err", "")[:300],
         },
     )
+
+
+def _parse_dt(raw: str) -> datetime | None:
+    """datetime-local input ('2026-06-10T00:00') → datetime, or None."""
+    raw = raw.strip()
+    if not raw:
+        return None
+    return datetime.fromisoformat(raw)
+
+
+def _back(url: str, **params: str) -> RedirectResponse:
+    filtered = {k: v for k, v in params.items() if v}
+    if filtered:
+        url += "?" + urlencode(filtered)
+    return RedirectResponse(url=url, status_code=303)
+
+
+@router.post("/catalog/offering", response_model=None)
+async def add_offering(
+    offering_id: str = Form(...),
+    name: str = Form(...),
+    amount: str = Form(...),
+    data_mb: int | None = Form(default=None),
+    voice_minutes: int | None = Form(default=None),
+    sms_count: int | None = Form(default=None),
+    data_roaming_mb: int | None = Form(default=None),
+) -> RedirectResponse:
+    try:
+        await get_clients().catalog.admin_add_offering(
+            offering_id=offering_id.strip(),
+            name=name.strip(),
+            amount=amount.strip(),
+            data_mb=data_mb,
+            voice_minutes=voice_minutes,
+            sms_count=sms_count,
+            data_roaming_mb=data_roaming_mb,
+        )
+    except PolicyViolationFromServer as exc:
+        return _back("/catalog", err=exc.detail)
+    except (ClientError, ValueError) as exc:
+        return _back("/catalog", err=f"Catalog rejected the offering: {exc}")
+    return _back(f"/catalog/{offering_id.strip()}", flash="offering_added")
+
+
+@router.post("/catalog/{offering_id}/price", response_model=None)
+async def add_price(
+    offering_id: str,
+    price_id: str = Form(...),
+    amount: str = Form(...),
+    valid_from: str = Form(default=""),
+    retire_current: str = Form(default=""),
+) -> RedirectResponse:
+    back = f"/catalog/{offering_id}"
+    try:
+        await get_clients().catalog.admin_add_price(
+            offering_id,
+            price_id=price_id.strip(),
+            amount=amount.strip(),
+            valid_from=_parse_dt(valid_from),
+            retire_current=retire_current == "yes",
+        )
+    except PolicyViolationFromServer as exc:
+        return _back(back, err=exc.detail)
+    except (ClientError, ValueError) as exc:
+        return _back(back, err=f"Catalog rejected the price: {exc}")
+    return _back(back, flash="price_added")
+
+
+@router.post("/catalog/{offering_id}/window", response_model=None)
+async def set_window(
+    offering_id: str,
+    valid_from: str = Form(default=""),
+    valid_to: str = Form(default=""),
+) -> RedirectResponse:
+    back = f"/catalog/{offering_id}"
+    try:
+        await get_clients().catalog.admin_set_offering_window(
+            offering_id,
+            valid_from=_parse_dt(valid_from),
+            valid_to=_parse_dt(valid_to),
+        )
+    except PolicyViolationFromServer as exc:
+        return _back(back, err=exc.detail)
+    except (ClientError, ValueError) as exc:
+        return _back(back, err=f"Catalog rejected the window: {exc}")
+    return _back(back, flash="window_set")
 
 
 @router.get("/catalog/{offering_id}", response_class=HTMLResponse)
@@ -138,5 +229,7 @@ async def offering_detail(request: Request, offering_id: str) -> HTMLResponse:
             },
             "prices": prices,
             "active_price_id": (active_price or {}).get("id", ""),
+            "flash": request.query_params.get("flash", ""),
+            "err": request.query_params.get("err", "")[:300],
         },
     )
