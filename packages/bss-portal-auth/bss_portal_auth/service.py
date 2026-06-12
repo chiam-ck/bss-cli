@@ -22,11 +22,10 @@ import secrets
 from datetime import timedelta
 from urllib.parse import quote
 
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from bss_clock import now as clock_now
 from bss_models import Identity, LoginAttempt, LoginToken, Session
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Settings
 from .email import EmailAdapter
@@ -52,7 +51,6 @@ from .types import (
     StepUpFailed,
     StepUpToken,
 )
-
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 

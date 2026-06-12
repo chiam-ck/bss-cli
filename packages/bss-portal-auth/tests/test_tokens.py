@@ -6,7 +6,6 @@ import hmac
 import inspect
 
 import pytest
-
 from bss_portal_auth.tokens import (
     OTP_LENGTH,
     generate_magic_link_token,

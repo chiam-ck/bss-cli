@@ -21,8 +21,6 @@ from __future__ import annotations
 import os
 
 import pytest
-from playwright.sync_api import expect
-
 from bss_clients import CatalogClient, TokenAuthProvider
 from bss_e2e.helpers.otp import wait_for_otp
 from bss_e2e.helpers.seed import (
@@ -33,6 +31,7 @@ from bss_e2e.helpers.seed import (
     ensure_e2e_customer,
     ensure_e2e_promos,
 )
+from playwright.sync_api import expect
 
 # Shared with test_signup_smoke — plan choice is fixed (PLAN_M middle tier).
 PROMO_PLAN = "PLAN_M"

@@ -1,7 +1,6 @@
 """State machine tests — parametrized over DECISIONS.md transitions table."""
 
 import pytest
-
 from app.domain.state_machine import (
     ALL_TRIGGERS,
     STATES,

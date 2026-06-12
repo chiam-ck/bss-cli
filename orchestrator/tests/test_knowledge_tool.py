@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from bss_orchestrator.tools import TOOL_PROFILES, TOOL_REGISTRY
 
 

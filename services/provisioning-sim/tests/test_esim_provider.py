@@ -1,7 +1,6 @@
 """Unit tests for the v0.15 eSIM provider seam."""
 
 import pytest
-
 from app.domain.esim_provider import (
     EsimAccessEsimProvider,
     EsimOrderResult,

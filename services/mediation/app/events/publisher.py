@@ -1,14 +1,13 @@
 """Event publisher — audit row in same txn, best-effort MQ publish."""
 
 import json
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import aio_pika
 import structlog
 from bss_clock import now as clock_now
-from bss_telemetry import current_trace_id
 from bss_models.audit import DomainEvent
+from bss_telemetry import current_trace_id
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context

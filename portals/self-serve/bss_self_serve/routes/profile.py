@@ -134,9 +134,8 @@ async def contact_view(
     factory = request.app.state.db_session_factory
     pending = None
     if factory is not None:
-        from sqlalchemy import select
-
         from bss_models import EmailChangePending
+        from sqlalchemy import select
 
         identity = _identity(request)
         async with factory() as db:

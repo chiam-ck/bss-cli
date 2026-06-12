@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Annotated
 
 import typer
-from rich import print as rprint
 
 app = typer.Typer(help="Natural-language LLM dispatch.", no_args_is_help=True)
 

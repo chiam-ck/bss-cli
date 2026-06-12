@@ -3,7 +3,7 @@
 Router → Service → Policies → Repository → Event publisher.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -11,6 +11,13 @@ import aio_pika
 import structlog
 from bss_clients import CatalogClient, CRMClient, InventoryClient, PaymentClient
 from bss_clock import now as clock_now
+from bss_models import apply_discount
+from bss_models.subscription import (
+    BundleBalance,
+    Subscription,
+    SubscriptionStateHistory,
+    VasPurchase,
+)
 from bss_telemetry import semconv, tracer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +27,6 @@ from app.domain.bundle import (
     add_allowance,
     consume,
     is_exhausted,
-    primary_allowance_type,
     reset_for_new_period,
 )
 from app.domain.state_machine import get_next_state, is_valid_transition
@@ -43,13 +49,6 @@ from app.policies.usage import check_roaming_balance_required
 from app.policies.vas import check_not_terminated, check_vas_offering_sellable
 from app.repositories.subscription_repo import SubscriptionRepository
 from app.repositories.vas_repo import VasPurchaseRepository
-from bss_models import apply_discount
-from bss_models.subscription import (
-    BundleBalance,
-    Subscription,
-    SubscriptionStateHistory,
-    VasPurchase,
-)
 
 log = structlog.get_logger()
 
@@ -721,7 +720,6 @@ class SubscriptionService:
         # the new plan doesn't have are zeroed out so they no longer count.
         balances = await self._repo.get_balances(sub_id)
         existing_types = {b.allowance_type for b in balances}
-        new_types = {s.allowance_type for s in new_snapshots}
 
         for bal in balances:
             matching = next(

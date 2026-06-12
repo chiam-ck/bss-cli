@@ -11,7 +11,6 @@ from bss_clients import (
     CatalogClient,
     CRMClient,
     LoyaltyClient,
-    NoAuthProvider,
     PaymentClient,
     SOMClient,
     SubscriptionClient,

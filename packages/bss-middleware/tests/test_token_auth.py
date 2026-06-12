@@ -17,18 +17,17 @@ from __future__ import annotations
 import json
 
 import pytest
-from fastapi import FastAPI, Request
-from httpx import ASGITransport, AsyncClient
-
 from bss_middleware import (
     AUTH_INVALID_TOKEN,
     AUTH_MISSING_TOKEN,
-    BSSApiTokenMiddleware,
     SCOPE_SERVICE_IDENTITY,
     TEST_TOKEN,
+    BSSApiTokenMiddleware,
     TokenMap,
     load_token_map_from_env,
 )
+from fastapi import FastAPI, Request
+from httpx import ASGITransport, AsyncClient
 
 
 def _make_app(token: str = TEST_TOKEN) -> FastAPI:

@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from bss_models import BSS_RELEASE
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

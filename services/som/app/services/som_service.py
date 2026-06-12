@@ -1,15 +1,13 @@
 """SOM service — orchestration layer."""
 
-from datetime import datetime, timezone
 
 import aio_pika.abc
 import structlog
+from bss_clients import InventoryClient
 from bss_clock import now as clock_now
+from bss_models.service_inventory import Service, ServiceOrder
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
-
-from bss_clients import InventoryClient
-from bss_models.service_inventory import Service, ServiceOrder
 
 from app.events.publisher import publish
 from app.policies.service_order import check_service_order_transition, check_service_transition

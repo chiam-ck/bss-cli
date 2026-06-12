@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from bss_webhooks.redaction import redact_provider_payload
 
-
 # ── resend ──────────────────────────────────────────────────────────
 
 

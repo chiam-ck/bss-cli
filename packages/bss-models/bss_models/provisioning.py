@@ -9,7 +9,7 @@ from sqlalchemy import Boolean, Numeric, SmallInteger, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TZDateTime, TenantMixin, TimestampMixin
+from .base import Base, TenantMixin, TimestampMixin, TZDateTime
 
 SCHEMA = "provisioning"
 

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import time
 import traceback
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,9 +35,9 @@ from pydantic import ValidationError
 from .actions import resolve_action
 from .assertions import AssertionResult, evaluate_expect, poll_until
 from .context import ScenarioContext
-from .llm_executor import LLMDisabled, execute_ask_step
 from .file_step import run_file_step
 from .http_step import run_http_step
+from .llm_executor import LLMDisabled, execute_ask_step
 from .schema import (
     ActionStep,
     AskStep,
@@ -256,7 +256,8 @@ async def _run_assert(step: AssertStep, ctx: ScenarioContext) -> StepResult:
     args = ctx.interpolate(call.args)
     expect = ctx.interpolate(call.expect)
 
-    fetch: Callable[[], Awaitable[Any]] = lambda: fn(**args)
+    def fetch() -> Awaitable[Any]:
+        return fn(**args)
 
     try:
         assertion = await poll_until(fetch, expect, call.poll)

@@ -9,11 +9,10 @@ from __future__ import annotations
 import asyncio
 
 import typer
-from rich import print as rprint
-from rich.panel import Panel
-
 from bss_orchestrator.clients import close_clients
 from bss_orchestrator.session import ask_once
+from rich import print as rprint
+from rich.panel import Panel
 
 
 def run_single_shot(prompt: str, *, allow_destructive: bool = False) -> None:

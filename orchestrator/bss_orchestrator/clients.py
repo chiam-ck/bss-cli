@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from bss_clients import (
+    CatalogClient,
     COMClient,
     CRMClient,
-    CatalogClient,
     InventoryClient,
     MediationClient,
     PaymentClient,

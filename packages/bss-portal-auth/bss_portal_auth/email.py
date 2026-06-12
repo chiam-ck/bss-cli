@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Protocol
 
 import structlog
-
 from bss_clock import now as clock_now
 
 log = structlog.get_logger(__name__)

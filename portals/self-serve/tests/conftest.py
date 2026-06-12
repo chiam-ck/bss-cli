@@ -34,10 +34,9 @@ os.environ["BSS_PORTAL_KYC_PROVIDER"] = "prebaked"
 os.environ["BSS_KYC_ALLOW_PREBAKED"] = "true"
 
 import pytest
-from fastapi.testclient import TestClient
-
 from bss_self_serve.config import Settings
 from bss_self_serve.main import create_app
+from fastapi.testclient import TestClient
 
 
 # v0.16 — Force payment_provider=mock for the entire test session so
@@ -680,12 +679,12 @@ def authed_client(fake_clients: FakeClientsBundle):
     import asyncio
     import os
     from pathlib import Path
-    from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-    from pydantic_settings import BaseSettings, SettingsConfigDict
 
     from bss_portal_auth.test_helpers import create_test_session
     from bss_self_serve.middleware import PORTAL_SESSION_COOKIE
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     repo_root = Path(__file__).resolve().parents[3]
 

@@ -27,9 +27,8 @@ PR2 ships the read-only wrappers below. PR3 adds the writes.
 
 from __future__ import annotations
 
-from typing import Any
-
 import hashlib
+from typing import Any
 
 from .. import auth_context
 from ..clients import get_clients

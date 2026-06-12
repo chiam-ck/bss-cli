@@ -7,42 +7,65 @@ prices, and the no-active-row policy violation.
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from bss_catalog.policies import PolicyViolation
+from bss_catalog.repository import CatalogRepository
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bss_catalog.policies import PolicyViolation
-from bss_catalog.repository import CatalogRepository
-
-
 _SCRUB_SQL = [
+    # TEST_* rows from the era when this fixture committed live may
+    # still exist in a dev DB; they'd skew lowest-active-wins. Nothing
+    # ever references them, so DELETE is safe (and rolls back anyway).
     "DELETE FROM catalog.product_offering_price WHERE id LIKE 'TEST_PRICE_%'",
     "DELETE FROM catalog.product_offering WHERE id LIKE 'TEST_OFFERING_%'",
     # Defensive: catalog_versioning_and_plan_change.yaml seeds these under
     # runs that don't currently tear down catalog rows. The active-price
     # tests `t0=2026-02-15` overlaps the scenario's promo window, so leftovers
-    # would silently win the lowest-active lookup. Scrub before AND after.
-    "DELETE FROM catalog.product_offering_price WHERE id LIKE 'PRICE_PLAN_M_CNY_%'",
-    "DELETE FROM catalog.product_offering_price WHERE id LIKE 'PRICE_PLAN_L_V2_%'",
+    # would silently win the lowest-active lookup. These rows CAN be
+    # referenced by live subscriptions (v0.7 price-snapshot FK), so they
+    # cannot be deleted — push their validity windows into the distant
+    # past instead. UPDATE has no FK conflict and the rollback restores it.
+    "UPDATE catalog.product_offering_price"
+    " SET valid_from = TIMESTAMPTZ '2000-01-01 00:00:00+00',"
+    "     valid_to   = TIMESTAMPTZ '2000-01-02 00:00:00+00'"
+    " WHERE id LIKE 'PRICE_PLAN_M_CNY_%' OR id LIKE 'PRICE_PLAN_L_V2_%'",
 ]
 
 
 @pytest.fixture
 async def write_session(settings):
-    """Per-test write session committed live; cleanup via teardown SQL."""
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    """Per-test session inside a transaction that is always rolled back.
+
+    History: this fixture used to commit live and clean up with DELETE
+    statements. That broke twice on a shared dev DB: scenario runs left
+    overlapping price rows behind, and once a live subscription
+    snapshot-referenced a scenario price row, the cleanup DELETE died on
+    the FK before any test ran (10 collection errors, 2026-06-12).
+    Same isolation pattern as the CRM conftest: ``commit()`` is
+    monkeypatched to ``flush()`` so the tests' explicit commits stay
+    inside the outer transaction, and the scrub/neutralize statements
+    run in-txn — visible to every query in the test, gone afterwards.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine(settings.db_url)
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with factory() as session:
-        for stmt in _SCRUB_SQL:
-            await session.execute(text(stmt))
-        await session.commit()
-    async with factory() as session:
-        yield session
-    async with factory() as session:
-        for stmt in _SCRUB_SQL:
-            await session.execute(text(stmt))
-        await session.commit()
+    conn = await engine.connect()
+    txn = await conn.begin()
+    session = AsyncSession(bind=conn, expire_on_commit=False)
+
+    async def _fake_commit():
+        await session.flush()
+
+    session.commit = _fake_commit
+
+    for stmt in _SCRUB_SQL:
+        await session.execute(text(stmt))
+    await session.flush()
+
+    yield session
+
+    await txn.rollback()
+    await conn.close()
     await engine.dispose()
 
 

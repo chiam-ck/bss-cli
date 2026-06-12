@@ -18,13 +18,13 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+from bss_models.catalog import Promotion
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 from bss_catalog.deps import get_promotion_service
 from bss_catalog.promotion_service import PromotionService
-from bss_models.catalog import Promotion
 
 router = APIRouter(tags=["promotion"])
 

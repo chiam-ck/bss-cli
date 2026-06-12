@@ -20,7 +20,6 @@ from bss_cockpit.postprocess import (
     strip_reasoning_leakage,
 )
 
-
 # ── strip_channel_markup ────────────────────────────────────────────
 
 

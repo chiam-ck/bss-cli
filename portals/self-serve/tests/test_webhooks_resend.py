@@ -40,12 +40,11 @@ os.environ["BSS_PORTAL_EMAIL_RESEND_WEBHOOK_SECRET"] = _TEST_SECRET
 
 import pytest
 import pytest_asyncio
+from bss_self_serve.config import Settings
+from bss_self_serve.main import create_app
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-from bss_self_serve.config import Settings
-from bss_self_serve.main import create_app
 
 
 @pytest_asyncio.fixture

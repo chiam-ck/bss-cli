@@ -26,7 +26,7 @@ import asyncio
 import json
 import re
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -34,7 +34,6 @@ from jsonpath_ng.ext import parse as jsonpath_parse
 
 from .context import ScenarioContext
 from .schema import HTTPExpect, HTTPRegexCapture, HTTPStep
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Types

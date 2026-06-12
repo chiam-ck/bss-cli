@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 import aio_pika
 import structlog
-from bss_clients import NoAuthProvider, SubscriptionClient, TokenAuthProvider
+from bss_clients import SubscriptionClient, TokenAuthProvider
 from bss_middleware import api_token, validate_api_token_present
 from bss_telemetry import configure_telemetry
 from fastapi import Depends, FastAPI, Request

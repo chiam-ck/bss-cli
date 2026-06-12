@@ -8,10 +8,6 @@ parts that have correctness risk — the prompts are thin Rich shims.
 
 from __future__ import annotations
 
-import os
-
-import pytest
-
 from bss_cli.commands.onboard import read_env_file, write_env_file
 
 
@@ -126,9 +122,8 @@ def test_round_trip_resend_block(tmp_path):
 
 def test_unknown_domain_aborts():
     """Passing --domain=nonsense should exit cleanly."""
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     runner = CliRunner()
     result = runner.invoke(app, ["--domain", "nonsense"])
@@ -197,9 +192,8 @@ def test_prune_keeps_last_5_wizard_backups(tmp_path):
 
 
 def test_kyc_test_mode_drops_didit_creds(tmp_path):
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     f = tmp_path / ".env"
     f.write_text(
@@ -224,9 +218,8 @@ def test_kyc_test_mode_drops_didit_creds(tmp_path):
 
 
 def test_kyc_production_mode_rejects_non_uuid_workflow(tmp_path):
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     f = tmp_path / ".env"
     runner = CliRunner()
@@ -244,9 +237,8 @@ def test_kyc_production_mode_rejects_non_uuid_workflow(tmp_path):
 def test_email_test_mode_drops_resend_creds(tmp_path, monkeypatch):
     """If operator switches from production back to test mode, stale
     Resend creds must be removed (otherwise a mode-mix is possible)."""
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     f = tmp_path / ".env"
     f.write_text(
@@ -273,9 +265,8 @@ def test_email_test_mode_drops_resend_creds(tmp_path, monkeypatch):
 
 def test_payment_test_mode_drops_stripe_creds(tmp_path):
     """Switching production → test must strip stale Stripe creds."""
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     f = tmp_path / ".env"
     f.write_text(
@@ -301,9 +292,8 @@ def test_payment_test_mode_drops_stripe_creds(tmp_path):
 
 
 def test_payment_production_mode_rejects_bad_secret_prefix(tmp_path):
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     f = tmp_path / ".env"
     runner = CliRunner()
@@ -318,9 +308,8 @@ def test_payment_production_mode_rejects_bad_secret_prefix(tmp_path):
 
 
 def test_payment_production_mode_rejects_key_mode_mismatch(tmp_path):
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     f = tmp_path / ".env"
     runner = CliRunner()
@@ -335,9 +324,8 @@ def test_payment_production_mode_rejects_key_mode_mismatch(tmp_path):
 
 
 def test_payment_production_mode_refuses_test_secret_in_production_env(tmp_path):
-    from typer.testing import CliRunner
-
     from bss_cli.commands.onboard import app
+    from typer.testing import CliRunner
 
     f = tmp_path / ".env"
     f.write_text("BSS_ENV=production\n")

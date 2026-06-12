@@ -15,15 +15,13 @@ from __future__ import annotations
 
 import json
 import pathlib
-import time as _time
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
-
 from bss_models import PaymentAttempt
 from bss_models.audit import DomainEvent
 from bss_models.integrations import WebhookEvent
+from sqlalchemy import select
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 FIXTURE_WHSEC = "whsec_test_fixture_v0160"

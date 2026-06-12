@@ -18,15 +18,13 @@ import contextvars
 
 import pytest
 import respx
-from httpx import Response
-
 from bss_clients import (
     BSSClient,
     TokenAuthProvider,
     reset_service_identity_token,
     set_service_identity_token,
 )
-
+from httpx import Response
 
 BASE_URL = "http://test-service:8000"
 DEFAULT_TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

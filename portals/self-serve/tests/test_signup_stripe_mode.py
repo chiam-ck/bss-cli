@@ -17,9 +17,7 @@ form. These tests cover the new flow:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 
 def _make_stripe_app(authed_client):

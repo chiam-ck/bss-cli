@@ -16,11 +16,9 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from bss_csr.config import Settings
 from bss_csr.main import create_app
-
+from fastapi.testclient import TestClient
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 

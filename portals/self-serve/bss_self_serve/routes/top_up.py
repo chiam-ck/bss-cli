@@ -36,7 +36,6 @@ from ..clients import get_clients
 from ..error_messages import is_known, render
 from ..security import (
     requires_linked_customer,
-    requires_session,
     requires_step_up,
 )
 from ..templating import templates

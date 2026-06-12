@@ -24,15 +24,13 @@ import os
 from pathlib import Path
 
 import pytest
+from bss_cockpit import Conversation, ConversationStore, configure_store
+from bss_csr.config import Settings
+from bss_csr.main import create_app
 from fastapi.testclient import TestClient
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-from bss_cockpit import Conversation, ConversationStore, configure_store
-from bss_csr.config import Settings
-from bss_csr.main import create_app
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 

@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock
 
 import pytest
-
 from app.repositories.service_order_repo import ServiceOrderRepository
 from app.repositories.service_repo import ServiceRepository
 from app.services.som_service import SOMService

@@ -2,13 +2,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import Depends, FastAPI, Request
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from bss_clients import BearerAuthProvider, LoyaltyClient, TokenAuthProvider
 from bss_clients.subscription import SubscriptionClient
 from bss_middleware import api_token, validate_api_token_present
 from bss_telemetry import configure_telemetry
+from fastapi import Depends, FastAPI, Request
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.repositories.case_repo import CaseRepository
 from app.repositories.chat_transcript_repo import ChatTranscriptRepository

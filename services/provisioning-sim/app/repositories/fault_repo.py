@@ -1,9 +1,8 @@
 """Fault injection repository — CRUD for fault rules."""
 
+from bss_models.provisioning import FaultInjection
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.provisioning import FaultInjection
 
 
 class FaultRepository:

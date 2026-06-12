@@ -29,9 +29,8 @@ the v0.10 design).
 from __future__ import annotations
 
 import pytest
-from playwright.sync_api import Page, expect
-
 from bss_e2e.helpers.otp import wait_for_otp
+from playwright.sync_api import Page, expect
 
 PROMO_PLAN = "PLAN_M"
 NEW_GIVEN_NAME = "E2e"

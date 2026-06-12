@@ -532,9 +532,8 @@ async def signup_step_kyc_poll(
         # poll re-arms.
         return _render_step_fragment(request, sig)
 
-    from sqlalchemy import select
-
     from bss_models.integrations import KycWebhookCorroboration
+    from sqlalchemy import select
 
     factory_inner = request.app.state.db_session_factory
     async with factory_inner() as db:
@@ -933,7 +932,6 @@ async def signup_step_cof_checkout_init(
     import stripe
 
     store = request.app.state.session_store
-    factory = request.app.state.db_session_factory
     sig = await _resolve(store, session, identity)
     if sig.step not in ("pending_cof", "pending_cof_elements"):
         return RedirectResponse(

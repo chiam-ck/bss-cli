@@ -28,6 +28,13 @@ fallback; the dataclasses (``IdentityView``, ``SessionView``,
 
 from .audit import record_portal_action
 from .config import Settings
+from .email import (
+    EmailAdapter,
+    LoggingEmailAdapter,
+    NoopEmailAdapter,
+    SmtpEmailAdapter,
+    select_adapter,
+)
 from .email_change import (
     EmailChangeApplied,
     EmailChangeFailed,
@@ -40,13 +47,6 @@ from .pending_action import (
     PendingActionView,
     consume_pending_action,
     stash_pending_action,
-)
-from .email import (
-    EmailAdapter,
-    LoggingEmailAdapter,
-    NoopEmailAdapter,
-    SmtpEmailAdapter,
-    select_adapter,
 )
 from .service import (
     consume_step_up_token,

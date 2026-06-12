@@ -42,6 +42,9 @@ async def check_no_active_subscriptions(
         active_ids = [s["id"] for s in active]
         raise PolicyViolation(
             rule="customer.close.no_active_subscriptions",
-            message=f"Customer {customer_id} has {len(active)} active subscription(s): {', '.join(active_ids)}. Terminate them first.",
+            message=(
+                f"Customer {customer_id} has {len(active)} active subscription(s): "
+                f"{', '.join(active_ids)}. Terminate them first."
+            ),
             context={"customer_id": customer_id, "active_subscriptions": active_ids},
         )

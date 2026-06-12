@@ -18,8 +18,6 @@ from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
-
 from bss_orchestrator import auth_context
 from bss_orchestrator.ownership import (
     OWNERSHIP_PATHS,
@@ -33,7 +31,7 @@ from bss_orchestrator.session import (
     astream_once,
 )
 from bss_orchestrator.tools import TOOL_PROFILES
-
+from langchain_core.messages import AIMessage, ToolMessage
 
 # ─── 1. assert_owned_output unit tests ──────────────────────────────
 

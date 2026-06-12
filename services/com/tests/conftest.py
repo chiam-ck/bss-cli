@@ -4,9 +4,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-
 from app.config import Settings
 from app.logging import configure_logging
 from app.main import create_app
@@ -19,6 +16,8 @@ from bss_clients import (
     SubscriptionClient,
 )
 from bss_middleware import TEST_TOKEN
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 
 @pytest.fixture(scope="session", autouse=True)

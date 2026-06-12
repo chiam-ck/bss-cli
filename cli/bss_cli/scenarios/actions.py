@@ -272,11 +272,10 @@ async def portal_link_identity_to_customer(
     identity row if none exists. Marks ``email_verified_at`` so the
     portal's ``requires_verified_email`` dep passes.
     """
-    from sqlalchemy import select
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
     from bss_clock import now as clock_now
     from bss_models import Identity
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     db_url = os.environ.get("BSS_DB_URL", "")
     if not db_url:
@@ -342,9 +341,8 @@ async def portal_mint_test_session(
     Idempotent on email — re-running the soak against a dirty DB
     fails to seed (use ``make reset-db``).
     """
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
     from bss_portal_auth.test_helpers import create_test_session
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     db_url = os.environ.get("BSS_DB_URL", "")
     if not db_url:

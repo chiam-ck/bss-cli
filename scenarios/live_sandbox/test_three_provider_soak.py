@@ -177,12 +177,11 @@ class TestBssStripeAdapterLive:
         db_url = os.environ.get("BSS_DB_URL", "")
         if not db_url:
             pytest.skip("BSS_DB_URL not set; can't exercise the cache write")
+        from app.domain.stripe_tokenizer import StripeConfig, StripeTokenizerAdapter
         from sqlalchemy.ext.asyncio import (
             async_sessionmaker,
             create_async_engine,
         )
-
-        from app.domain.stripe_tokenizer import StripeConfig, StripeTokenizerAdapter
 
         engine = create_async_engine(db_url, pool_size=2, max_overflow=2)
         try:
@@ -237,12 +236,11 @@ class TestBssStripeAdapterLive:
         db_url = os.environ.get("BSS_DB_URL", "")
         if not db_url:
             pytest.skip("BSS_DB_URL not set")
+        from app.domain.stripe_tokenizer import StripeConfig, StripeTokenizerAdapter
         from sqlalchemy.ext.asyncio import (
             async_sessionmaker,
             create_async_engine,
         )
-
-        from app.domain.stripe_tokenizer import StripeConfig, StripeTokenizerAdapter
 
         engine = create_async_engine(db_url, pool_size=2, max_overflow=2)
         try:
@@ -369,13 +367,12 @@ class TestWebhookReceiverLiveness:
                 "and BSS_DB_URL must be set to exercise webhook round-trip"
             )
 
+        from bss_models.integrations import WebhookEvent
         from sqlalchemy import select
         from sqlalchemy.ext.asyncio import (
             async_sessionmaker,
             create_async_engine,
         )
-
-        from bss_models.integrations import WebhookEvent
 
         # Trigger a real charge via the API; Stripe will deliver
         # several webhook events (payment_intent.created, charge.created,

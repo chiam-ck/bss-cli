@@ -4,10 +4,10 @@ import asyncio
 import os
 
 from alembic import context
-from sqlalchemy.ext.asyncio import create_async_engine
 
 # Import Base so metadata includes every model registered via bss_models.__init__
 from bss_models import Base
+from sqlalchemy.ext.asyncio import create_async_engine
 
 target_metadata = Base.metadata
 

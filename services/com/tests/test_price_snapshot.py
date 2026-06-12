@@ -24,8 +24,9 @@ async def test_create_order_stamps_price_snapshot(client, mock_clients):
 @pytest.mark.asyncio
 async def test_offering_with_no_active_price_rejects_create(client, mock_clients):
     """An offering past its valid window surfaces as policy.offering.not_sellable_now."""
-    from bss_clients.errors import PolicyViolationFromServer
     from unittest.mock import AsyncMock
+
+    from bss_clients.errors import PolicyViolationFromServer
 
     mock_clients["catalog"].get_active_price = AsyncMock(
         side_effect=PolicyViolationFromServer(
@@ -57,9 +58,9 @@ async def test_submit_order_emits_price_snapshot_in_event(client):
 
     # The publish helper writes to audit.domain_event in-DB. Read it back
     # to verify the payload shape.
+    from bss_models.audit import DomainEvent
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import AsyncSession
-    from bss_models.audit import DomainEvent
 
     db_session: AsyncSession = client._transport.app.state.session_factory()._session  # type: ignore[attr-defined]
 

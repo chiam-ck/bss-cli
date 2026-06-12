@@ -27,6 +27,7 @@ from uuid import uuid4
 import structlog
 from bss_clients import SubscriptionClient
 from bss_clock import now as clock_now
+from bss_models.crm import PortRequest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,7 +37,6 @@ from app.policies import port_request as pr_policies
 from app.policies.base import PolicyViolation
 from app.repositories.msisdn_repo import MsisdnRepository
 from app.repositories.port_request_repo import PortRequestRepository
-from bss_models.crm import PortRequest
 
 log = structlog.get_logger()
 

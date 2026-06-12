@@ -11,12 +11,11 @@ leak-path assertions:
 import hashlib
 import json
 
-from httpx import AsyncClient
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from bss_models.audit import DomainEvent
 from bss_models.crm import CustomerIdentity
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 CUST_PREFIX = "/tmf-api/customerManagement/v4"
 KYC_PREFIX = "/crm-api/v1"

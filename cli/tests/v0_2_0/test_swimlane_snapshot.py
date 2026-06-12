@@ -95,6 +95,6 @@ def test_renderer_filter_by_service() -> None:
     trace = json.loads(_FIXTURE.read_text())
     out = render_swimlane(trace, width=140, only_service="bss-crm")
     # Header is always present; body rows should all be bss-crm
-    body_rows = [l for l in out.splitlines() if l.startswith("bss-") or "bss-" in l[:30]]
+    body_rows = [ln for ln in out.splitlines() if ln.startswith("bss-") or "bss-" in ln[:30]]
     for row in body_rows:
         assert "bss-crm" in row[:30], f"non-crm row leaked: {row[:50]}"

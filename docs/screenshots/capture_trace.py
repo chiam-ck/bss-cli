@@ -25,7 +25,7 @@ from playwright.sync_api import sync_playwright
 
 OUT = Path(__file__).resolve().parent / "bss_trace_swimlane_v0_2.png"
 TOKEN_LINE = next(
-    (l for l in Path(".env").read_text().splitlines() if l.startswith("BSS_API_TOKEN=")),
+    (ln for ln in Path(".env").read_text().splitlines() if ln.startswith("BSS_API_TOKEN=")),
     "",
 )
 TOKEN = TOKEN_LINE.split("=", 1)[1] if "=" in TOKEN_LINE else ""

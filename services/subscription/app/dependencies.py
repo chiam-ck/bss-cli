@@ -9,17 +9,15 @@ from bss_clients import (
     CatalogClient,
     CRMClient,
     InventoryClient,
-    NoAuthProvider,
     PaymentClient,
     TokenAuthProvider,
 )
 from bss_events import start_relay
 from bss_middleware import api_token, validate_api_token_present
+from bss_portal_auth.email import select_adapter as select_email_adapter
 from bss_telemetry import configure_telemetry
 from fastapi import Depends, FastAPI, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-from bss_portal_auth.email import select_adapter as select_email_adapter
 
 from app.events.consumer import setup_consumer
 from app.repositories.subscription_repo import SubscriptionRepository

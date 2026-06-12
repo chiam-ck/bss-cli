@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-import pytest
 import yaml
 from bss_cli.scenarios.runner import run_scenario
 from bss_cli.scenarios.schema import Scenario

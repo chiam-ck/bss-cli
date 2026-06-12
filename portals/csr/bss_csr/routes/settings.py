@@ -24,9 +24,11 @@ from typing import Any
 import structlog
 from bss_cockpit import (
     OPERATOR_ACTOR,
-    current as cockpit_config_current,
     write_operator_md,
     write_settings_toml,
+)
+from bss_cockpit import (
+    current as cockpit_config_current,
 )
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse

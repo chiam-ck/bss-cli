@@ -2,10 +2,9 @@
 
 from datetime import datetime
 
+from bss_models.service_inventory import Service
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-
-from bss_models.service_inventory import Service
 
 SVC_PATH = "/tmf-api/serviceInventoryManagement/v4/service"
 

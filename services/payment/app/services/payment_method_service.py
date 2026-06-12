@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import structlog
 from bss_clients import CRMClient
-from bss_clock import now as clock_now
+from bss_models import PaymentMethod
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
 from app.events import publisher
 from app.policies import payment_method as pm_policies
 from app.repositories.payment_method_repo import PaymentMethodRepository
-from bss_models import PaymentMethod
 
 log = structlog.get_logger()
 
@@ -63,7 +60,6 @@ class PaymentMethodService:
 
         # --- Create ---
         pm_id = await self._pm_repo.next_id()
-        now = clock_now()
 
         # First method for a customer becomes the default
         existing_count = await self._pm_repo.count_active_for_customer(customer_id)
@@ -250,8 +246,8 @@ class PaymentMethodService:
         row so the v0.14 Resend email-template flow can notify each
         customer ("please update your payment method").
         """
-        from sqlalchemy import select, update
         from bss_models import PaymentMethod as PM
+        from sqlalchemy import select
 
         rows = (
             await self._session.execute(

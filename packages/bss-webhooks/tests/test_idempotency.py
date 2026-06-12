@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from bss_webhooks.idempotency import idempotency_key
 
 

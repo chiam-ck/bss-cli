@@ -12,11 +12,10 @@ The middleware fires before routing, so the path doesn't need to exist.
 from __future__ import annotations
 
 import pytest
-from bss_middleware import AUTH_INVALID_TOKEN, AUTH_MISSING_TOKEN
-from httpx import ASGITransport, AsyncClient
-
 from app.config import Settings
 from app.main import create_app
+from bss_middleware import AUTH_INVALID_TOKEN, AUTH_MISSING_TOKEN
+from httpx import ASGITransport, AsyncClient
 
 
 @pytest.fixture

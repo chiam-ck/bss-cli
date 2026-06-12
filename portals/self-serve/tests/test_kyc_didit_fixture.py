@@ -14,7 +14,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from bss_self_serve.kyc.didit import _build_attestation
 
 FIXTURE = (

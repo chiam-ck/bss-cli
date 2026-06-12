@@ -39,7 +39,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
-
 from bss_e2e.helpers.chromium import launch_kwargs
 
 # Repo root resolved relative to this file: packages/bss-e2e/tests/conftest.py

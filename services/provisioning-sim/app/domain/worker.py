@@ -10,20 +10,19 @@ Processes provisioning tasks with configurable fault injection:
 import asyncio
 import json
 import random
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import aio_pika
 import structlog
 from bss_clock import now as clock_now
+from bss_models.audit import DomainEvent
+from bss_models.provisioning import ProvisioningTask
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
 from app.domain.esim_provider import EsimProviderAdapter
 from app.repositories.fault_repo import FaultRepository
 from app.repositories.task_repo import TaskRepository
-from bss_models.audit import DomainEvent
-from bss_models.provisioning import ProvisioningTask
 
 log = structlog.get_logger()
 

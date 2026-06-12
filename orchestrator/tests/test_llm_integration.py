@@ -28,14 +28,12 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from bss_orchestrator.config import settings
 from bss_orchestrator.session import (
     AgentEventFinalMessage,
     AgentEventToolCallCompleted,
     astream_once,
 )
-
 
 pytestmark = pytest.mark.integration
 

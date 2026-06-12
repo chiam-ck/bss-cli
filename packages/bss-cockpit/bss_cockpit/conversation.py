@@ -42,21 +42,20 @@ audit/store but does not influence the LLM's reply.
 from __future__ import annotations
 
 import secrets
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 import structlog
 from bss_clock import now as clock_now
-from .chrome_filter import is_cockpit_chrome
 from sqlalchemy import text
-from sqlalchemy.engine import Result
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
-    AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+
+from .chrome_filter import is_cockpit_chrome
 
 log = structlog.get_logger(__name__)
 

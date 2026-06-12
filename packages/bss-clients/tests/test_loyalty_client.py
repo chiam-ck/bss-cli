@@ -10,8 +10,6 @@ import uuid
 
 import pytest
 import respx
-from httpx import Response
-
 from bss_clients import (
     AuthProvider,
     BearerAuthProvider,
@@ -20,6 +18,7 @@ from bss_clients import (
     set_context,
 )
 from bss_clients.loyalty import REVOKE_ORDER_CANCELLED
+from httpx import Response
 
 BASE_URL = "http://loyalty-http:8080"
 TOKEN = "70dd7cbe00ca350111a8ca7731f8423c4eecc69bb7b37c7b4344cc040155d4f9"

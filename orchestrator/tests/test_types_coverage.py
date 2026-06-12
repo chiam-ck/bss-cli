@@ -17,7 +17,6 @@ import inspect
 import typing
 
 import pytest
-
 from bss_orchestrator.tools import TOOL_REGISTRY
 
 # Parameter-name patterns that MUST use a typed alias (Annotated/Literal),

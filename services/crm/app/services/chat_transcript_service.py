@@ -11,10 +11,10 @@ from __future__ import annotations
 import hashlib
 
 import structlog
+from bss_models.audit import ChatTranscript
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.chat_transcript_repo import ChatTranscriptRepository
-from bss_models.audit import ChatTranscript
 
 log = structlog.get_logger()
 

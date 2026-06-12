@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from bss_portal_auth import validate_pepper_present
 
 

@@ -21,7 +21,6 @@ even if the provider's redactor is a no-op today.
 from __future__ import annotations
 
 import hashlib
-import re
 from typing import Any, Callable
 
 # Mask used for obviously-secret fields (signatures, tokens). Hashes

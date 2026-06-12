@@ -4,7 +4,6 @@ Asserts TMF620 schema shape (camelCase field names) and correct content
 from seeded data.
 """
 
-import pytest
 from bss_models import BSS_RELEASE
 from httpx import AsyncClient
 

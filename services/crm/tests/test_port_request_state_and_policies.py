@@ -1,12 +1,11 @@
 """v0.17 — PortRequest FSM + policies (pure unit tests, no DB)."""
 
-from datetime import date
 
 import pytest
 from app.domain import port_request_state
+from app.policies import inventory as inv_policies
 from app.policies import port_request as pr_policies
 from app.policies.base import PolicyViolation
-from app.policies import inventory as inv_policies
 
 
 class TestPortRequestFSM:

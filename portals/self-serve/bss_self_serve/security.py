@@ -24,16 +24,14 @@ from __future__ import annotations
 from typing import Awaitable, Callable, Final
 from urllib.parse import quote, urlencode, urlparse
 
-from fastapi import HTTPException, Request, status
-from fastapi.responses import RedirectResponse
-
 from bss_portal_auth import (
     IdentityView,
     SessionView,
     consume_step_up_token,
     stash_pending_action,
 )
-
+from fastapi import HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 
 # ── Public-route allowlist ───────────────────────────────────────────────
 
@@ -250,7 +248,7 @@ def requires_verified_email(request: Request) -> IdentityView:
     may produce sessions with unverified identities; this dep keeps
     that distinction explicit.
     """
-    sess = requires_session(request)
+    requires_session(request)  # raises RedirectToLogin when absent
     identity: IdentityView | None = getattr(request.state, "identity", None)
     if identity is None or identity.email_verified_at is None:
         raise RedirectToLogin(next_path=_next_for(request))

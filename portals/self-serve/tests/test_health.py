@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
-
 from bss_self_serve.config import Settings
 from bss_self_serve.main import create_app
+from fastapi.testclient import TestClient
 
 
 def test_health_endpoint_returns_ok() -> None:

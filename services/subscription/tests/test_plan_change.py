@@ -1,11 +1,10 @@
 """v0.7 — schedule_plan_change + cancel + renewal-time application."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
-
 
 # ── helpers ────────────────────────────────────────────────────────────
 
@@ -171,8 +170,8 @@ class TestRenewalApplication:
     @pytest.mark.asyncio
     async def test_pending_due_now_applies_at_renewal(self, client, mock_clients):
         """Backdate pending_effective_at, run renew → swap takes effect."""
-        from sqlalchemy import update
         from bss_models.subscription import Subscription
+        from sqlalchemy import update
 
         sub_id = await _create_active(client)
         await client.post(
@@ -219,8 +218,8 @@ class TestRenewalApplication:
     @pytest.mark.asyncio
     async def test_payment_failure_keeps_pending_intact(self, client, mock_clients):
         """If the renewal charge declines, plan-change stays scheduled."""
-        from sqlalchemy import update
         from bss_models.subscription import Subscription
+        from sqlalchemy import update
 
         sub_id = await _create_active(client)
         await client.post(

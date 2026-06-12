@@ -9,13 +9,11 @@ set/consume pending_destructive.
 from __future__ import annotations
 
 import pytest
-
 from bss_cockpit import (
     Conversation,
     ConversationStore,
     PendingDestructive,
 )
-
 
 # ── open / resume / list_for ─────────────────────────────────────────
 

@@ -10,13 +10,11 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from app.workers.reconciliation import sweep_once
 from bss_clock import now as clock_now
-from sqlalchemy import select
-
 from bss_models.audit import DomainEvent
 from bss_models.order_mgmt import ProductOrder
-
-from app.workers.reconciliation import sweep_once
+from sqlalchemy import select
 
 
 async def _make_order(session, *, state: str, age_seconds: int, flagged: bool = False):

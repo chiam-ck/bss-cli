@@ -2,10 +2,8 @@
 
 import pytest
 import respx
-from httpx import Response
-
 from bss_clients import BSSClient, ClientError, NotFound, PolicyViolationFromServer, ServerError, Timeout
-
+from httpx import Response
 
 BASE_URL = "http://test-service:8000"
 

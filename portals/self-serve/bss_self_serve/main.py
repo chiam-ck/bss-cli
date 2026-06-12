@@ -34,6 +34,8 @@ from pathlib import Path
 import structlog
 from bss_portal_auth import (
     Settings as PortalAuthSettings,
+)
+from bss_portal_auth import (
     select_adapter,
     validate_pepper_present,
 )

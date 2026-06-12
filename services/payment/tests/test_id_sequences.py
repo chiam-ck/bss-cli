@@ -8,13 +8,12 @@ needs to verify cross-restart behavior. It cleans up after itself.
 """
 
 import pytest
+from app.config import Settings
+from app.main import create_app
 from bss_middleware import TEST_TOKEN
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-from app.config import Settings
-from app.main import create_app
 
 PM_PATH = "/tmf-api/paymentMethodManagement/v4/paymentMethod"
 

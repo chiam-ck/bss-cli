@@ -1,6 +1,6 @@
 """v0.7 — HTTP routes for active-aware catalog queries."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
@@ -50,10 +50,9 @@ class TestActivePriceRoute:
     async def test_active_price_for_unknown_offering_is_policy_violation(
         self, client: AsyncClient, cleanup_test_rows
     ):
-        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
         # An offering with no recurring price row at all → no active row.
         from bss_catalog.config import Settings
+        from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
         engine = create_async_engine(Settings().db_url)
         factory = async_sessionmaker(engine, expire_on_commit=False)
         async with factory() as session:

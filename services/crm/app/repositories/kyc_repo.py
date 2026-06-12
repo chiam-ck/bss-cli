@@ -1,9 +1,8 @@
 """KYC (CustomerIdentity) repository."""
 
+from bss_models.crm import CustomerIdentity
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.crm import CustomerIdentity
 
 
 class KycRepository:

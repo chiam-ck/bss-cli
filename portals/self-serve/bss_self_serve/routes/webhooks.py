@@ -334,10 +334,9 @@ async def webhook_didit(request: Request) -> Response:
             media_type="application/json",
         )
 
+    from bss_models.integrations import KycWebhookCorroboration
     from sqlalchemy import select
     from sqlalchemy.exc import IntegrityError
-
-    from bss_models.integrations import KycWebhookCorroboration
 
     store = WebhookEventStore()
     async with session_factory() as session:

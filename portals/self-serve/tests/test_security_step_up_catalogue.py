@@ -18,9 +18,7 @@ PR 11 (final doctrine guards), once every PR 3–10 route exists.
 from __future__ import annotations
 
 import pytest
-
 from bss_self_serve.security import SENSITIVE_ACTION_LABELS, requires_step_up
-
 
 EXPECTED_LABELS = frozenset({
     "vas_purchase",

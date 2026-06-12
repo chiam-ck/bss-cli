@@ -11,13 +11,12 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from bss_clients import NotFound, PolicyViolationFromServer
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from bss_catalog.policies import PolicyViolation
 from bss_catalog.promotion_repository import PromotionRepository
 from bss_catalog.promotion_service import PromotionService
+from bss_clients import NotFound, PolicyViolationFromServer
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def _pid(prefix: str = "PROMO") -> str:

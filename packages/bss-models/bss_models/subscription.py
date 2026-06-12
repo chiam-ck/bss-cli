@@ -4,13 +4,12 @@ subscription, bundle_balance, vas_purchase, subscription_state_history.
 """
 
 from datetime import datetime
-
 from decimal import Decimal
 
 from sqlalchemy import BigInteger, Computed, ForeignKey, Index, Numeric, SmallInteger, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, TZDateTime, TenantMixin, TimestampMixin
+from .base import Base, TenantMixin, TimestampMixin, TZDateTime
 
 SCHEMA = "subscription"
 

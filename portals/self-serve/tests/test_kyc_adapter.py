@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from bss_self_serve.kyc import (
     KycAttestation,
     KycSession,

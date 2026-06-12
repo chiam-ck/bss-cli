@@ -14,13 +14,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from app import auth_context
 from app.policies.base import PolicyViolation
-
 
 # ── Helpers ──────────────────────────────────────────────────────────
 

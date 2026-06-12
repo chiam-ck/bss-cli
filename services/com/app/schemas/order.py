@@ -3,10 +3,9 @@
 from datetime import datetime
 from decimal import Decimal
 
+from bss_models.order_mgmt import OrderItem, ProductOrder
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-
-from bss_models.order_mgmt import OrderItem, ProductOrder
 
 ORDER_PATH = "/tmf-api/productOrderingManagement/v4/productOrder"
 

@@ -4,7 +4,6 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
-
 from app.policies.base import PolicyViolation
 from app.policies.payment import (
     check_customer_matches_method,

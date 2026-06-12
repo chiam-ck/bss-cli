@@ -236,7 +236,7 @@ async def add_method(
 
     try:
         tok = _local_tokenize(card_number)
-    except ValueError as exc:
+    except ValueError:
         async with factory() as db:
             await record_portal_action(
                 db,
@@ -363,9 +363,8 @@ async def add_method_checkout_init(
     email = ""
     if iid:
         try:
-            from sqlalchemy import select
-
             from bss_portal_auth.models import Identity
+            from sqlalchemy import select
 
             async with factory() as db:
                 row = (

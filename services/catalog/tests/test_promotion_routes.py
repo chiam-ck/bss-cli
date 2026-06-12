@@ -8,14 +8,12 @@ fake). Writes hit the live dev DB → unique ids + cleanup.
 import uuid
 
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
 from bss_catalog.app import create_app
 from bss_catalog.config import Settings
 from bss_middleware import TEST_TOKEN
-
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from test_promotion_service import FakeLoyalty
 
 _HDRS = {"X-BSS-API-Token": TEST_TOKEN, "X-BSS-Actor": "admin"}

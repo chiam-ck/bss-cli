@@ -4,9 +4,8 @@ from datetime import datetime, timezone
 
 import pytest
 import respx
-from httpx import Response
-
 from bss_clients import CatalogClient, PolicyViolationFromServer
+from httpx import Response
 
 BASE_URL = "http://catalog:8000"
 

@@ -12,7 +12,6 @@ publish. Proves the two invariants that make delivery at-least-once:
 import uuid
 
 import pytest
-
 from bss_events.relay import _drain_once
 
 

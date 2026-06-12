@@ -5,10 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
+from bss_models import PaymentAttempt
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-
-from bss_models import PaymentAttempt
 
 
 class TmfBase(BaseModel):

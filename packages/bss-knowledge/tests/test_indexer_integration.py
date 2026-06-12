@@ -8,15 +8,13 @@ mtime cache, content_hash dedup, deletion of removed sections.
 from __future__ import annotations
 
 import os
-import tempfile
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from bss_knowledge import Indexer
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-from bss_knowledge import Indexer
 
 pytestmark = pytest.mark.integration
 

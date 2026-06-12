@@ -17,10 +17,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 from bss_self_serve.security import SENSITIVE_ACTION_LABELS
-
 
 _ROUTES_DIR = Path(__file__).resolve().parents[1] / "bss_self_serve" / "routes"
 _CALL_PATTERN = re.compile(r'requires_step_up\(\s*"([^"]+)"\s*\)')

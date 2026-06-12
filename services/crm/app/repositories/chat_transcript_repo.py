@@ -10,11 +10,10 @@ no-op so retries on transient errors don't blow up. (Re-storing a
 crash; the caller should never produce one.)
 """
 
+from bss_models.audit import ChatTranscript
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.audit import ChatTranscript
 
 
 class ChatTranscriptRepository:

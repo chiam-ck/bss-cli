@@ -55,7 +55,6 @@ import sys
 from typing import Any
 
 import asyncpg
-
 from bss_clients import (
     BearerAuthProvider,
     CatalogClient,

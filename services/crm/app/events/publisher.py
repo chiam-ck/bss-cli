@@ -7,12 +7,12 @@ RabbitMQ publish is best-effort after commit (simplified outbox).
 from uuid import uuid4
 
 import structlog
+from bss_clock import now as clock_now
+from bss_models.audit import DomainEvent
+from bss_telemetry import current_trace_id
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
-from bss_clock import now as clock_now
-from bss_telemetry import current_trace_id
-from bss_models.audit import DomainEvent
 
 log = structlog.get_logger()
 

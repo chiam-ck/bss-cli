@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import pytest
 from bss_clients import NamedTokenAuthProvider
-
 from bss_self_serve import clients as portal_clients
-
 
 PORTAL_TOKEN = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 DEFAULT_TOKEN = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

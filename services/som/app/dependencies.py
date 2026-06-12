@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 import structlog
-from bss_clients import InventoryClient, NoAuthProvider, TokenAuthProvider
+from bss_clients import InventoryClient, TokenAuthProvider
 from bss_events import start_relay
 from bss_middleware import api_token, validate_api_token_present
 from bss_telemetry import configure_telemetry

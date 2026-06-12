@@ -3,11 +3,10 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict
-from pydantic.alias_generators import to_camel
-
 from bss_models import apply_discount
 from bss_models.subscription import BundleBalance, Subscription, VasPurchase
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 SUBSCRIPTION_PATH = "/subscription-api/v1/subscription"
 

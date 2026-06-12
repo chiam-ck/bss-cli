@@ -121,9 +121,8 @@ class TestPlanChangeEndsPromo:
     async def test_pending_plan_change_clears_discount(self, client, mock_clients):
         from unittest.mock import AsyncMock
 
-        from sqlalchemy import update
-
         from bss_models.subscription import Subscription
+        from sqlalchemy import update
 
         sub_id = (await client.post(CREATE, json=_create_body(
             discountType="percent", discountValue="20", discountPeriodsTotal=3,

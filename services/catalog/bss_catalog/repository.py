@@ -1,19 +1,17 @@
 from datetime import datetime
-from uuid import UUID
 
 from bss_clock import now as clock_now
-from sqlalchemy import and_, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
-from bss_catalog.policies import PolicyViolation
 from bss_models.catalog import (
-    BundleAllowance,
     ProductOffering,
     ProductOfferingPrice,
     ProductSpecification,
     VasOffering,
 )
+from sqlalchemy import or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from bss_catalog.policies import PolicyViolation
 
 
 class CatalogRepository:

@@ -149,10 +149,9 @@ async def _run_query(
     # cost when the user actually runs this command.
     import os
 
+    from bss_models.integrations import ExternalCall
     from sqlalchemy import and_, select
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from bss_models.integrations import ExternalCall
 
     db_url = os.environ.get("BSS_DB_URL")
     if not db_url:

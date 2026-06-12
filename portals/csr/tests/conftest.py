@@ -26,12 +26,10 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
 from bss_csr.config import Settings
 from bss_csr.main import create_app
-
+from fastapi.testclient import TestClient
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 

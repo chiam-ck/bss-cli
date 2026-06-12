@@ -43,23 +43,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from bss_clock import now as clock_now
 from bss_models import (
     ContactMedium,
     Customer,
     EmailChangePending,
     Identity,
-    Party,
 )
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .config import Settings
 from .email import EmailAdapter
 from .service import _login_token_id
 from .tokens import generate_otp, hash_token, verify_token
-
 
 # ── Result types ─────────────────────────────────────────────────────────
 
@@ -146,7 +142,6 @@ async def start_email_change(
         .values(status="cancelled")
     )
 
-    settings = Settings()
     now = clock_now()
     otp = generate_otp()
     pending_id = _login_token_id().replace("LTK-", "ECP-")

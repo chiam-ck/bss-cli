@@ -9,7 +9,7 @@ from decimal import Decimal
 from sqlalchemy import BigInteger, ForeignKey, Numeric, SmallInteger, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base, TZDateTime, TenantMixin, TimestampMixin
+from .base import Base, TenantMixin, TimestampMixin, TZDateTime
 
 SCHEMA = "order_mgmt"
 

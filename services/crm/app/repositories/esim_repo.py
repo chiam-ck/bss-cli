@@ -1,12 +1,10 @@
 """eSIM profile repository."""
 
-from datetime import datetime, timezone
 
 from bss_clock import now as clock_now
+from bss_models.inventory import EsimProfile
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.inventory import EsimProfile
 
 
 class EsimRepository:

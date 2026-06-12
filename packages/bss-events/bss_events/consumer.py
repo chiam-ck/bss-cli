@@ -161,7 +161,10 @@ async def bind_consumer(
                         content_type="application/json",
                         delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                         message_id=event_id,
-                        headers={"parked_reason": str(exc)[:500], "x-death": message.headers.get("x-death") if message.headers else None},
+                        headers={
+                            "parked_reason": str(exc)[:500],
+                            "x-death": message.headers.get("x-death") if message.headers else None,
+                        },
                     ),
                     routing_key=parked_q.name,
                 )

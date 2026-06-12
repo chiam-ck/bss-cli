@@ -12,7 +12,6 @@ the test fails with a message pointing at the tool name.
 from __future__ import annotations
 
 import pytest
-
 from bss_orchestrator.tools import TOOL_REGISTRY
 
 REQUIRED_SECTIONS = ("Args:", "Returns:", "Raises:")

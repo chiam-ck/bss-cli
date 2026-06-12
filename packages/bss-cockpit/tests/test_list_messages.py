@@ -10,7 +10,7 @@ file pins the structured-row contract.
 
 from __future__ import annotations
 
-from bss_cockpit import Conversation, ConversationMessage, ConversationStore
+from bss_cockpit import ConversationMessage, ConversationStore
 
 
 async def test_list_messages_returns_each_row(store: ConversationStore) -> None:

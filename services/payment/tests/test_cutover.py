@@ -9,14 +9,11 @@ fail immediately and the portal's "add a new card" flow recovers.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
-
 from bss_models import PaymentMethod
 from bss_models.audit import DomainEvent
+from sqlalchemy import select
 
 
 @pytest_asyncio.fixture

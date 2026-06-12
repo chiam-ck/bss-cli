@@ -6,12 +6,11 @@ The catalog service is read-only in v0.1 — no write isolation needed.
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
 from bss_catalog.app import create_app
 from bss_catalog.config import Settings
 from bss_middleware import TEST_TOKEN
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 @pytest.fixture(scope="session", autouse=True)

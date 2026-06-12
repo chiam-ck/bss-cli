@@ -5,11 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from bss_clock import advance, clock_admin_router, freeze, now, parse_duration, state, unfreeze
 from bss_clock.clock import reset_for_tests
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture(autouse=True)

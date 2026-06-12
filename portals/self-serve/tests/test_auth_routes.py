@@ -13,7 +13,6 @@ app's lifespan creates its own engine bound to the TestClient loop).
 from __future__ import annotations
 
 import os
-from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -32,19 +31,17 @@ os.environ.setdefault("BSS_PORTAL_EMAIL_ADAPTER", "noop")
 os.environ.setdefault("BSS_PORTAL_EMAIL_PROVIDER", "noop")  # v0.14 — both names handled
 os.environ.setdefault("BSS_PORTAL_DEV_INSECURE_COOKIE", "1")
 
-from bss_clock import advance, freeze  # noqa: E402
 from bss_clock.clock import reset_for_tests as _reset_clock  # noqa: E402
-from bss_models import LoginAttempt, Session as SessionRow  # noqa: E402
+from bss_models import LoginAttempt  # noqa: E402
+from bss_models import Session as SessionRow
 from bss_portal_auth.test_helpers import (  # noqa: E402
     create_test_session,
     last_login_codes,
     last_step_up_code,
 )
-
 from bss_self_serve.config import Settings  # noqa: E402
 from bss_self_serve.main import create_app  # noqa: E402
 from bss_self_serve.middleware import PORTAL_SESSION_COOKIE  # noqa: E402
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 

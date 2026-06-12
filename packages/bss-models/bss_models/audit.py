@@ -9,7 +9,8 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import BigInteger, Boolean, Index, Integer, SmallInteger, Text, func
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TZDateTime

@@ -11,7 +11,6 @@ from bss_cli.scenarios.assertions import (
 )
 from bss_cli.scenarios.schema import Poll
 
-
 # ─── path resolution ────────────────────────────────────────────────────────
 
 

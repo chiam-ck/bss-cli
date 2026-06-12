@@ -1,11 +1,11 @@
+from bss_clock import clock_admin_router
+from bss_middleware import BSSApiTokenMiddleware
 from fastapi import FastAPI
 
 from bss_catalog.config import Settings
 from bss_catalog.deps import lifespan
 from bss_catalog.logging import configure_logging
 from bss_catalog.middleware import RequestIdMiddleware
-from bss_clock import clock_admin_router
-from bss_middleware import BSSApiTokenMiddleware
 from bss_catalog.routes import (
     admin,
     health,

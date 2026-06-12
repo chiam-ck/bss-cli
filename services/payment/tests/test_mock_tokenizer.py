@@ -1,7 +1,6 @@
 """Unit tests for mock_tokenizer — pure functions, no DB, no HTTP."""
 
 import pytest
-
 from app.domain.mock_tokenizer import ChargeResult, TokenizeResult, charge, tokenize_card
 
 

@@ -10,7 +10,6 @@ deployment look identical to a correctly-defaulted dev one.
 from __future__ import annotations
 
 import pytest
-
 from bss_orchestrator.autonomy import (
     DEFAULT_AUTONOMY_MODE,
     VALID_AUTONOMY_MODES,

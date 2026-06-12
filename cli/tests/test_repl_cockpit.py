@@ -16,18 +16,16 @@ fixture in cli/tests/conftest.py).
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import pytest
 import pytest_asyncio
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pathlib import Path
-import os
-
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
 from bss_cli.repl import _DESTRUCTIVE_PREFIXES, _is_destructive
 from bss_cockpit import Conversation, ConversationStore, configure_store
-
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 

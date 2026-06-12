@@ -84,8 +84,8 @@ class TestCharge:
         Foundation for the v1.0 crash-recovery path. Forensics today;
         crash-restart-detect tomorrow. See docs/runbooks/payment-idempotency.md.
         """
-        from sqlalchemy import select
         from bss_models import PaymentAttempt
+        from sqlalchemy import select
 
         pm_id = await _create_pm(client, token="tok_idempotency_test")
         resp = await client.post(

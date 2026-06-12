@@ -2,6 +2,7 @@
 
 from bss_clock import clock_admin_router
 from bss_events import audit_events_router
+from bss_middleware import BSSApiTokenMiddleware
 from fastapi import FastAPI
 
 from app.api import admin, health, webhooks
@@ -10,7 +11,6 @@ from app.config import Settings
 from app.dependencies import lifespan
 from app.logging import configure_logging
 from app.middleware import RequestIdMiddleware
-from bss_middleware import BSSApiTokenMiddleware
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

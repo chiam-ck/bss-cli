@@ -8,8 +8,6 @@ integration is exercised end-to-end in the v1.5 e2e suite (Phase E).
 
 from __future__ import annotations
 
-import pytest
-
 from bss_orchestrator.session import (
     MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS,
     MAX_CONSECUTIVE_TOOL_FAILURES,
@@ -17,7 +15,6 @@ from bss_orchestrator.session import (
     _is_failure_tool_result,
     _tool_args_sig,
 )
-
 
 # ─── _is_failure_tool_result classifier ──────────────────────────────────
 

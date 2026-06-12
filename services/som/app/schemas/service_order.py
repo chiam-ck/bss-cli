@@ -2,10 +2,9 @@
 
 from datetime import datetime
 
+from bss_models.service_inventory import ServiceOrder, ServiceOrderItem
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-
-from bss_models.service_inventory import ServiceOrder, ServiceOrderItem
 
 SO_PATH = "/tmf-api/serviceOrderingManagement/v4/serviceOrder"
 

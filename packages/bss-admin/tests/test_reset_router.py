@@ -10,15 +10,14 @@ captures ``execute()`` calls.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from bss_admin import ResetPlan, TableReset, admin_router
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from bss_admin import ResetPlan, TableReset, admin_router
 
 
 class _FakeSession:

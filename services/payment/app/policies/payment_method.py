@@ -9,7 +9,6 @@ payment_method.remove.not_last_if_active_subscription — STUB (Phase 6)
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from bss_clients import CRMClient, NotFound
@@ -71,7 +70,10 @@ async def check_at_most_n_methods(
     if count >= MAX_METHODS_PER_CUSTOMER:
         raise PolicyViolation(
             rule="payment_method.add.at_most_n_methods",
-            message=f"Customer {customer_id} already has {count} active payment methods (max {MAX_METHODS_PER_CUSTOMER})",
+            message=(
+                f"Customer {customer_id} already has {count} active payment "
+                f"methods (max {MAX_METHODS_PER_CUSTOMER})"
+            ),
             context={
                 "customer_id": customer_id,
                 "current_count": count,

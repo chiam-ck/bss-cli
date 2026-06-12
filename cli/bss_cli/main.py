@@ -48,22 +48,56 @@ _bootstrap_env_from_dotenv()
 
 from .commands import (
     admin as admin_cmd,
+)
+from .commands import (
     case as case_cmd,
+)
+from .commands import (
     catalog as catalog_cmd,
+)
+from .commands import (
     clock as clock_cmd,
+)
+from .commands import (
     customer as customer_cmd,
+)
+from .commands import (
     external_calls as external_calls_cmd,
+)
+from .commands import (
     inventory as inventory_cmd,
+)
+from .commands import (
     onboard as onboard_cmd,
+)
+from .commands import (
     order as order_cmd,
+)
+from .commands import (
     payment as payment_cmd,
+)
+from .commands import (
     promo as promo_cmd,
+)
+from .commands import (
     prov as prov_cmd,
+)
+from .commands import (
     scenario as scenario_cmd,
+)
+from .commands import (
     som as som_cmd,
+)
+from .commands import (
     subscription as subscription_cmd,
+)
+from .commands import (
     ticket as ticket_cmd,
+)
+from .commands import (
     trace as trace_cmd,
+)
+from .commands import (
     usage as usage_cmd,
 )
 

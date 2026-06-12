@@ -14,10 +14,10 @@ here is gone — signup is no longer orchestrator-mediated.
 
 from __future__ import annotations
 
-from ..clients import get_clients
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from ..clients import get_clients
 from ..offerings import find_plan, flatten_offerings
 from ..qrpng import activation_qr_data_uri
 from ..templating import templates

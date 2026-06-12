@@ -14,7 +14,6 @@ not a restriction set. Tests assert:
 from __future__ import annotations
 
 import pytest
-
 from bss_orchestrator.tools._profiles import (
     TOOL_PROFILES,
     is_mine_tool,

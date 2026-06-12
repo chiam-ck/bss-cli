@@ -40,10 +40,9 @@ commit. Same pattern as the rest of ``bss_portal_auth``.
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from bss_clock import now as clock_now
 from bss_models import PortalAction
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def record_portal_action(

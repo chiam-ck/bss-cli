@@ -20,18 +20,16 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from bss_orchestrator import chat_caps
 from bss_orchestrator.chat_caps import (
-    CapStatus,
     MODEL_RATES_USD_PER_M_TOK,
+    CapStatus,
     _cost_cents_for_turn,
     _HourlyWindow,
     _period_yyyymm,
     check_caps,
     record_chat_turn,
 )
-
 
 # ─── 1. Cost accounting ─────────────────────────────────────────────
 

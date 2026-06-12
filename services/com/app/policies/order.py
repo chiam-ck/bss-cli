@@ -94,7 +94,10 @@ async def check_cancel_allowed_after_som(order_id: str, som_client):
         if so.get("state") not in ("acknowledged", None):
             raise PolicyViolation(
                 rule="order.cancel.forbidden_after_som_started",
-                message=f"Order {order_id} cannot be cancelled — service order {so.get('id')} is in state '{so.get('state')}'",
+                message=(
+                    f"Order {order_id} cannot be cancelled — service order "
+                    f"{so.get('id')} is in state '{so.get('state')}'"
+                ),
                 context={
                     "order_id": order_id,
                     "service_order_id": so.get("id"),

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from bss_orchestrator.safety import (
     DESTRUCTIVE_TOOLS,
     is_destructive,

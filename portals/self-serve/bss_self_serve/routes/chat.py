@@ -55,8 +55,14 @@ from bss_orchestrator.session import (
 from bss_portal_auth import IdentityView
 from bss_portal_ui import (
     render_assistant_bubble as _chat_assistant_html,
+)
+from bss_portal_ui import (
     render_chat_markdown as _render_chat_markdown,
+)
+from bss_portal_ui import (
     render_tool_pill as _chat_tool_pill_html,
+)
+from bss_portal_ui import (
     strip_reasoning_leakage as _strip_reasoning_leakage,
 )
 from bss_portal_ui.sse import format_frame as _sse_frame

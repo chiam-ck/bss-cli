@@ -24,12 +24,10 @@ import os
 from dataclasses import dataclass
 
 import asyncpg
-
 from bss_clients import (
     CatalogClient,
     CRMClient,
     NotFound,
-    PolicyViolationFromServer,
     TokenAuthProvider,
 )
 

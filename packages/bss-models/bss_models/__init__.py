@@ -12,7 +12,25 @@ service ``/health`` versions). One bump per release; doctrine.
 # so a release bump is one line. Bump on every release tag.
 BSS_RELEASE = "1.6.0"
 
+# Audit (3 tables — v0.12 added ChatUsage + ChatTranscript)
+from .audit import ChatTranscript, ChatUsage, DomainEvent
 from .base import Base, TenantMixin, TimestampMixin
+
+# Billing (2 tables)
+from .billing import BillingAccount, CustomerBill
+
+# Catalog (7 tables)
+from .catalog import (
+    BundleAllowance,
+    ProductOffering,
+    ProductOfferingPrice,
+    ProductSpecification,
+    ProductToServiceMapping,
+    Promotion,
+    PromotionEligibility,
+    ServiceSpecification,
+    VasOffering,
+)
 
 # CRM (12 tables)
 from .crm import (
@@ -31,58 +49,23 @@ from .crm import (
     TicketStateHistory,
 )
 
-# Catalog (7 tables)
-from .catalog import (
-    BundleAllowance,
-    ProductOffering,
-    ProductOfferingPrice,
-    ProductSpecification,
-    ProductToServiceMapping,
-    Promotion,
-    PromotionEligibility,
-    ServiceSpecification,
-    VasOffering,
-)
+# Promo discount math — pure helpers shared across services (v1.1)
+from .discount import apply_discount, discount_label
+
+# Integrations (3 tables) — v0.14 + v0.15
+from .integrations import ExternalCall, KycWebhookCorroboration, WebhookEvent
 
 # Inventory (2 tables)
 from .inventory import EsimProfile, MsisdnPool
 
-# Payment (3 tables; v0.16 added PaymentCustomer)
-from .payment import PaymentAttempt, PaymentCustomer, PaymentMethod
+# Mediation (1 table)
+from .mediation import UsageEvent
 
 # Order Management (3 tables)
 from .order_mgmt import OrderItem, OrderStateHistory, ProductOrder
 
-# Service Inventory (4 tables)
-from .service_inventory import (
-    Service,
-    ServiceOrder,
-    ServiceOrderItem,
-    ServiceStateHistory,
-)
-
-# Provisioning (2 tables)
-from .provisioning import FaultInjection, ProvisioningTask
-
-# Subscription (4 tables)
-from .subscription import (
-    BundleBalance,
-    Subscription,
-    SubscriptionStateHistory,
-    VasPurchase,
-)
-
-# Mediation (1 table)
-from .mediation import UsageEvent
-
-# Billing (2 tables)
-from .billing import BillingAccount, CustomerBill
-
-# Audit (3 tables — v0.12 added ChatUsage + ChatTranscript)
-from .audit import ChatTranscript, ChatUsage, DomainEvent
-
-# Integrations (3 tables) — v0.14 + v0.15
-from .integrations import ExternalCall, KycWebhookCorroboration, WebhookEvent
+# Payment (3 tables; v0.16 added PaymentCustomer)
+from .payment import PaymentAttempt, PaymentCustomer, PaymentMethod
 
 # Portal Auth (4 tables) — v0.8
 from .portal_auth import (
@@ -95,8 +78,24 @@ from .portal_auth import (
     StepUpPendingAction,
 )
 
-# Promo discount math — pure helpers shared across services (v1.1)
-from .discount import apply_discount, discount_label
+# Provisioning (2 tables)
+from .provisioning import FaultInjection, ProvisioningTask
+
+# Service Inventory (4 tables)
+from .service_inventory import (
+    Service,
+    ServiceOrder,
+    ServiceOrderItem,
+    ServiceStateHistory,
+)
+
+# Subscription (4 tables)
+from .subscription import (
+    BundleBalance,
+    Subscription,
+    SubscriptionStateHistory,
+    VasPurchase,
+)
 
 __all__ = [
     "BSS_RELEASE",

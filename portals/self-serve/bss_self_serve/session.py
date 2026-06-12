@@ -28,7 +28,6 @@ from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any, Literal
 
-
 # v0.11 — explicit step states for the direct-write chain. The progress
 # page reads ``step`` to render the timeline and to decide which step
 # route to fire next. The poll route flips it to ``completed`` when

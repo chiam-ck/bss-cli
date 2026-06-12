@@ -1,9 +1,10 @@
 """TMF683 Customer Interaction endpoints."""
 
-from datetime import datetime, timezone
 
 from bss_clock import now as clock_now
+from bss_models.crm import Interaction
 from fastapi import APIRouter, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
 from app.dependencies import get_interaction_repo, get_session
@@ -13,8 +14,6 @@ from app.schemas.tmf.interaction import (
     Tmf683Interaction,
     to_tmf683_interaction,
 )
-from bss_models.crm import Interaction
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["TMF683 Interaction"])
 

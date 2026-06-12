@@ -378,7 +378,23 @@ fmt:
 	uv run ruff format .
 
 lint:
-	uv run ruff check . && uv run mypy .
+	uv run ruff check .
+
+# mypy can't run as a single `mypy .` in this workspace: every service
+# deliberately shares the `app` package name (same reason `make test`
+# isolates PYTHONPATH per directory), so root-level checking dies on
+# duplicate-module errors before reporting anything. Per-component runs
+# work but strict mode is deeply red today (~120-270 errors per
+# component, 2026-06-12 baseline) — kept OUT of `lint` until a typing
+# project burns that down. Run per component, e.g.:
+#   uv run mypy packages/bss-clients/bss_clients
+lint-types:
+	@failed=0; \
+	for dir in packages/bss-clients packages/bss-clock packages/bss-cockpit services/crm/app orchestrator/bss_orchestrator; do \
+		printf "\n══ mypy $$dir ══\n"; \
+		uv run mypy $$dir || failed=1; \
+	done; \
+	exit $$failed
 
 # --- Data Model ---
 

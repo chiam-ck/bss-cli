@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from bss_cli.scenarios.context import ScenarioContext
 from bss_cli.scenarios.file_step import run_file_step
 from bss_cli.scenarios.schema import FileReadStep, HTTPRegexCapture

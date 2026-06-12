@@ -1,10 +1,9 @@
 """ServiceOrder repository — dumb CRUD over ORM."""
 
+from bss_models.service_inventory import ServiceOrder
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from bss_models.service_inventory import ServiceOrder
 
 
 class ServiceOrderRepository:

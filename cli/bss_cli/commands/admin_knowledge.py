@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from bss_knowledge import INDEXED_PATHS, Indexer, get_chunk, search_fts
+from bss_knowledge import INDEXED_PATHS, Indexer, search_fts
 from rich import print as rprint
 from rich.table import Table
 from sqlalchemy import text

@@ -5,8 +5,6 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-
 from bss_clock import advance, freeze
 from bss_models import Identity, Session
 from bss_portal_auth import (
@@ -17,6 +15,7 @@ from bss_portal_auth import (
     rotate_if_due,
 )
 from bss_portal_auth.test_helpers import create_test_session
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,6 @@ from bss_orchestrator.session import (
     AgentEventToolCallCompleted,
     AgentEventToolCallStarted,
 )
-
 from bss_portal_ui.agent_log import project, render_html
 
 

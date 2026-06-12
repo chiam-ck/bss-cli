@@ -8,7 +8,6 @@ PAN must NEVER touch BSS in production (DECISIONS 2026-05-03).
 from __future__ import annotations
 
 import pytest
-
 from bss_self_serve.pci_scope import scan_templates_for_pan_inputs
 
 

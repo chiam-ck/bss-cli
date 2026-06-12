@@ -18,25 +18,22 @@ Coverage:
 from __future__ import annotations
 
 import hashlib
-import json
 from typing import get_args
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from bss_orchestrator import auth_context
 from bss_orchestrator.customer_chat_prompt import (
     build_balance_summary,
     build_customer_chat_prompt,
 )
-from bss_orchestrator.tools import TOOL_PROFILES, TOOL_REGISTRY
+from bss_orchestrator.tools import TOOL_PROFILES
 from bss_orchestrator.tools.mine_wrappers import (
     _ESCALATION_TO_CASE_CATEGORY,
     _ESCALATION_TO_PRIORITY,
     case_open_for_me,
 )
 from bss_orchestrator.types import EscalationCategory
-
 
 # ─── 1. Enum integrity ──────────────────────────────────────────────
 

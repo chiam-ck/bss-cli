@@ -3,16 +3,16 @@
 import os
 
 import structlog
+from bss_models.inventory import EsimProfile, MsisdnPool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
 from app.domain import esim_state
 from app.events import publisher
-from app.policies.base import PolicyViolation
 from app.policies import inventory as inv_policies
+from app.policies.base import PolicyViolation
 from app.repositories.esim_repo import EsimRepository
 from app.repositories.msisdn_repo import MsisdnRepository
-from bss_models.inventory import EsimProfile, MsisdnPool
 
 log = structlog.get_logger()
 

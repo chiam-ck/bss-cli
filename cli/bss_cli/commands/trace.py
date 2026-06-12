@@ -7,13 +7,13 @@ from typing import Annotated, Any
 
 import typer
 from bss_clients import AuditClient, TokenAuthProvider
+from bss_cockpit.renderers.trace import render_swimlane
 from bss_middleware import api_token
 from bss_orchestrator.config import settings
 from rich import print as rprint
 
 from .._runtime import run_async
 from ..jaeger import JaegerClient, JaegerError
-from bss_cockpit.renderers.trace import render_swimlane
 
 app = typer.Typer(help="Query Jaeger traces + audit events.", no_args_is_help=True)
 

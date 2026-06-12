@@ -13,16 +13,16 @@ from decimal import Decimal
 
 import structlog
 from bss_clock import now as clock_now
-from sqlalchemy import update
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_catalog.policies import PolicyViolation
-from bss_catalog.repository import CatalogRepository
 from bss_models.catalog import (
     BundleAllowance,
     ProductOffering,
     ProductOfferingPrice,
 )
+from sqlalchemy import update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from bss_catalog.policies import PolicyViolation
+from bss_catalog.repository import CatalogRepository
 
 log = structlog.get_logger()
 

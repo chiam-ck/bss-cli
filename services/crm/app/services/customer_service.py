@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import structlog
 from bss_clock import now as clock_now
+from bss_models.crm import ContactMedium, Customer, Individual, Interaction, Party
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
@@ -16,7 +16,6 @@ from app.policies import customer as customer_policies
 from app.repositories.customer_repo import CustomerRepository
 from app.repositories.interaction_repo import InteractionRepository
 from app.repositories.msisdn_repo import MsisdnRepository
-from bss_models.crm import ContactMedium, Customer, Individual, Interaction, Party
 
 if TYPE_CHECKING:
     from bss_clients.subscription import SubscriptionClient
@@ -445,7 +444,6 @@ class CustomerService:
             )
         await self._customer_repo.delete_contact_medium(cm)
 
-        ctx = auth_context.current()
         await publisher.publish(
             self._session,
             event_type="customer.contact_medium_removed",

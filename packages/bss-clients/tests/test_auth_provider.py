@@ -2,8 +2,6 @@
 
 import pytest
 import respx
-from httpx import Response
-
 from bss_clients import (
     AuthProvider,
     BSSClient,
@@ -11,7 +9,7 @@ from bss_clients import (
     NoAuthProvider,
     TokenAuthProvider,
 )
-
+from httpx import Response
 
 BASE_URL = "http://test-service:8000"
 

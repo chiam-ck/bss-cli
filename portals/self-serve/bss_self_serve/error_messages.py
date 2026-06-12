@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from typing import Callable, Final, Mapping
 
-
 # Generic fallback when no specific copy is registered for a rule.
 GENERIC_FALLBACK: Final[str] = (
     "Sorry, something went wrong — please try again. "

@@ -10,11 +10,9 @@ from __future__ import annotations
 from typing import Any, AsyncIterator
 from unittest.mock import patch
 
-import pytest
-from langchain_core.messages import AIMessage
-
 from bss_orchestrator import auth_context
 from bss_orchestrator.session import astream_once
+from langchain_core.messages import AIMessage
 
 
 class _FakeGraph:

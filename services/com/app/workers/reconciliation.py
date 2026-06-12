@@ -22,9 +22,8 @@ from datetime import timedelta
 
 import structlog
 from bss_clock import now as clock_now
-from sqlalchemy import select
-
 from bss_models.order_mgmt import ProductOrder
+from sqlalchemy import select
 
 from app.events.publisher import publish
 

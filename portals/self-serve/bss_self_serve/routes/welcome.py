@@ -15,10 +15,10 @@ Doctrine (V0_8_0.md §3.2):
 
 from __future__ import annotations
 
-from ..clients import get_clients
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from ..clients import get_clients
 from ..offerings import flatten_offerings
 from ..templating import templates
 

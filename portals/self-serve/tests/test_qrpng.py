@@ -5,9 +5,8 @@ from __future__ import annotations
 import base64
 import io
 
-from PIL import Image
-
 from bss_self_serve.qrpng import activation_qr_data_uri
+from PIL import Image
 
 
 def test_activation_qr_data_uri_produces_valid_png() -> None:

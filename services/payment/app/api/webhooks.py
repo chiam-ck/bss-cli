@@ -29,17 +29,17 @@ Doctrine (per ``phases/V0_16_0.md`` §3 + the v0.15 retrospective):
 from __future__ import annotations
 
 import json as _json
+
 import structlog
 from bss_clock import now as clock_now
+from bss_models import PaymentAttempt
 from bss_webhooks.signatures import WebhookSignatureError, verify_signature
 from bss_webhooks.store import WebhookEventStore
 from fastapi import APIRouter, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import auth_context
 from app.events import publisher
-from bss_models import PaymentAttempt
 
 log = structlog.get_logger(__name__)
 

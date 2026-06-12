@@ -13,7 +13,6 @@ everywhere.
 from __future__ import annotations
 
 import pytest
-
 from app import auth_context
 
 

@@ -1,10 +1,9 @@
 """Case + CaseNote repository."""
 
+from bss_models.crm import Case, CaseNote
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from bss_models.crm import Case, CaseNote
 
 
 class CaseRepository:

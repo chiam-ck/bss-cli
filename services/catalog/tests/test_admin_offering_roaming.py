@@ -13,7 +13,6 @@ use `ON CONFLICT DO NOTHING`-shaped tests by tagging ids with a test suffix.
 
 import uuid
 
-import pytest
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession

@@ -9,11 +9,10 @@ completion handler directly with a same-session OrderService + mocks.
 from unittest.mock import AsyncMock
 
 import pytest
-from bss_clients import PolicyViolationFromServer
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.repositories.order_repo import OrderRepository
 from app.services.order_service import OrderService
+from bss_clients import PolicyViolationFromServer
+from sqlalchemy.ext.asyncio import AsyncSession
 
 TMF = "/tmf-api/productOrderingManagement/v4"
 

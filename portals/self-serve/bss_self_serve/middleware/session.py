@@ -32,13 +32,14 @@ from typing import Final
 
 import structlog
 from bss_clients.base import set_context as set_bss_context
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
-
 from bss_portal_auth import (
     Settings as PortalAuthSettings,
+)
+from bss_portal_auth import (
     current_session,
     rotate_if_due,
 )
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 log = structlog.get_logger(__name__)
 

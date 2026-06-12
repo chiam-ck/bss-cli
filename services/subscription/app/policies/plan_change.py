@@ -9,8 +9,9 @@ charged the next time renewal fires.
 
 from __future__ import annotations
 
-from app.policies.base import PolicyViolation, policy
 from bss_clients.errors import PolicyViolationFromServer
+
+from app.policies.base import PolicyViolation, policy
 
 
 @policy("subscription.plan_change.not_eligible_state")

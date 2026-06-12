@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from bss_middleware import TEST_TOKEN, validate_api_token_present
 
 

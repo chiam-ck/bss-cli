@@ -1,7 +1,6 @@
 """v0.7 — operator price migration with notice."""
 
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -105,9 +104,9 @@ async def test_migration_renewal_emits_price_migrated_not_plan_changed(
 ):
     """When the renewal applies a same-plan price migration, the event is
     `subscription.price_migrated` rather than `subscription.plan_changed`."""
-    from sqlalchemy import select, update
-    from bss_models.subscription import Subscription
     from bss_models.audit import DomainEvent
+    from bss_models.subscription import Subscription
+    from sqlalchemy import select, update
 
     sub_id = await _seed_active_sub(client)
 

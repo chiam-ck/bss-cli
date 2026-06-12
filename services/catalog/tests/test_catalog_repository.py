@@ -4,7 +4,6 @@ Expects: make migrate && make seed
 """
 
 import pytest
-
 from bss_catalog.repository import CatalogRepository
 
 

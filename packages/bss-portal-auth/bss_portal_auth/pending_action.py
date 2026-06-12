@@ -24,16 +24,14 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Mapping
-
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Mapping
 
 from bss_clock import now as clock_now
 from bss_models import Session, StepUpPendingAction
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Settings
-
 
 # Form fields we never stash — they are auth-flow internals that would
 # either be stale (consumed) or irrelevant on the replay POST.

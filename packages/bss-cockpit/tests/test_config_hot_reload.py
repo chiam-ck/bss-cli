@@ -10,8 +10,6 @@ import os
 import time
 
 import pytest
-
-from bss_cockpit import config as cockpit_config
 from bss_cockpit.config import (
     CockpitSettings,
     current,

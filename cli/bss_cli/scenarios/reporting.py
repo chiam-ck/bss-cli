@@ -21,7 +21,6 @@ from rich.text import Text
 
 from .runner import ScenarioResult, StepResult
 
-
 _KIND_ICON = {"action": "▶", "assert": "=", "ask": "💬"}
 
 

@@ -9,7 +9,6 @@ panel for cases opened via ``case.open_for_me``.
 from __future__ import annotations
 
 from bss_clients.errors import ClientError
-
 from conftest import FakeBundle  # type: ignore[import-not-found]
 
 

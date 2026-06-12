@@ -1,9 +1,6 @@
 """Tests for bundle.py pure functions — 100% branch coverage required."""
 
 import pytest
-from hypothesis import given, settings as h_settings
-from hypothesis import strategies as st
-
 from app.domain.bundle import (
     UNLIMITED,
     AllowanceSpec,
@@ -14,7 +11,9 @@ from app.domain.bundle import (
     primary_allowance_type,
     reset_for_new_period,
 )
-
+from hypothesis import given
+from hypothesis import settings as h_settings
+from hypothesis import strategies as st
 
 # ── Fixtures ────────────────────────────────────────────────────────
 

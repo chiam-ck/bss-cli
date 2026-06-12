@@ -16,7 +16,6 @@ from unittest.mock import patch
 
 import pytest
 import pytest_asyncio
-from bss_clients import PolicyViolationFromServer
 from fastapi.testclient import TestClient
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import select, text
@@ -43,11 +42,9 @@ from bss_portal_auth.test_helpers import (  # noqa: E402
     create_test_session,
     mint_step_up_grant,
 )
-
 from bss_self_serve.config import Settings  # noqa: E402
 from bss_self_serve.main import create_app  # noqa: E402
 from bss_self_serve.middleware import PORTAL_SESSION_COOKIE  # noqa: E402
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -125,7 +122,6 @@ async def _seed_customer_with_email(
     The email-change cross-schema test needs a real CRM row to update;
     the fakes-only approach can't exercise the atomicity invariant.
     """
-    from datetime import date
 
     async with seed_db() as s:
         s.add(Party(id=party_id, party_type="individual"))
@@ -540,23 +536,24 @@ async def test_email_change_verify_rolls_back_on_partial_failure(
 
     # Drive start to get an OTP, then patch the cross-schema function
     # to raise between the two updates.
-    from bss_portal_auth import email_change as ec_module
-
-    real_verify = ec_module.verify_email_change
 
     async def _verify_with_synthetic_failure(db, *, identity_id, code):
         """Mirror real_verify up to and including the CRM update,
         then raise. The session rollback should leave nothing committed."""
-        from sqlalchemy import select as _select
-
         from bss_models import (
             ContactMedium as _CM,
+        )
+        from bss_models import (
             Customer as _C,
+        )
+        from bss_models import (
             EmailChangePending as _ECP,
+        )
+        from bss_models import (
             Identity as _I,
         )
-
         from bss_portal_auth.tokens import verify_token as _verify_token
+        from sqlalchemy import select as _select
 
         pending = (
             await db.execute(

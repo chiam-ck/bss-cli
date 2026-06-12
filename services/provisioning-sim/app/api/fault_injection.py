@@ -1,6 +1,6 @@
 """Fault injection API routers — no business logic."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from app.dependencies import get_provisioning_service
 from app.schemas.task import (

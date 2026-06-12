@@ -9,9 +9,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from sqlalchemy import select
-
-from bss_clock import advance, freeze, now
+from bss_clock import advance, freeze
 from bss_models import Identity, LoginAttempt, LoginToken
 from bss_portal_auth import (
     LoginChallenge,
@@ -20,6 +18,7 @@ from bss_portal_auth import (
     start_email_login,
     verify_email_login,
 )
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio
@@ -189,7 +188,7 @@ async def test_verify_auto_links_identity_to_existing_crm_customer(
     """
     from datetime import datetime, timezone
 
-    from bss_models import Customer, ContactMedium, Identity, Individual, Party
+    from bss_models import ContactMedium, Customer, Identity, Individual, Party
 
     # Seed a CRM customer with the email already on file.
     db_session.add(Party(id="PRT-T-LINK01", party_type="individual"))

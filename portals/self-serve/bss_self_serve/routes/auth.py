@@ -24,9 +24,6 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 import structlog
-from fastapi import APIRouter, Form, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
-
 from bss_portal_auth import (
     LoginFailed,
     SessionView,
@@ -40,9 +37,10 @@ from bss_portal_auth import (
     verify_step_up,
 )
 from bss_portal_auth.types import RateLimitExceeded
+from fastapi import APIRouter, Form, Query, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from ..middleware.session import (
-    PORTAL_SESSION_COOKIE,
     build_clear_cookie,
     build_session_cookie,
 )

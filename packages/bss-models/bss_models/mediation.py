@@ -8,7 +8,7 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TZDateTime, TenantMixin, TimestampMixin
+from .base import Base, TenantMixin, TimestampMixin, TZDateTime
 
 SCHEMA = "mediation"
 

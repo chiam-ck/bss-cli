@@ -22,7 +22,6 @@ import hmac
 import time
 
 import pytest
-
 from bss_webhooks.signatures import WebhookSignatureError, verify_signature
 
 

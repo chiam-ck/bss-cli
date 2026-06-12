@@ -1,10 +1,10 @@
 """Ticket + TicketStateHistory repository."""
 
+from bss_models.crm import Ticket, TicketStateHistory
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from bss_models.crm import Ticket, TicketStateHistory
 from app.domain.ticket_state import TERMINAL
 
 

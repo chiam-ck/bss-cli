@@ -2,11 +2,10 @@
 
 from datetime import datetime
 
+from bss_models.subscription import BundleBalance, Subscription, SubscriptionStateHistory
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from bss_models.subscription import BundleBalance, Subscription, SubscriptionStateHistory
 
 
 class SubscriptionRepository:

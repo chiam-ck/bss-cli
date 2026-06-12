@@ -11,7 +11,6 @@ existing subscription and does NOT charge again — the guard behind Motto #2
 import uuid
 
 import pytest
-
 from app.repositories.subscription_repo import SubscriptionRepository
 from app.repositories.vas_repo import VasPurchaseRepository
 from app.services.subscription_service import SubscriptionService

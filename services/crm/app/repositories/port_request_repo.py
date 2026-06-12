@@ -5,10 +5,9 @@ The MNP FSM lives in ``port_request_service.py``; this layer holds no
 domain logic.
 """
 
+from bss_models.crm import PortRequest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.crm import PortRequest
 
 
 class PortRequestRepository:

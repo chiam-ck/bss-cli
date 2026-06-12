@@ -110,7 +110,7 @@ def test_em_dash_placeholder_for_untagged_span_in_mixed_trace():
     out = render_swimlane(trace, width=140, show_sql=False)
     # Find the line for the second span (operation GET /y) and confirm
     # an em-dash precedes the bar.
-    lines = [l for l in out.splitlines() if "GET /y" in l]
+    lines = [ln for ln in out.splitlines() if "GET /y" in ln]
     assert lines, "expected a row for GET /y"
     assert "—" in lines[0]
 
@@ -123,7 +123,7 @@ def test_column_width_does_not_overflow_layout():
     ])
     out = render_swimlane(trace, width=140, show_sql=False)
     # Find the data row (any line containing the bar character).
-    data_rows = [l for l in out.splitlines() if "┃" in l]
+    data_rows = [ln for ln in out.splitlines() if "┃" in ln]
     assert data_rows, "expected at least one data row with a bar"
     # Total width sanity: nothing absurd.
     for r in data_rows:

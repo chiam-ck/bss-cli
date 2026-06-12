@@ -7,12 +7,11 @@ Also tests actor chain propagation across service boundaries.
 import pytest
 import pytest_asyncio
 import respx
+from app.config import Settings
+from app.main import create_app
 from bss_middleware import TEST_TOKEN
 from httpx import ASGITransport, AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-
-from app.config import Settings
-from app.main import create_app
 
 PM_PATH = "/tmf-api/paymentMethodManagement/v4/paymentMethod"
 CRM_CUSTOMER_URL = "http://crm-test:8000/tmf-api/customerManagement/v4/customer"

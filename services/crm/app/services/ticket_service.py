@@ -1,10 +1,10 @@
 """Ticket service — orchestrates policies, repos, events."""
 
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import structlog
 from bss_clock import now as clock_now
+from bss_models.crm import Interaction, Ticket, TicketStateHistory
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
@@ -15,7 +15,6 @@ from app.repositories.case_repo import CaseRepository
 from app.repositories.customer_repo import CustomerRepository
 from app.repositories.interaction_repo import InteractionRepository
 from app.repositories.ticket_repo import TicketRepository
-from bss_models.crm import Interaction, Ticket, TicketStateHistory
 
 log = structlog.get_logger()
 

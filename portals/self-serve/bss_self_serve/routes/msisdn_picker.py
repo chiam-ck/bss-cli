@@ -21,11 +21,11 @@ lock-and-hold, by design; it's a demo.
 
 from __future__ import annotations
 
-from ..clients import get_clients
 from bss_portal_auth import IdentityView
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
+from ..clients import get_clients
 from ..offerings import find_plan, flatten_offerings
 from ..security import requires_verified_email
 from ..templating import templates

@@ -24,7 +24,7 @@ import asyncio
 import hashlib
 import time
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date
 
 import httpx
 import structlog
@@ -161,11 +161,10 @@ class DiditKycAdapter:
         self, session_id: str
     ) -> dict | None:
         """Poll integrations.kyc_webhook_corroboration for the row."""
-        from sqlalchemy import select
-
         # Lazy import: keeps test surface minimal when DiditKycAdapter
         # is imported but never used (e.g. in prebaked-only tests).
         from bss_models.integrations import KycWebhookCorroboration
+        from sqlalchemy import select
 
         deadline = time.monotonic() + self._poll_timeout
         while time.monotonic() < deadline:
@@ -190,9 +189,8 @@ class DiditKycAdapter:
 
     async def _guard_free_tier_cap(self) -> None:
         """Hard-block at 500/month. No silent fallback."""
-        from sqlalchemy import func, select
-
         from bss_models.integrations import ExternalCall
+        from sqlalchemy import func, select
 
         async with self._session_factory() as db:
             count = (

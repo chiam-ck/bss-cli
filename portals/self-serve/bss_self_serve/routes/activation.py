@@ -11,10 +11,10 @@ on the in-memory session, we fall back to HTMX polling of
 
 from __future__ import annotations
 
-from ..clients import get_clients
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from ..clients import get_clients
 from ..templating import templates
 
 router = APIRouter()

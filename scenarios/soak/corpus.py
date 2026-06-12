@@ -17,7 +17,6 @@ generation. Reproducible runs are a soak prerequisite.
 
 from __future__ import annotations
 
-
 # Bread-and-butter asks — the 5%/customer/day chat trigger samples
 # from this list.
 NORMAL_ASKS: list[str] = [

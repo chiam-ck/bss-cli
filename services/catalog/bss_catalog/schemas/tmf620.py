@@ -6,14 +6,17 @@ output matching the TMF620 specification exactly.
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.alias_generators import to_camel
-
 from bss_models.catalog import (
     ProductOffering as ProductOfferingModel,
+)
+from bss_models.catalog import (
     ProductOfferingPrice as ProductOfferingPriceModel,
+)
+from bss_models.catalog import (
     ProductSpecification as ProductSpecificationModel,
 )
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
 
 
 class TmfBase(BaseModel):

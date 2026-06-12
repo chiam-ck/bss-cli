@@ -7,10 +7,9 @@ queries — no business logic, no outward calls.
 
 from __future__ import annotations
 
+from bss_models.catalog import Promotion, PromotionEligibility
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.catalog import Promotion, PromotionEligibility
 
 
 class PromotionRepository:

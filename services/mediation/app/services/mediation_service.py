@@ -8,7 +8,7 @@ Flow:
   5. commit → best-effort publish to bss.events (routing key usage.recorded)
 """
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 import aio_pika
 import structlog

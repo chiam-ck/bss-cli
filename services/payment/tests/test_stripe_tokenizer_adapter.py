@@ -22,10 +22,9 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 import stripe
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from app.config import Settings
 from app.domain.stripe_tokenizer import StripeConfig, StripeTokenizerAdapter
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 

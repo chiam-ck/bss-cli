@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
+from bss_models import PaymentAttempt
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models import PaymentAttempt
 
 
 class PaymentAttemptRepository:

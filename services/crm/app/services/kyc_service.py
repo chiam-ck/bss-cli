@@ -5,10 +5,11 @@ Hashes document_number immediately — NEVER stores or logs plaintext.
 """
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime
 
 import structlog
 from bss_clock import now as clock_now
+from bss_models.crm import CustomerIdentity, Interaction
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
@@ -17,7 +18,6 @@ from app.policies import kyc as kyc_policies
 from app.repositories.customer_repo import CustomerRepository
 from app.repositories.interaction_repo import InteractionRepository
 from app.repositories.kyc_repo import KycRepository
-from bss_models.crm import CustomerIdentity, Interaction
 
 log = structlog.get_logger()
 

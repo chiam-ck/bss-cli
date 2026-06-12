@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-
 from bss_clock import advance, freeze
 from bss_portal_auth import (
     StepUpFailed,

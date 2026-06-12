@@ -1,10 +1,9 @@
 """Service repository — dumb CRUD over ORM."""
 
+from bss_models.service_inventory import Service, ServiceStateHistory
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-from bss_models.service_inventory import Service, ServiceStateHistory
 
 from app import auth_context
 

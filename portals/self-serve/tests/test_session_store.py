@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-
 from bss_self_serve.session import SessionStore
 
 

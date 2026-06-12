@@ -5,12 +5,9 @@ Cleans up after itself.
 """
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
 from app.config import Settings
 from app.repositories.subscription_repo import SubscriptionRepository
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 
 @pytest.mark.asyncio

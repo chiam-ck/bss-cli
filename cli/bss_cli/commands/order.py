@@ -6,11 +6,11 @@ from typing import Annotated
 
 import typer
 from bss_clients import PolicyViolationFromServer
+from bss_cockpit.renderers import render_order
 from bss_orchestrator.clients import get_clients
 from rich import print as rprint
 
 from .._runtime import run_async
-from bss_cockpit.renderers import render_order
 
 app = typer.Typer(help="Manage commercial orders (TMF622).", no_args_is_help=True)
 

@@ -10,11 +10,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from bss_clock import now as clock_now
 from bss_models import LoginAttempt
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Settings
 from .types import RateLimitExceeded

@@ -8,12 +8,10 @@ loudly. Mirrors loyalty-cli's test_v11_repl_chrome_filter.py shape.
 from __future__ import annotations
 
 import pytest
-
 from bss_cockpit.chrome_filter import (
     is_cockpit_chrome,
     strip_fake_propose,
 )
-
 
 # ─── is_cockpit_chrome: every known cockpit prefix is recognised ────────
 

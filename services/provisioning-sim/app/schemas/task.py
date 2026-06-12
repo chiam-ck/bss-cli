@@ -2,10 +2,9 @@
 
 from datetime import datetime
 
+from bss_models.provisioning import FaultInjection, ProvisioningTask
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-
-from bss_models.provisioning import FaultInjection, ProvisioningTask
 
 TASK_PATH = "/provisioning-api/v1/task"
 

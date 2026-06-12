@@ -38,9 +38,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from bss_clients import (
+    CatalogClient,
     COMClient,
     CRMClient,
-    CatalogClient,
     InventoryClient,
     NamedTokenAuthProvider,
     PaymentClient,
@@ -49,7 +49,6 @@ from bss_clients import (
 )
 
 from .config import settings
-
 
 # v0.9 — the portal's perimeter identity. Receiving services resolve
 # this from token validation against their TokenMap; this string is

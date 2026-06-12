@@ -21,14 +21,14 @@ from decimal import Decimal
 import structlog
 from bss_clients import ClientError, LoyaltyClient, NotFound, PolicyViolationFromServer
 from bss_clock import now as clock_now
+from bss_models import apply_discount, discount_label
+from bss_models.catalog import Promotion
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from bss_catalog.policies import PolicyViolation
 from bss_catalog.promotion_repository import PromotionRepository
 from bss_catalog.repository import CatalogRepository
 from bss_catalog.services import _check_admin
-from bss_models import apply_discount, discount_label
-from bss_models.catalog import Promotion
 
 log = structlog.get_logger()
 

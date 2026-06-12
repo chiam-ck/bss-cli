@@ -11,6 +11,11 @@ dev = [
     "pytest-asyncio>=0.23",
     "httpx>=0.27",
     "respx>=0.21",
+    # make fmt / make lint call these via `uv run`; they were configured
+    # ([tool.ruff], [tool.mypy]) but never declared, so a fresh venv had
+    # no ruff binary and `make lint` died on spawn.
+    "ruff>=0.8",
+    "mypy>=1.13",
 ]
 
 [tool.uv.workspace]
@@ -23,6 +28,14 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+# E402 (module-import-not-at-top) conflicts with two deliberate house
+# patterns: env-bootstrap-before-import (cli/main.py loads .env before
+# importing modules that read env at import time — the v0.9 token and
+# v0.14 provider doctrine) and constants-before-model-imports
+# (bss_models/__init__.py defines BSS_RELEASE above the Alembic-feeding
+# model imports). 75 sites at adoption; a per-file list would just
+# trail the pattern.
+ignore = ["E402"]
 
 [tool.mypy]
 python_version = "3.12"

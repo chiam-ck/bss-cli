@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from decimal import Decimal
 
 import structlog
 from bss_clock import now as clock_now
+from bss_models import PaymentAttempt
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import auth_context
@@ -16,7 +16,6 @@ from app.policies import payment as pay_policies
 from app.policies.base import PolicyViolation
 from app.repositories.payment_attempt_repo import PaymentAttemptRepository
 from app.repositories.payment_method_repo import PaymentMethodRepository
-from bss_models import PaymentAttempt
 
 log = structlog.get_logger()
 
@@ -162,8 +161,8 @@ class PaymentService:
         customer adds their first card; until then, charges against
         Stripe-mode raise cleanly via the adapter's missing-ref guard.
         """
-        from sqlalchemy import select
         from bss_models import PaymentCustomer
+        from sqlalchemy import select
 
         row = await self._session.execute(
             select(PaymentCustomer).where(PaymentCustomer.id == customer_id)

@@ -24,9 +24,8 @@ the surgical ``reset_e2e_data()`` sweep at exit anyway.
 from __future__ import annotations
 
 import pytest
-from playwright.sync_api import Page, expect
-
 from bss_e2e.helpers.otp import wait_for_otp
+from playwright.sync_api import Page, expect
 
 # Plan choice is fixed (middle tier — has all four allowance types so the
 # dashboard rendering exercises the full line-card layout). MSISDN is

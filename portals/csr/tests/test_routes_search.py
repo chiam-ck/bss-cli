@@ -15,10 +15,9 @@ from unittest.mock import patch
 
 import pytest
 from bss_clients.errors import ClientError
-from fastapi.testclient import TestClient
-
 from bss_csr.config import Settings
 from bss_csr.main import create_app
+from fastapi.testclient import TestClient
 
 
 def _tmf_customer(customer_id: str = "CUST-em01", email: str = "jane+1@example.com") -> dict[str, Any]:

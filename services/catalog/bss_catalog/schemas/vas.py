@@ -1,9 +1,8 @@
 """VAS offering response schemas — custom (no TMF spec for VAS)."""
 
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.alias_generators import to_camel
-
 from bss_models.catalog import VasOffering as VasOfferingModel
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
 
 
 class VasBase(BaseModel):

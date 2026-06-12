@@ -46,7 +46,6 @@ from .ownership import (
     record_violation,
 )
 
-
 # v1.5 — agentic loop bail when tool calls keep failing. Catches the
 # Gemma thrash pattern where the model fires the same broken call over
 # and over instead of adapting. Three consecutive failures = bail with

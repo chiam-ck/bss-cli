@@ -37,7 +37,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-
 _CSS = """
 :root {
   color-scheme: light dark;

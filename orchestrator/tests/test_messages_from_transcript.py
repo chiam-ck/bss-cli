@@ -8,12 +8,11 @@ Multi-turn coherence in the operator cockpit (and any future caller of
 
 from __future__ import annotations
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-
 from bss_orchestrator.session import (
-    _messages_from_transcript,
     _TRANSCRIPT_MAX_CHARS,
+    _messages_from_transcript,
 )
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 
 def test_empty_returns_empty_list() -> None:

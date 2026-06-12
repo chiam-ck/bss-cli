@@ -27,7 +27,6 @@ from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any, Literal
 
-
 Role = Literal["user", "assistant"]
 
 

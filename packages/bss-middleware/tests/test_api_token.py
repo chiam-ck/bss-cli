@@ -11,8 +11,12 @@ from __future__ import annotations
 import inspect
 import sys
 
+# ``bss_middleware.api_token`` (the submodule) is shadowed in the package
+# namespace by the ``api_token()`` function re-exported from
+# ``bss_middleware/__init__.py``. Pull the submodule from sys.modules
+# directly for source-inspection assertions.
+import bss_middleware.api_token  # noqa: F401 — ensures sys.modules entry exists
 import pytest
-
 from bss_middleware import (
     TEST_TOKEN,
     TokenMap,
@@ -22,11 +26,6 @@ from bss_middleware import (
     validate_token_map_present,
 )
 
-# ``bss_middleware.api_token`` (the submodule) is shadowed in the package
-# namespace by the ``api_token()`` function re-exported from
-# ``bss_middleware/__init__.py``. Pull the submodule from sys.modules
-# directly for source-inspection assertions.
-import bss_middleware.api_token  # noqa: F401 — ensures sys.modules entry exists
 api_token_module = sys.modules["bss_middleware.api_token"]
 
 

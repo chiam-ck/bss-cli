@@ -14,7 +14,6 @@ from bss_portal_ui import (
     render_tool_pill,
 )
 
-
 # ── Security: hostile input must not leak raw HTML ───────────────────
 
 

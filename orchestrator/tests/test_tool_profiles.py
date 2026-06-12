@@ -17,14 +17,12 @@ import inspect
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
 from bss_orchestrator import auth_context
 from bss_orchestrator.tools import TOOL_PROFILES, TOOL_REGISTRY, validate_profiles
 from bss_orchestrator.tools._profiles import (
     FORBIDDEN_MINE_PARAMETERS,
     is_mine_tool,
 )
-
 
 # ─── 1. Profile registry integrity ──────────────────────────────────
 

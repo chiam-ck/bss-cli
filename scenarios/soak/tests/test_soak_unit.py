@@ -10,8 +10,6 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import get_args
 
-import pytest
-
 from scenarios.soak.corpus import (
     CROSS_CUSTOMER_PROBES,
     ESCALATION_TRIGGERS,
@@ -24,7 +22,6 @@ from scenarios.soak.metrics import (
     render_report,
 )
 from scenarios.soak.synthetic_customer import TurnResult
-
 
 # ─── Corpus invariants ──────────────────────────────────────────────
 

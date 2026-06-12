@@ -9,7 +9,6 @@ is the v0.14-doctrine bug we're explicitly avoiding.
 from __future__ import annotations
 
 import pytest
-
 from app.domain.mock_tokenizer import MockTokenizerAdapter
 from app.domain.select_tokenizer import select_tokenizer
 from app.domain.stripe_tokenizer import StripeTokenizerAdapter

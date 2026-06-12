@@ -35,7 +35,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import subprocess
 from pathlib import Path
 from typing import Any, Callable
 
@@ -43,7 +42,6 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.history import FileHistory
-
 
 # v0.13.1 — persistent REPL history under ``.bss-cli/repl_history``.
 # Survives across ``bss`` invocations. prompt_toolkit handles Up/Down
@@ -82,16 +80,24 @@ def _make_prompt_session() -> PromptSession:
     )
 
 from bss_clients.errors import ClientError
-from bss_models import BSS_RELEASE
 from bss_cockpit import (
     OPERATOR_ACTOR,
     Conversation,
     ConversationStore,
     build_cockpit_prompt,
     configure_store,
+)
+from bss_cockpit import (
     current as cockpit_config_current,
 )
 from bss_cockpit.chrome_filter import strip_fake_propose
+from bss_cockpit.postprocess import strip_channel_markup, strip_reasoning_leakage
+from bss_cockpit.renderers import (
+    RENDERER_DISPATCH,
+    render_customer_360,
+    render_tool_result,
+)
+from bss_models import BSS_RELEASE
 from bss_orchestrator.autonomy import read_autonomy_mode
 from bss_orchestrator.clients import close_clients, get_clients
 from bss_orchestrator.config import settings as orch_settings
@@ -107,17 +113,8 @@ from rich.align import Align
 from rich.console import Group
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
-
-from bss_cockpit.postprocess import strip_channel_markup, strip_reasoning_leakage
-from bss_cockpit.renderers import (
-    RENDERER_DISPATCH,
-    render_customer_360,
-    render_tool_result,
-)
-
 
 # ─── Constants ─────────────────────────────────────────────────────────
 
@@ -639,7 +636,7 @@ async def _drive_turn(
     # has been asked and gone unanswered → I should deflect" and the
     # RAG hit rate on the REPL was visibly worse than the browser.
     prior_transcript = await conv.transcript_text()
-    user_msg_id = await conv.append_user_turn(line)
+    await conv.append_user_turn(line)
 
     # If a /confirm landed on the previous turn, consume the pending
     # row and pass the payload into the system prompt for this turn —

@@ -1,9 +1,25 @@
 """Inventory API tests — MSISDN + eSIM."""
 
+from bss_models.inventory import MsisdnPool
 from httpx import AsyncClient
 
 MSISDN_PREFIX = "/inventory-api/v1"
 ESIM_PREFIX = "/inventory-api/v1"
+
+
+async def _seed_msisdn(db_session, msisdn: str, status: str = "available") -> None:
+    """Seed a test-owned MSISDN row inside the rollback transaction.
+
+    Mutation tests must NOT target seed-pool numbers (9000xxxx): the
+    dev DB recycles those through signups, so a number that was
+    ``available`` at seed time may be ``assigned`` today —
+    test_release_available_fails failed exactly that way when 90000008
+    got assigned to a live subscription (2026-06-12). The 8000xxxx
+    range is outside the seed and exists only inside this test's
+    transaction.
+    """
+    db_session.add(MsisdnPool(msisdn=msisdn, status=status, tenant_id="DEFAULT"))
+    await db_session.flush()
 
 
 class TestMsisdn:
@@ -24,24 +40,30 @@ class TestMsisdn:
         r = await client.get(f"{MSISDN_PREFIX}/msisdn/99999999")
         assert r.status_code == 404
 
-    async def test_reserve_msisdn(self, client: AsyncClient):
-        r = await client.post(f"{MSISDN_PREFIX}/msisdn/90000005/reserve")
+    async def test_reserve_msisdn(self, client: AsyncClient, db_session):
+        await _seed_msisdn(db_session, "80000001")
+        r = await client.post(f"{MSISDN_PREFIX}/msisdn/80000001/reserve")
         assert r.status_code == 200
         assert r.json()["status"] == "reserved"
 
-    async def test_reserve_already_reserved(self, client: AsyncClient):
-        await client.post(f"{MSISDN_PREFIX}/msisdn/90000006/reserve")
-        r = await client.post(f"{MSISDN_PREFIX}/msisdn/90000006/reserve")
+    async def test_reserve_already_reserved(self, client: AsyncClient, db_session):
+        await _seed_msisdn(db_session, "80000002")
+        r1 = await client.post(f"{MSISDN_PREFIX}/msisdn/80000002/reserve")
+        assert r1.status_code == 200
+        r = await client.post(f"{MSISDN_PREFIX}/msisdn/80000002/reserve")
         assert r.status_code == 422
 
-    async def test_release_msisdn(self, client: AsyncClient):
-        await client.post(f"{MSISDN_PREFIX}/msisdn/90000007/reserve")
-        r = await client.post(f"{MSISDN_PREFIX}/msisdn/90000007/release")
+    async def test_release_msisdn(self, client: AsyncClient, db_session):
+        await _seed_msisdn(db_session, "80000003")
+        r1 = await client.post(f"{MSISDN_PREFIX}/msisdn/80000003/reserve")
+        assert r1.status_code == 200
+        r = await client.post(f"{MSISDN_PREFIX}/msisdn/80000003/release")
         assert r.status_code == 200
         assert r.json()["status"] == "available"
 
-    async def test_release_available_fails(self, client: AsyncClient):
-        r = await client.post(f"{MSISDN_PREFIX}/msisdn/90000008/release")
+    async def test_release_available_fails(self, client: AsyncClient, db_session):
+        await _seed_msisdn(db_session, "80000004")
+        r = await client.post(f"{MSISDN_PREFIX}/msisdn/80000004/release")
         assert r.status_code == 422
         assert r.json()["reason"] == "msisdn.release.only_if_reserved_or_assigned"
 

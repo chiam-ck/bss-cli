@@ -1,9 +1,8 @@
 """VAS purchase repository."""
 
+from bss_models.subscription import VasPurchase
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.subscription import VasPurchase
 
 
 class VasPurchaseRepository:

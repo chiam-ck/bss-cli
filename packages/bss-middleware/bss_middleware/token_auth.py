@@ -33,7 +33,7 @@ import time
 from typing import Final
 
 import structlog
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from .api_token import TokenMap, load_token_map_from_env
 

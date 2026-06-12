@@ -17,7 +17,6 @@ V0_10_0.md Track 3 + Track 10:
 
 from __future__ import annotations
 
-import asyncio
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -44,11 +43,9 @@ from bss_portal_auth.test_helpers import (  # noqa: E402
     create_test_session,
     mint_step_up_grant,
 )
-
 from bss_self_serve.config import Settings  # noqa: E402
 from bss_self_serve.main import create_app  # noqa: E402
 from bss_self_serve.middleware import PORTAL_SESSION_COOKIE  # noqa: E402
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 

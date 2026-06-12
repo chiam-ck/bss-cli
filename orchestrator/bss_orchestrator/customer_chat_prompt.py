@@ -23,7 +23,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 _TEMPLATE_LINKED = """\
 You are the support assistant for {customer_name} on {operator_name}, a
 small prepaid-mobile MVNO. You speak directly to the customer.

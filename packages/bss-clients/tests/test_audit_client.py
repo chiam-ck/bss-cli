@@ -10,9 +10,8 @@ from urllib.parse import parse_qs
 
 import pytest
 import respx
-from httpx import Response
-
 from bss_clients import AuditClient
+from httpx import Response
 
 BASE_URL = "http://test-service:8000"
 

@@ -29,11 +29,9 @@ os.environ.setdefault("BSS_PORTAL_DEV_INSECURE_COOKIE", "1")
 
 from bss_clock.clock import reset_for_tests as _reset_clock  # noqa: E402
 from bss_portal_auth.test_helpers import create_test_session  # noqa: E402
-
 from bss_self_serve.config import Settings  # noqa: E402
 from bss_self_serve.main import create_app  # noqa: E402
 from bss_self_serve.middleware import PORTAL_SESSION_COOKIE  # noqa: E402
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 

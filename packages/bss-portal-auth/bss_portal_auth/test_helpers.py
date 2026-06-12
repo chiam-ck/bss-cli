@@ -16,11 +16,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from bss_clock import now as clock_now
 from bss_models import Identity, LoginToken, Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import Settings
 from .email import NoopEmailAdapter

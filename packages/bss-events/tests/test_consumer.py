@@ -8,7 +8,6 @@ decision points the helper hangs on:
 """
 
 import pytest
-
 from bss_events.consumer import _claim_inbox, _death_count
 
 

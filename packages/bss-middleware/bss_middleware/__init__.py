@@ -26,12 +26,12 @@ from .api_token import (
 from .config import Settings
 from .startup import validate_api_token_present
 from .token_auth import (
-    AUTH_MISSING_TOKEN,
     AUTH_INVALID_TOKEN,
-    BSSApiTokenMiddleware,
+    AUTH_MISSING_TOKEN,
     EXEMPT_PATHS,
     SCOPE_SERVICE_IDENTITY,
     WEBHOOK_EXEMPT_PATHS,
+    BSSApiTokenMiddleware,
 )
 
 

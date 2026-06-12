@@ -3,10 +3,10 @@
 Router -> Service -> Policies -> Repository -> Event publisher.
 """
 
-import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
-
 import aio_pika
+import structlog
+from bss_models.provisioning import FaultInjection, ProvisioningTask
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.esim_provider import EsimProviderAdapter
 from app.domain.worker import process_task
@@ -18,7 +18,6 @@ from app.policies.task import (
 )
 from app.repositories.fault_repo import FaultRepository
 from app.repositories.task_repo import TaskRepository
-from bss_models.provisioning import FaultInjection, ProvisioningTask
 
 log = structlog.get_logger()
 

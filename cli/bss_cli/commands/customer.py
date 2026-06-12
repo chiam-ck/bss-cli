@@ -6,12 +6,12 @@ from typing import Annotated
 
 import typer
 from bss_clients import PolicyViolationFromServer
+from bss_cockpit.renderers import render_customer_360
 from bss_orchestrator.clients import get_clients
 from bss_orchestrator.tools.payment import local_tokenize_card
 from rich import print as rprint
 
 from .._runtime import run_async
-from bss_cockpit.renderers import render_customer_360
 
 app = typer.Typer(help="Manage customers (TMF629).", no_args_is_help=True)
 

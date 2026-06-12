@@ -220,11 +220,12 @@ def render_catalog_show(offering: dict[str, Any]) -> str:
     top = "┌─ " + title + " " + "─" * max(0, width - len(title) - 4) + "┐"
     bottom = "└" + "─" * (width - 1) + "┘"
 
+    price_line = f"│ Price       SGD {price} / month  (GST inclusive)"
     rows = [
         top,
-        f"│ Price       SGD {price} / month  (GST inclusive)" + " " * max(0, width - len(f"│ Price       SGD {price} / month  (GST inclusive)") - 1) + "│",
-        f"│ " + " " * (width - 3) + "│",
-        f"│ Bundle (every 30 days):" + " " * max(0, width - 26) + "│",
+        price_line + " " * max(0, width - len(price_line) - 1) + "│",
+        "│ " + " " * (width - 3) + "│",
+        "│ Bundle (every 30 days):" + " " * max(0, width - 26) + "│",
         f"│   Data        {data}" + " " * max(0, width - len(f"│   Data        {data}") - 1) + "│",
         f"│   Voice       {voice}" + " " * max(0, width - len(f"│   Voice       {voice}") - 1) + "│",
         f"│   SMS         {sms}" + " " * max(0, width - len(f"│   SMS         {sms}") - 1) + "│",
@@ -236,8 +237,8 @@ def render_catalog_show(offering: dict[str, Any]) -> str:
             + "│"
         )
     rows.extend([
-        f"│ " + " " * (width - 3) + "│",
-        f"│ Block-on-exhaust. Top up via VAS or wait for renewal." + " " * max(0, width - 56) + "│",
+        "│ " + " " * (width - 3) + "│",
+        "│ Block-on-exhaust. Top up via VAS or wait for renewal." + " " * max(0, width - 56) + "│",
         bottom,
     ])
     return "\n".join(rows)

@@ -13,13 +13,11 @@ import os
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
-from bss_csr.config import Settings
-from bss_csr.main import create_app
 from bss_cockpit import config as cockpit_config
 from bss_cockpit.config import reset_cache
-
+from bss_csr.config import Settings
+from bss_csr.main import create_app
+from fastapi.testclient import TestClient
 
 _GOOD_TOML = """\
 [llm]

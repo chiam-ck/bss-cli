@@ -15,10 +15,9 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
+from bss_events import audit_events_router
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-from bss_events import audit_events_router
 
 
 class _FakeSession:

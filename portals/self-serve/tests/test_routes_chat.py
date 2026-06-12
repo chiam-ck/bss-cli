@@ -20,10 +20,9 @@ Coverage:
 
 from __future__ import annotations
 
-import asyncio
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -45,11 +44,9 @@ os.environ.setdefault("BSS_PORTAL_DEV_INSECURE_COOKIE", "1")
 from bss_clock.clock import reset_for_tests as _reset_clock  # noqa: E402
 from bss_orchestrator.chat_caps import CapStatus  # noqa: E402
 from bss_portal_auth.test_helpers import create_test_session  # noqa: E402
-
 from bss_self_serve.config import Settings  # noqa: E402
 from bss_self_serve.main import create_app  # noqa: E402
 from bss_self_serve.middleware import PORTAL_SESSION_COOKIE  # noqa: E402
-
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -325,7 +322,6 @@ async def test_chat_events_cross_customer_session_403s(seed_db) -> None:
         assert post_resp.status_code == 303
         m = re.search(r"session=([0-9a-f]+)", post_resp.headers["location"])
         assert m is not None
-        a_session_id = m.group(1)
 
     # Customer B logs in with a fresh DB session and tries to open A's
     # SSE stream. Need a second TestClient because mixing two cookies

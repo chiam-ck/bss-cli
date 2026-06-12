@@ -6,10 +6,8 @@ from the calling service's context to outgoing HTTP requests.
 
 import pytest
 import respx
-from httpx import Response
-
 from bss_clients import CRMClient, set_context
-
+from httpx import Response
 
 CRM_URL = "http://crm:8000"
 

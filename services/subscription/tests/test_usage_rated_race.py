@@ -21,9 +21,8 @@ mechanism in a single session.
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import text
-
 from app.repositories.subscription_repo import SubscriptionRepository
+from sqlalchemy import text
 
 
 @pytest.mark.asyncio

@@ -1,9 +1,5 @@
 """Customer + Party + Individual + ContactMedium + Agent repository."""
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from bss_models.crm import (
     Agent,
     ContactMedium,
@@ -11,6 +7,9 @@ from bss_models.crm import (
     Individual,
     Party,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 
 class CustomerRepository:

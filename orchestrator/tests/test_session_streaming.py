@@ -11,8 +11,6 @@ from typing import Any, AsyncIterator
 from unittest.mock import patch
 
 import pytest
-from langchain_core.messages import AIMessage, ToolMessage
-
 from bss_orchestrator.session import (
     AgentEventError,
     AgentEventFinalMessage,
@@ -21,6 +19,7 @@ from bss_orchestrator.session import (
     AgentEventToolCallStarted,
     astream_once,
 )
+from langchain_core.messages import AIMessage, ToolMessage
 
 
 class _FakeGraph:
@@ -255,7 +254,6 @@ async def test_channel_parameter_reaches_bss_clients_context() -> None:
             pass
 
     # After the stream, the contextvars are still set on this task
-    from bss_clients import base as _base
     # bss_clients' ContextVar is internal; just confirm set_context was called
     # with our channel by reading whatever the current context is now.
     # (Concrete assertion lives in bss-clients own tests; this is a smoke test.)

@@ -1,9 +1,8 @@
 """Provisioning task repository — CRUD + sequence IDs."""
 
+from bss_models.provisioning import ProvisioningTask
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from bss_models.provisioning import ProvisioningTask
 
 
 class TaskRepository:

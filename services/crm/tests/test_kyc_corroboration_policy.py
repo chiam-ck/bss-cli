@@ -13,11 +13,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
-
 from app.policies.base import PolicyViolation
 from app.policies.kyc import check_attestation_signature
 from bss_models.integrations import KycWebhookCorroboration, WebhookEvent
+from sqlalchemy import text
 
 
 @pytest.fixture(autouse=True)

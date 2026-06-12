@@ -17,7 +17,7 @@ from sqlalchemy import BigInteger, Boolean, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
-from .base import Base, TZDateTime, TenantMixin
+from .base import Base, TenantMixin, TZDateTime
 
 SCHEMA = "portal_auth"
 

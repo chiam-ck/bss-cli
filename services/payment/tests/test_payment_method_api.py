@@ -42,8 +42,10 @@ class TestCreatePaymentMethod:
         assert "cvv" not in body
 
     @pytest.mark.asyncio
-    async def test_camel_case_fields_required(self, client: AsyncClient):
-        """Snake_case fields should be rejected — only camelCase works."""
+    async def test_snake_case_aliases_also_accepted(self, client: AsyncClient):
+        """populate_by_name=True accepts snake_case alongside the canonical
+        camelCase (test_create_returns_201). This used to be an
+        assertion-free test whose name claimed the opposite."""
         resp = await client.post(
             PM_PATH,
             json={
@@ -54,11 +56,7 @@ class TestCreatePaymentMethod:
                 "card_summary": {"brand": "visa", "last4": "1234", "exp_month": 12, "exp_year": 2030},
             },
         )
-        # Should fail validation because camelCase aliases are required
-        # pydantic's populate_by_name allows both, but customerId is required
-        # The key test is that camelCase works in test_create_returns_201
-        # This test documents that snake_case also works (populate_by_name=True)
-        # The important thing is test_create_returns_201 uses camelCase
+        assert resp.status_code == 201, resp.text
 
     @pytest.mark.asyncio
     async def test_expired_card_rejected(self, client: AsyncClient):
