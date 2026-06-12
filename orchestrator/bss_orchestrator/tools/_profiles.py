@@ -111,6 +111,7 @@ TOOL_PROFILES: dict[str, set[str]] = {
         "customer.get",
         "customer.list",
         "customer.find_by_msisdn",
+        "customer.find_by_email",
         "customer.get_kyc_status",
         "case.get",
         "case.list",

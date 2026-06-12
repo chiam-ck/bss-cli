@@ -33,7 +33,8 @@ CustomerId = Annotated[
     "Customer ID with the CUST- prefix (e.g. CUST-fbcd3c87). The "
     "suffix is opaque — never validate or rewrite it. Pass through "
     "verbatim from a prior tool result (customer.list, "
-    "customer.find_by_msisdn, customer.create). Never fabricate.",
+    "customer.find_by_msisdn, customer.find_by_email, "
+    "customer.create). Never fabricate.",
 ]
 SubscriptionId = Annotated[
     str,

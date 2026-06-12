@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     llm_api_key: str = ""
     llm_http_referer: str = "https://github.com/samurai-bot/bss-cli"
     llm_app_name: str = "bss-cli"
+    # v1.6.2 — completion bounds. On 2026-06-12 gemma-4-31b fell into a
+    # greedy-decoding repetition loop and ground out a single 53k-char
+    # completion over ~10 minutes (see DECISIONS 2026-06-12). max_tokens
+    # caps the blast radius of any future degeneration: no healthy
+    # cockpit turn needs more than ~2k completion tokens (prose +
+    # tool_calls; tool RESULTS don't count against it).
+    # frequency_penalty defaults OFF — repetition penalties can corrupt
+    # long tool-call JSON on small models; it's an operator knob for
+    # experiments, not a default.
+    llm_max_tokens: int = 2048
+    llm_frequency_penalty: float = 0.0
 
     # ── Downstream service URLs (dev defaults point at localhost) ───────
     crm_url: str = "http://localhost:8002"

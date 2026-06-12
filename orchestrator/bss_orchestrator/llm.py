@@ -33,6 +33,13 @@ def build_chat_model(*, temperature: float = 0.0) -> Any:
     nature and the LLM should not invent values. Tool calls rely on schema
     conformance, which higher temperatures routinely break for small models
     like MiMo v2 Flash. The fixture mock ignores temperature.
+
+    Greedy decoding is also the regime where small models lock into
+    repetition loops, so every completion is capped at
+    ``settings.llm_max_tokens`` (``BSS_LLM_MAX_TOKENS``). A degenerate
+    completion now costs one bounded call, not ten unbounded minutes.
+    ``BSS_LLM_FREQUENCY_PENALTY`` is only sent when non-zero — see
+    config.py for why it defaults off.
     """
     mock = build_mock_chat_model()
     if mock is not None:
@@ -44,13 +51,19 @@ def build_chat_model(*, temperature: float = 0.0) -> Any:
             "running `bss ask` or the REPL."
         )
 
+    extra: dict[str, Any] = {}
+    if settings.llm_frequency_penalty:
+        extra["frequency_penalty"] = settings.llm_frequency_penalty
+
     return ChatOpenAI(
         model=settings.llm_model,
         api_key=settings.llm_api_key,
         base_url=settings.llm_base_url,
         temperature=temperature,
+        max_tokens=settings.llm_max_tokens,
         default_headers={
             "HTTP-Referer": settings.llm_http_referer,
             "X-Title": settings.llm_app_name,
         },
+        **extra,
     )

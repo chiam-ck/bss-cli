@@ -11,8 +11,11 @@ from __future__ import annotations
 import pytest
 
 from bss_orchestrator.session import (
+    MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS,
     MAX_CONSECUTIVE_TOOL_FAILURES,
+    _IdenticalCallTracker,
     _is_failure_tool_result,
+    _tool_args_sig,
 )
 
 
@@ -63,7 +66,58 @@ def test_unrelated_word_error_is_not_failure() -> None:
     assert _is_failure_tool_result(body, is_error=False) is False
 
 
-# ─── Constant guard ──────────────────────────────────────────────────────
+# ─── _IdenticalCallTracker (v1.6.2 stuck-loop bail) ──────────────────────
+#
+# The 2026-06-12 incident: customer.list(name_contains=<email>) → []
+# replayed verbatim. Each replay was a SUCCESS so the failure counter
+# above reset every time; the tracker counts identical
+# (tool, args, result) triples instead.
+
+
+def test_three_identical_calls_trip() -> None:
+    t = _IdenticalCallTracker()
+    sig = _tool_args_sig({"name_contains": "x@example.com"})
+    assert t.record("customer.list", sig, "[]") is False
+    assert t.record("customer.list", sig, "[]") is False
+    assert t.record("customer.list", sig, "[]") is True
+
+
+def test_changed_result_resets_the_run() -> None:
+    # A poll whose target progresses is investigation, not replay.
+    t = _IdenticalCallTracker()
+    sig = _tool_args_sig({"task_id": "PTK-1"})
+    assert t.record("provisioning.get_task", sig, '{"state": "pending"}') is False
+    assert t.record("provisioning.get_task", sig, '{"state": "pending"}') is False
+    assert t.record("provisioning.get_task", sig, '{"state": "completed"}') is False
+
+
+def test_changed_args_reset_the_run() -> None:
+    t = _IdenticalCallTracker()
+    assert t.record("customer.list", _tool_args_sig({"name_contains": "a"}), "[]") is False
+    assert t.record("customer.list", _tool_args_sig({"name_contains": "b"}), "[]") is False
+    assert t.record("customer.list", _tool_args_sig({"name_contains": "c"}), "[]") is False
+
+
+def test_interleaved_other_call_resets_the_run() -> None:
+    t = _IdenticalCallTracker()
+    sig = _tool_args_sig({"name_contains": "x"})
+    assert t.record("customer.list", sig, "[]") is False
+    assert t.record("clock.now", _tool_args_sig({}), '"2026-06-12"') is False
+    assert t.record("customer.list", sig, "[]") is False
+    assert t.record("customer.list", sig, "[]") is False
+
+
+def test_args_sig_is_key_order_independent() -> None:
+    assert _tool_args_sig({"a": 1, "b": 2}) == _tool_args_sig({"b": 2, "a": 1})
+
+
+def test_args_sig_never_raises() -> None:
+    # Unserialisable arg values must not break the stream over a counter.
+    assert isinstance(_tool_args_sig({"x": object()}), str)
+    assert isinstance(_tool_args_sig(None), str)
+
+
+# ─── Constant guards ─────────────────────────────────────────────────────
 
 
 def test_bail_threshold_stays_at_three() -> None:
@@ -72,3 +126,10 @@ def test_bail_threshold_stays_at_three() -> None:
     # (e2e) and the prompt doctrine that depends on this being a
     # "small, predictable" number.
     assert MAX_CONSECUTIVE_TOOL_FAILURES == 3
+
+
+def test_identical_call_threshold_stays_at_three() -> None:
+    # Same review obligations as the failure threshold: the cockpit's
+    # "couldn't recover" panel copy and the soak corpus assume a small,
+    # predictable bail point.
+    assert MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS == 3

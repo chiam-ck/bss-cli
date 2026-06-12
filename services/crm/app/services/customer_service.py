@@ -173,6 +173,18 @@ class CustomerService:
             return None
         return await self._customer_repo.get_with_party(customer_id)
 
+    async def find_by_email(self, email: str) -> Customer | None:
+        """Resolve an email address → customer via active contact mediums.
+
+        Exact match on a live (``valid_to IS NULL``) email medium —
+        the same lookup ``bss_portal_auth`` uses for login identity.
+        Returns ``None`` when no customer carries the address.
+        """
+        cust = await self._customer_repo.find_by_email(email)
+        if cust is None:
+            return None
+        return await self._customer_repo.get_with_party(cust.id)
+
     async def list_customers(
         self,
         *,

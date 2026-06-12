@@ -160,6 +160,58 @@ class TestFindCustomerByMsisdn:
         assert r.status_code == 404
 
 
+class TestFindCustomerByEmail:
+    async def test_unknown_email_returns_404(self, client: AsyncClient):
+        r = await client.get(
+            f"{PREFIX}/customer/by-email",
+            params={"email": "nobody@nowhere.example"},
+        )
+        assert r.status_code == 404
+
+    async def test_resolves_email_to_customer(self, client: AsyncClient):
+        # Plus-addressing is the incident shape (chiamck+001@icloud.com)
+        # — the query-param route must round-trip the '+' untouched.
+        email = "by.email+001@example.com"
+        r = await client.post(
+            f"{PREFIX}/customer",
+            json={
+                "givenName": "Email",
+                "familyName": "Owner",
+                "contactMedium": [
+                    {"medium_type": "email", "value": email, "is_primary": True}
+                ],
+            },
+        )
+        customer_id = r.json()["id"]
+
+        r2 = await client.get(
+            f"{PREFIX}/customer/by-email", params={"email": email}
+        )
+        assert r2.status_code == 200, r2.text
+        body = r2.json()
+        assert body["id"] == customer_id
+        assert body["@type"] == "Customer"
+
+    async def test_email_is_not_matched_by_name_filter(self, client: AsyncClient):
+        # Pin the gap that motivated the route: list?name=<email> finds
+        # nothing even when by-email resolves. If list ever starts
+        # matching emails, this documents the overlap.
+        email = "name.filter.gap@example.com"
+        await client.post(
+            f"{PREFIX}/customer",
+            json={
+                "givenName": "Gap",
+                "familyName": "Case",
+                "contactMedium": [
+                    {"medium_type": "email", "value": email, "is_primary": True}
+                ],
+            },
+        )
+        r = await client.get(f"{PREFIX}/customer", params={"name": email})
+        assert r.status_code == 200
+        assert r.json() == []
+
+
 class TestListCustomers:
     async def test_list_returns_populated_individual(self, client: AsyncClient):
         await client.post(

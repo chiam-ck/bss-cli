@@ -77,6 +77,32 @@ async def customer_find_by_msisdn(msisdn: Msisdn) -> dict[str, Any]:
     return await get_clients().crm.find_customer_by_msisdn(msisdn)
 
 
+@register("customer.find_by_email")
+async def customer_find_by_email(email: Email) -> dict[str, Any]:
+    """Find the customer whose contact medium carries a given email
+    address. Use this FIRST when the operator identifies a customer by
+    email (e.g. *"escalation from jane+1@example.com"*) — do NOT pass an
+    email to ``customer.list``'s ``name_contains``; that filter matches
+    the display name only and will return ``[]`` for every email.
+
+    Args:
+        email: Exact email address to resolve, e.g.
+            ``"jane+1@example.com"``. Case-sensitive exact match on an
+            active email contact medium — no substring or fuzzy match.
+
+    Returns:
+        Customer dict — same shape as ``customer.get`` minus the
+        ``_extras`` composite. Pass ``id`` to ``customer.get`` for the
+        full 360 view.
+
+    Raises:
+        NotFound: no customer has this email. Tell the operator the
+            address is unknown — do not fall back to ``customer.list``
+            with the email as a name filter.
+    """
+    return await get_clients().crm.find_customer_by_email(email)
+
+
 @register("customer.get")
 async def customer_get(customer_id: CustomerId) -> dict[str, Any]:
     """Read a single customer with contact mediums, KYC status, and the
@@ -149,11 +175,15 @@ async def customer_list(
 ) -> list[dict[str, Any]]:
     """List customers, optionally filtered. Use this when the user refers to
     a customer by name (e.g. "Ck") — filter by ``name_contains`` to resolve
-    the CUST-NNN ID before calling other tools.
+    the CUST-NNN ID before calling other tools. For an email address use
+    ``customer.find_by_email``; for a phone number use
+    ``customer.find_by_msisdn`` — ``name_contains`` matches neither.
 
     Args:
         state: Optional customer state filter.
-        name_contains: Optional case-insensitive substring match on name.
+        name_contains: Optional case-insensitive substring match on the
+            customer's display NAME only — emails and phone numbers
+            never match.
 
     Returns:
         List of customer dicts (may be empty). Each has ``id``, ``name``,

@@ -113,6 +113,20 @@ class CRMClient(BSSClient):
         )
         return resp.json()
 
+    async def find_customer_by_email(self, email: str) -> dict[str, Any]:
+        """GET /tmf-api/customerManagement/v4/customer/by-email (v1.6.2).
+
+        Exact match on a live email contact medium. Query param (not a
+        path segment) so ``+`` addressing survives URL encoding. 404s
+        when no customer carries the address.
+        """
+        resp = await self._request(
+            "GET",
+            "/tmf-api/customerManagement/v4/customer/by-email",
+            params={"email": email},
+        )
+        return resp.json()
+
     async def list_customers(
         self,
         *,

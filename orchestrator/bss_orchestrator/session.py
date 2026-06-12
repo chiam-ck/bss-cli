@@ -21,6 +21,7 @@ graph so downstream service-to-service calls carry the right attribution.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Union
@@ -74,6 +75,51 @@ def _is_failure_tool_result(content: str, is_error: bool) -> bool:
     if is_error:
         return True
     return any(marker in content for marker in _TOOL_FAILURE_MARKERS)
+
+
+# v1.6.2 — stuck-loop bail, the success-shaped sibling of the failure
+# counter above. The 2026-06-12 incident: asked to find a customer by
+# email (no such tool existed then), gemma fired customer.list with the
+# email as name_contains, got [] — a SUCCESS, so the failure counter
+# reset — and re-fired the identical call. Three identical (tool, args)
+# calls returning the identical result is degeneration, not
+# investigation: the agent already has this answer and is asking again.
+# Distinct results don't count — a poll whose target progresses
+# (provisioning.get_task while a task advances) never trips.
+MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS: int = 3
+
+
+class _IdenticalCallTracker:
+    """Count consecutive identical (tool, args, result) triples.
+
+    ``record`` returns True when the run length reaches
+    ``MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS``. Any differing call or
+    differing result resets the run. One instance per stream — no
+    cross-turn state.
+    """
+
+    def __init__(self) -> None:
+        self._last_key: tuple[str, str, str] | None = None
+        self._repeats = 0
+
+    def record(self, name: str, args_sig: str, result: str) -> bool:
+        key = (name, args_sig, result)
+        if key == self._last_key:
+            self._repeats += 1
+        else:
+            self._last_key = key
+            self._repeats = 1
+        return self._repeats >= MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS
+
+
+def _tool_args_sig(args: Any) -> str:
+    """Canonical signature for a tool call's args dict (key-order
+    independent). ``default=str`` — unserialisable arg values must
+    never break the stream over a diagnostic counter."""
+    try:
+        return json.dumps(args or {}, sort_keys=True, default=str)
+    except (TypeError, ValueError):
+        return repr(args)
 
 
 def _resolve_token_for_service_identity(identity: str) -> str:
@@ -369,6 +415,12 @@ async def astream_once(
             usage_total = {"input_tokens": 0, "output_tokens": 0, "model": ""}
             # v1.5 — bail counter (see MAX_CONSECUTIVE_TOOL_FAILURES).
             consecutive_failures = 0
+            # v1.6.2 — stuck-loop bail (see _IdenticalCallTracker).
+            # call_args_sigs pairs each ToolMessage back with the args
+            # its AIMessage proposed — ToolMessage itself carries only
+            # name + call_id.
+            call_args_sigs: dict[str, str] = {}
+            stuck_tracker = _IdenticalCallTracker()
 
             # v0.13 — when the caller passes a non-empty ``transcript``,
             # parse it into typed prior-turn messages and prepend them
@@ -409,6 +461,9 @@ async def astream_once(
                                     if call_id in seen_call_ids:
                                         continue
                                     seen_call_ids.add(call_id)
+                                    call_args_sigs[call_id] = _tool_args_sig(
+                                        tc.get("args", {})
+                                    )
                                     yield AgentEventToolCallStarted(
                                         name=tc.get("name", "") or "",
                                         args=tc.get("args", {}) or {},
@@ -493,6 +548,33 @@ async def astream_once(
                                         return
                                 else:
                                     consecutive_failures = 0
+                                # v1.6.2 — stuck-loop bail. Identical
+                                # call + identical result three times
+                                # running means the agent is replaying,
+                                # not progressing — the failure counter
+                                # above never fires when each replay
+                                # "succeeds" (customer.list → [] was
+                                # the incident shape).
+                                if stuck_tracker.record(
+                                    msg.name or "",
+                                    call_args_sigs.pop(
+                                        msg.tool_call_id or "", ""
+                                    ),
+                                    full,
+                                ):
+                                    yield AgentEventError(
+                                        message=(
+                                            f"agent_loop_bailout: "
+                                            f"{MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS} "
+                                            f"identical calls to "
+                                            f"{msg.name or 'unknown'!r} "
+                                            f"returned the identical result. "
+                                            f"The agent is stuck — rephrase, "
+                                            f"or give it a different "
+                                            f"identifier to work with."
+                                        )
+                                    )
+                                    return
                                 # v0.12 PR4 — output ownership trip-wire.
                                 # Skips error-status results (they cannot
                                 # carry customer-bound rows by definition)

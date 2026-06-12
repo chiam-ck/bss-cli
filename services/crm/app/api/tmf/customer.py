@@ -62,6 +62,24 @@ async def find_customer_by_msisdn(
     return to_tmf629_customer(cust)
 
 
+@router.get("/customer/by-email", response_model=Tmf629Customer, response_model_by_alias=True)
+async def find_customer_by_email(
+    email: str,
+    svc: CustomerService = Depends(get_customer_service),
+) -> Tmf629Customer:
+    """Resolve an email address to its owning customer (added v1.6.2 for
+    cockpit agent + CSR search; closes the lookup gap that left only
+    name/MSISDN resolvers). Query param — not a path segment — so ``+``
+    and ``@`` survive without encoding tricks."""
+    cust = await svc.find_by_email(email)
+    if not cust:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No customer has email {email}",
+        )
+    return to_tmf629_customer(cust)
+
+
 @router.get("/customer/{customer_id}", response_model=Tmf629Customer, response_model_by_alias=True)
 async def get_customer(
     customer_id: str,

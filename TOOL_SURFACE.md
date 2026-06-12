@@ -23,6 +23,7 @@ Every write tool goes through the service's policy layer. A tool call that viola
 | `customer.get` | read | Get customer with contact mediums and KYC status |
 | `customer.list` | read | List customers with filters (state, name_contains) |
 | `customer.find_by_msisdn` | read | Resolve a phone number to its owning customer (v0.5+; CSR portal search) |
+| `customer.find_by_email` | read | Resolve an email address to its owning customer (v1.6.2; closes the email-lookup gap that looped the cockpit agent) |
 | `customer.update_contact` | update | Update primary contact medium |
 | `customer.add_contact_medium` | create | Add additional contact |
 | `customer.remove_contact_medium` | destructive | Remove contact medium |

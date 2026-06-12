@@ -28,9 +28,17 @@ router = APIRouter()
 
 _MSISDN_RE = re.compile(r"^\+?\d{6,}$")
 
+# Deliberately loose — one @ with something either side. The CRM
+# lookup is the validator; the regex only routes the query.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+$")
+
 
 def _looks_like_msisdn(query: str) -> bool:
     return bool(_MSISDN_RE.match(query.strip()))
+
+
+def _looks_like_email(query: str) -> bool:
+    return bool(_EMAIL_RE.match(query.strip()))
 
 
 @router.get("/search", response_class=HTMLResponse)
@@ -43,6 +51,13 @@ async def search(request: Request, q: str = "") -> HTMLResponse:
         digits = q_clean.lstrip("+").replace(" ", "")
         try:
             cust = await clients.crm.find_customer_by_msisdn(digits)
+        except ClientError:
+            cust = None
+        if cust:
+            results = [_flatten_customer(cust)]
+    elif q_clean and _looks_like_email(q_clean):
+        try:
+            cust = await clients.crm.find_customer_by_email(q_clean)
         except ClientError:
             cust = None
         if cust:

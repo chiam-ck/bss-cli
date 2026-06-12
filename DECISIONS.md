@@ -4007,3 +4007,59 @@ confirm keeps the deliberate-action property at near-zero cost.
 operations; chat is for investigation, compound flows, and anything
 the operator would rather narrate. If a destructive POST route ever
 skips the confirm field, that's a doctrine bug (test-pinned).
+
+---
+
+## 2026-06-12 — v1.6.2 — Email lookup tool + two completion-degeneration guards (cockpit loop incident)
+
+**Context:** Operator asked the cockpit to investigate "escalation from
+chiamck+001@icloud.com". The tool surface had no email resolver —
+`customer.list(name_contains=…)` is a LIKE on the display name only, and
+`customer.find_by_msisdn` was the only other lookup. Faced with an
+impossible task, gemma-4-31b at temperature 0 (greedy decoding, no
+max_tokens) fell into a token-level repetition loop: a single 52,974-char
+completion repeating "Actually, I'll try `customer.list` with
+`name_contains` as the email." for ~10 minutes (session
+SES-20260612-4850f4f1). No guard tripped: the v1.5 three-strike bail
+counts only failure-shaped tool results, and `customer.list → []` is a
+success, so the counter reset on every replay.
+
+**Decision (three fixes, one per layer):**
+1. **`customer.find_by_email` tool** (Phase 0 amendment to
+   TOOL_SURFACE.md, operator-approved this session). CRM repo already had
+   `find_by_email` (used by portal-auth); exposed it as
+   `GET /customer/by-email?email=…` (query param so `+` addressing
+   survives), a `CRMClient.find_customer_by_email` method, and a
+   registered tool — `operator_cockpit` profile only, NOT
+   `customer_self_serve` (customers identify via session, never by
+   email parameter; same posture as find_by_msisdn). CSR search box
+   gained an email-shaped-query lane for the same gap.
+2. **Completion bounds** — `BSS_LLM_MAX_TOKENS` (default 2048) now caps
+   every completion; a degenerate loop costs one bounded call, not ten
+   unbounded minutes. `BSS_LLM_FREQUENCY_PENALTY` exists as an operator
+   knob but defaults OFF: repetition penalties can corrupt long
+   tool-call JSON on small models.
+3. **Stuck-loop bail** — sibling of the v1.5 failure bail: three
+   consecutive identical (tool, args, result) triples terminate the
+   stream with the same `agent_loop_bailout` AgentEventError. Result
+   is part of the key, so polling a progressing task never trips;
+   replaying a question the agent already has the answer to does.
+
+**Alternatives:**
+- Making `name_contains` also match contact mediums — rejected: silently
+  widening a documented filter changes every existing caller's contract;
+  a dedicated resolver matches the find_by_msisdn precedent and gives the
+  LLM an honest tool name.
+- Prompt-only fix ("don't retry the same call") — rejected: prompt is
+  contract, code is enforcement (v1.5 lesson). Gemma ignores prompts
+  under degeneration anyway.
+- Counting empty results as failures in the v1.5 bail — rejected: an
+  empty list is often the correct, useful answer (e.g. "any open
+  cases?" → []). Only *replaying* the identical call is pathological.
+
+**Consequences:** Email is now a first-class customer identifier across
+agent, search box, and (via bss-clients) any future surface. Worst-case
+degeneration cost drops from ~10 min to one capped completion + at most
+three identical round-trips. The identical-call threshold (3) carries
+the same review obligations as MAX_CONSECUTIVE_TOOL_FAILURES — test
+guard pins both.
