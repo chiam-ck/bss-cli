@@ -9,11 +9,15 @@ the gap to the user rather than crashing mid-turn. ``clock.now`` and the
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from bss_clients import AuditClient, TokenAuthProvider
-from bss_clock import now as clock_now
+
+# Alias must not collide with the clock_now tool below — the def used
+# to shadow this import, so the tool body called ITSELF and every
+# clock.now invocation died with "'coroutine' object has no attribute
+# 'replace'" (found via F811, 2026-06-12).
+from bss_clock import now as _bss_clock_now
 from bss_middleware import api_token
 from bss_telemetry import JaegerClient, JaegerError
 
@@ -67,7 +71,7 @@ async def clock_now() -> dict[str, Any]:
     Raises:
         (none)
     """
-    now = clock_now().replace(microsecond=0).isoformat()
+    now = _bss_clock_now().replace(microsecond=0).isoformat()
     return {"now": now, "source": "system"}
 
 
