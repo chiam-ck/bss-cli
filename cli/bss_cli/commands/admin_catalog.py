@@ -142,6 +142,25 @@ def window_offering(
     _run_safely(_do())
 
 
+@app.command("retire-offering")
+def retire_offering(
+    offering_id: Annotated[str, typer.Option("--id")],
+) -> None:
+    """Retire an offering — unsellable, lifecycle_status=retired, valid_to=now.
+
+    Existing subscriptions are unaffected (v0.7 doctrine — they charge
+    their price snapshot).  New orders cannot select this offering.
+    """
+
+    async def _do() -> None:
+        result = await get_clients().catalog.admin_retire_offering(offering_id)
+        rprint(
+            f"[green]✓[/] Retired [bold]{result['id']}[/] — {result['name']}"
+        )
+
+    _run_safely(_do())
+
+
 @app.command("migrate-price")
 def migrate_price(
     offering: Annotated[str, typer.Option("--offering")],

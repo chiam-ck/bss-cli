@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 import structlog
 from bss_clock import now as clock_now
@@ -162,10 +163,21 @@ class CatalogAdminService:
                 context={"offering_id": offering_id},
             )
 
+        values: dict[str, Any] = dict(valid_from=valid_from, valid_to=valid_to)
+
+        # Auto-retire when the window closes at-or-before now — the operator
+        # intended to retire the offering.  Without this the offering stays
+        # lifecycle_status='active' forever even though list_active_offerings
+        # filters it out; the cockpit detail page shows a misleading badge.
+        now = clock_now()
+        if valid_to is not None and valid_to <= now:
+            values["lifecycle_status"] = "retired"
+            values["is_sellable"] = False
+
         await self._session.execute(
             update(ProductOffering)
             .where(ProductOffering.id == offering_id)
-            .values(valid_from=valid_from, valid_to=valid_to)
+            .values(**values)
         )
         await self._session.commit()
         log.info(
@@ -174,6 +186,58 @@ class CatalogAdminService:
             valid_from=valid_from.isoformat() if valid_from else None,
             valid_to=valid_to.isoformat() if valid_to else None,
             actor=self._actor,
+            auto_retired=(valid_to is not None and valid_to <= now),
+        )
+        return await self._repo.get_offering(offering_id)
+
+    async def retire_offering(
+        self,
+        *,
+        offering_id: str,
+    ) -> ProductOffering:
+        """Retire an offering — marks it unsellable with lifecycle_status='retired'.
+
+        Stamps ``valid_to=now()`` when the current window is open-ended or
+        still in the future, so the read-side ``list_active_offerings`` filter
+        excludes it immediately.  Raises ``PolicyViolation`` if the offering
+        is already retired or does not exist.
+        """
+        _check_admin(self._actor)
+
+        existing = await self._repo.get_offering(offering_id)
+        if existing is None:
+            raise PolicyViolation(
+                rule="catalog.offering.not_found",
+                message=f"Offering {offering_id} not found",
+                context={"offering_id": offering_id},
+            )
+
+        if existing.lifecycle_status == "retired":
+            raise PolicyViolation(
+                rule="catalog.offering.already_retired",
+                message=f"Offering {offering_id} is already retired",
+                context={"offering_id": offering_id},
+            )
+
+        now = clock_now()
+        values: dict[str, Any] = {
+            "lifecycle_status": "retired",
+            "is_sellable": False,
+        }
+        if existing.valid_to is None or existing.valid_to > now:
+            values["valid_to"] = now
+
+        await self._session.execute(
+            update(ProductOffering)
+            .where(ProductOffering.id == offering_id)
+            .values(**values)
+        )
+        await self._session.commit()
+        log.info(
+            "catalog.offering.retired",
+            offering_id=offering_id,
+            actor=self._actor,
+            valid_to_stamped=values.get("valid_to"),
         )
         return await self._repo.get_offering(offering_id)
 

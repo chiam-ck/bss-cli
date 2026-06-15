@@ -175,6 +175,18 @@ class CatalogClient(BSSClient):
         )
         return resp.json()
 
+    async def admin_retire_offering(self, offering_id: str) -> dict[str, Any]:
+        """POST /admin/catalog/offering/{offering_id}/retire — retire an offering.
+
+        Sets lifecycle_status='retired' + is_sellable=False and stamps
+        valid_to=now() when the current window is still open.
+        Raises ``PolicyViolationFromServer`` if already retired or not found.
+        """
+        resp = await self._request(
+            "POST", f"/admin/catalog/offering/{offering_id}/retire"
+        )
+        return resp.json()
+
     # ── v1.1 — promotions (catalog holds the loyalty link) ───────────────
 
     _PROMO = "/tmf-api/promotionManagement/v4/promotion"

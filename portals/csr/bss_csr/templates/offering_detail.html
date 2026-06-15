@@ -1,5 +1,5 @@
 {% extends "cockpit_layout.html" %}
-{% from "partials/crm_macros.html" import badge, handoff, flashes, panel %}
+{% from "partials/crm_macros.html" import badge, handoff, flashes, panel, danger %}
 {% block title_suffix %} · {{ offering.id }}{% endblock %}
 
 {% block main %}
@@ -66,12 +66,19 @@
     </div>
     <div class="crm-grid-side">
       {% call panel("Validity window") %}
+        {% if offering.lifecycle != "retired" %}
         <form method="post" action="/catalog/{{ offering.id }}/window" class="crm-form" style="margin-top:0">
           <label><span>Valid from</span><input type="datetime-local" name="valid_from" /></label>
           <label><span>Valid to</span><input type="datetime-local" name="valid_to" /></label>
           <button type="submit" class="crm-mini-btn">Set window</button>
         </form>
         <p class="crm-muted">Leave a field blank to clear that bound.</p>
+        {% call danger("Retire…", "/catalog/" ~ offering.id ~ "/retire",
+                       "Marks the offering as retired and unsellable. Existing subscriptions are not affected — they charge their price snapshot (v0.7 doctrine).",
+                       "Retire " ~ offering.id) %}{% endcall %}
+        {% else %}
+        <p class="crm-muted">This offering was retired. Setting a future window will not un-retire it — contact the operator to add a new offering instead.</p>
+        {% endif %}
       {% endcall %}
     </div>
   </div>

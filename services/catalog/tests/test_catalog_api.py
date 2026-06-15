@@ -165,3 +165,192 @@ class TestVas:
     async def test_get_vas_offering_not_found(self, client: AsyncClient):
         r = await client.get("/vas/offering/DOES_NOT_EXIST")
         assert r.status_code == 404
+
+
+class TestAdminRetireOffering:
+    """POST /admin/catalog/offering/{id}/retire + window auto-retire."""
+
+    @staticmethod
+    async def _add_offering(
+        client: AsyncClient, offering_id: str, name: str
+    ) -> None:
+        r = await client.post(
+            "/admin/catalog/offering",
+            json={
+                "offeringId": offering_id,
+                "name": name,
+                "amount": "5.00",
+                "currency": "SGD",
+                "dataMb": 1024,
+            },
+            headers={"X-BSS-Actor": "admin"},
+        )
+        assert r.status_code == 200, r.text
+
+    async def test_retire_offering_sets_retired_and_unsellable(
+        self, client: AsyncClient, db_session
+    ):
+        import uuid
+
+        oid = f"PLAN_RETIRE_{uuid.uuid4().hex[:8].upper()}"
+        try:
+            await self._add_offering(client, oid, "Retire me")
+
+            r = await client.post(
+                f"/admin/catalog/offering/{oid}/retire",
+                headers={"X-BSS-Actor": "admin"},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert body["lifecycleStatus"] == "retired"
+            assert body["isSellable"] is False
+
+            # Verify the read-back.
+            r2 = await client.get(
+                f"/tmf-api/productCatalogManagement/v4/productOffering/{oid}"
+            )
+            assert r2.json()["lifecycleStatus"] == "retired"
+        finally:
+            await self._delete_offering(db_session, oid)
+
+    async def test_retire_offering_stamps_valid_to(
+        self, client: AsyncClient, db_session
+    ):
+        import uuid
+
+        oid = f"PLAN_STAMP_{uuid.uuid4().hex[:8].upper()}"
+        try:
+            await self._add_offering(client, oid, "Stamp valid_to")
+
+            r = await client.post(
+                f"/admin/catalog/offering/{oid}/retire",
+                headers={"X-BSS-Actor": "admin"},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            valid_to = (body.get("validFor") or {}).get("endDateTime")
+            assert valid_to is not None
+        finally:
+            await self._delete_offering(db_session, oid)
+
+    async def test_retire_already_retired_raises(
+        self, client: AsyncClient, db_session
+    ):
+        import uuid
+
+        oid = f"PLAN_DBL_{uuid.uuid4().hex[:8].upper()}"
+        try:
+            await self._add_offering(client, oid, "Double retire")
+
+            r = await client.post(
+                f"/admin/catalog/offering/{oid}/retire",
+                headers={"X-BSS-Actor": "admin"},
+            )
+            assert r.status_code == 200
+            # Second call should fail.
+            r = await client.post(
+                f"/admin/catalog/offering/{oid}/retire",
+                headers={"X-BSS-Actor": "admin"},
+            )
+            assert r.status_code == 422
+            body = r.json()
+            assert body["code"] == "POLICY_VIOLATION"
+            assert "already retired" in body["message"]
+        finally:
+            await self._delete_offering(db_session, oid)
+
+    async def test_retire_nonexistent_offering(self, client: AsyncClient):
+        r = await client.post(
+            "/admin/catalog/offering/DOES_NOT_EXIST/retire",
+            headers={"X-BSS-Actor": "admin"},
+        )
+        assert r.status_code == 422
+        body = r.json()
+        assert body["code"] == "POLICY_VIOLATION"
+        assert "not found" in body["message"]
+
+    async def test_window_offering_past_valid_to_auto_retires(
+        self, client: AsyncClient, db_session
+    ):
+        import uuid
+
+        oid = f"PLAN_AUTO_{uuid.uuid4().hex[:8].upper()}"
+        try:
+            await self._add_offering(client, oid, "Auto-retire")
+
+            r = await client.patch(
+                f"/admin/catalog/offering/{oid}/window",
+                json={"validTo": "2025-01-01T00:00:00Z"},
+                headers={"X-BSS-Actor": "admin"},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert body["lifecycleStatus"] == "retired"
+            assert body["isSellable"] is False
+        finally:
+            await self._delete_offering(db_session, oid)
+
+    async def test_window_offering_future_valid_to_does_not_retire(
+        self, client: AsyncClient, db_session
+    ):
+        import uuid
+
+        oid = f"PLAN_FUT_{uuid.uuid4().hex[:8].upper()}"
+        try:
+            await self._add_offering(client, oid, "Future window")
+
+            r = await client.patch(
+                f"/admin/catalog/offering/{oid}/window",
+                json={"validTo": "2099-01-01T00:00:00Z"},
+                headers={"X-BSS-Actor": "admin"},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert body["lifecycleStatus"] == "active"
+            assert body["isSellable"] is True
+        finally:
+            await self._delete_offering(db_session, oid)
+
+    async def test_window_offering_clear_valid_to_does_not_unretire(
+        self, client: AsyncClient, db_session
+    ):
+        import uuid
+
+        oid = f"PLAN_CLR_{uuid.uuid4().hex[:8].upper()}"
+        try:
+            await self._add_offering(client, oid, "Clear window")
+
+            # Retire first.
+            await client.post(
+                f"/admin/catalog/offering/{oid}/retire",
+                headers={"X-BSS-Actor": "admin"},
+            )
+            # Clearing valid_to should not un-retire.
+            r = await client.patch(
+                f"/admin/catalog/offering/{oid}/window",
+                json={"validTo": None},
+                headers={"X-BSS-Actor": "admin"},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            assert body["lifecycleStatus"] == "retired"
+        finally:
+            await self._delete_offering(db_session, oid)
+
+    @staticmethod
+    async def _delete_offering(session, offering_id: str):
+        from sqlalchemy import text
+
+        await session.execute(
+            text("DELETE FROM catalog.bundle_allowance WHERE offering_id = :oid"),
+            {"oid": offering_id},
+        )
+        await session.execute(
+            text("DELETE FROM catalog.product_offering_price WHERE offering_id = :oid"),
+            {"oid": offering_id},
+        )
+        await session.execute(
+            text("DELETE FROM catalog.product_offering WHERE id = :oid"),
+            {"oid": offering_id},
+        )
+        await session.commit()

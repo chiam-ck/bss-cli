@@ -188,6 +188,23 @@ async def set_window(
     return _back(back, flash="window_set")
 
 
+@router.post("/catalog/{offering_id}/retire", response_model=None)
+async def retire_offering(
+    offering_id: str,
+    confirm: str = Form(default=""),
+) -> RedirectResponse:
+    back = f"/catalog/{offering_id}"
+    if confirm != "yes":
+        return _back(back, err="Check the confirm box to retire this offering.")
+    try:
+        await get_clients().catalog.admin_retire_offering(offering_id)
+    except PolicyViolationFromServer as exc:
+        return _back(back, err=exc.detail)
+    except (ClientError, ValueError) as exc:
+        return _back(back, err=f"Catalog rejected the retire: {exc}")
+    return _back(back, flash="offering_retired")
+
+
 @router.get("/catalog/{offering_id}", response_class=HTMLResponse)
 async def offering_detail(request: Request, offering_id: str) -> HTMLResponse:
     clients = get_clients()

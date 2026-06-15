@@ -234,6 +234,7 @@ class StubBundle:
             admin_add_offering={"id": "PLAN_XL"},
             admin_add_price={"id": "POP-2"},
             admin_set_offering_window=OFFERING,
+            admin_retire_offering={"id": "PLAN_M", "name": "Mobile M"},
         )
         self.mediation = _Stub(list_usage=[USAGE])
         for name, value in overrides.items():
@@ -589,6 +590,7 @@ _CONFIRM_GATED: list[tuple[str, dict[str, str]]] = [
     ("/subscriptions/SUB-007/renew", {}),
     ("/subscriptions/SUB-007/vas", {"vas_offering_id": "VAS_1GB"}),
     ("/subscriptions/SUB-007/terminate", {}),
+    ("/catalog/PLAN_M/retire", {}),
 ]
 
 

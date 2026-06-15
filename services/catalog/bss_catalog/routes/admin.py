@@ -106,6 +106,21 @@ async def set_offering_window(
 
 
 @router.post(
+    "/admin/catalog/offering/{offering_id}/retire",
+    response_model=Tmf620ProductOffering,
+)
+async def retire_offering(
+    offering_id: str,
+    session: AsyncSession = Depends(get_session),
+    x_bss_actor: str = Header(default="anonymous"),
+) -> Tmf620ProductOffering:
+    repo = CatalogRepository(session)
+    svc = CatalogAdminService(session, repo, actor=x_bss_actor)
+    offering = await svc.retire_offering(offering_id=offering_id)
+    return to_tmf620_offering(offering)
+
+
+@router.post(
     "/admin/catalog/offering/{offering_id}/price",
     response_model=Tmf620ProductOfferingPrice,
 )
