@@ -3078,7 +3078,7 @@ first hit on the error.
 ## 2026-05-21 — v1.1.0 — Phase 0 amendment: promo codes via loyalty-cli (integrate, don't build)
 
 **Context.** v1.1 adds promotions (targeted + non-targeted). A separate,
-already-running system — `samurai-bot/loyalty-cli` (`~/claude/loyalty-cli`,
+already-running system — `chiam-ck/loyalty-cli` (`~/claude/loyalty-cli`,
 dockerized on `:8080`) — is a headless offer/promo/loyalty engine. We had
 to decide whether to build a promotions engine inside BSS or integrate the
 existing one. Promos are a scope addition CLAUDE.md reserves for explicit

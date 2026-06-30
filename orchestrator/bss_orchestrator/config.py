@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://openrouter.ai/api/v1"
     llm_model: str = "deepseek/deepseek-v4-pro"
     llm_api_key: str = ""
-    llm_http_referer: str = "https://github.com/samurai-bot/bss-cli"
+    llm_http_referer: str = "https://github.com/chiam-ck/bss-cli"
     llm_app_name: str = "bss-cli"
     # v1.6.2 — completion bounds. On 2026-06-12 gemma-4-31b fell into a
     # greedy-decoding repetition loop and ground out a single 53k-char

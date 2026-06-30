@@ -153,7 +153,7 @@ BSS-CLI uses **OpenRouter directly** via the `openai` SDK rather than LiteLLM. O
 BSS_LLM_BASE_URL=https://openrouter.ai/api/v1
 BSS_LLM_MODEL=xiaomi/mimo-v2-flash
 BSS_LLM_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxx
-BSS_LLM_HTTP_REFERER=https://github.com/samurai-bot/bss-cli
+BSS_LLM_HTTP_REFERER=https://github.com/chiam-ck/bss-cli
 BSS_LLM_APP_NAME=bss-cli
 ```
 

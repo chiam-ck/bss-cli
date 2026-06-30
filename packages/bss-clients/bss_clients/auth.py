@@ -65,7 +65,7 @@ class TokenAuthProvider:
 class BearerAuthProvider:
     """v1.1 — ``Authorization: Bearer <token>`` for external services.
 
-    Used by ``LoyaltyClient`` to authenticate against samurai-bot/loyalty-cli,
+    Used by ``LoyaltyClient`` to authenticate against chiam-ck/loyalty-cli,
     whose HTTP surface expects a bearer token (not BSS's ``X-BSS-API-Token``).
     Construct with the value of ``BSS_LOYALTY_API_TOKEN`` (read from env in
     the caller's config layer; the token never leaves the BSS process that

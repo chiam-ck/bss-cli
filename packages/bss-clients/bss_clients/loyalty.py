@@ -1,4 +1,4 @@
-"""LoyaltyClient — bss-clients adapter for samurai-bot/loyalty-cli (v1.1).
+"""LoyaltyClient — bss-clients adapter for chiam-ck/loyalty-cli (v1.1).
 
 loyalty-cli is the entitlement engine behind BSS promotions. It ships
 **unmodified**; BSS composes over its existing HTTP tool surface
