@@ -52,6 +52,10 @@ PUBLIC_EXACT_PATHS: Final[frozenset[str]] = frozenset({
     # confirmation; it performs no BSS write. The desktop's poll endpoint
     # is what actually advances the signup.
     "/signup/step/kyc/callback",
+    # v1.8 — the operator's uploaded logo, rendered in the header of
+    # the public marketing pages (/welcome, /plans). Static image
+    # bytes only; no session, no customer data, no BSS write.
+    "/branding/logo",
     # Convenience: `/` redirects to /welcome for anonymous visitors,
     # which the dashboard route does itself by raising RedirectToLogin.
 })

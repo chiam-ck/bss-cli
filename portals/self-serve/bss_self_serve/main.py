@@ -216,6 +216,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         activation,
         auth,
         billing,
+        branding_assets,
         cancel,
         chat,
         confirmation,
@@ -235,6 +236,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(welcome.router)
+    # v1.8 — uploaded operator logo. Public allowlist entry in
+    # bss_self_serve.security (anonymous /welcome shows the header).
+    app.include_router(branding_assets.router)
     # v0.12 PR20 — public legal pages.
     app.include_router(legal.router)
     app.include_router(landing.router)

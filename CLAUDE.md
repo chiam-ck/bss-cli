@@ -244,7 +244,7 @@ Two distinct planes:
 **Cockpit (v0.13):**
 
 - Don't reach for OAuth/RBAC for staff. Single-operator-by-design behind a secure perimeter; multi-operator separation = multi-tenant carve-out, not a login wall. (DECISIONS 2026-05-01)
-- Don't read `OPERATOR.md` or `settings.toml` outside `bss_cockpit.config` — hot-reload (mtime cache) is the contract.
+- Don't read `OPERATOR.md` or `settings.toml` outside `bss_cockpit.config` — hot-reload (mtime cache) is the contract. (Amended v1.8: the `[branding]` section is additionally readable via `bss_branding.current()` — same mtime-cache/last-good contract, read-only, never bootstraps, never crashes on absence; every `settings.toml` write remains in `bss_cockpit.config`. Grep guard.)
 - Don't bypass `/confirm` for destructive actions. The `cockpit.pending_destructive` row is the contract; only consuming it flips `allow_destructive=True`.
 - Don't add a Conversation store to a service. Cockpit conversations live in the `cockpit` schema owned by `bss-cockpit`; portals + REPL consume.
 - Don't accept user-controllable `session_id` outside cockpit routes. Both REPL `--session` and browser path are operator-typed inputs only.
@@ -266,6 +266,15 @@ Two distinct planes:
 - New screens stay section-degrading: one downstream service down must not 500 the page.
 - The page never scrolls — panes do. `body` is a `100dvh` flex shell; `.cockpit-main` (or the thread stream) is the scroll region, so the compose box stays on screen on any device. Don't reintroduce `calc(100vh - <px>)` header math.
 - No default-blue anchors: links inherit the accent via `.cockpit-main a`; never ship a bare unstyled `<a>` on the dark palette.
+
+**Branding (v1.8):**
+
+- Read branding via `bss_branding.current()` at render/send time — never cache a `BrandingView` on `app.state` or in a module global, never hardcode the operator name/mark in a template or email string. Hot-reload is the contract; the portals use callable Jinja globals (`branding()` / `branding_style()`), the email adapters resolve per send.
+- Color palettes live ONLY in `bss_branding.themes.THEMES` (dark-only in v1.8). No hex literals in `email.py` (grep guard); `portal_base.css`'s literal `:root` is the phosphor fallback and must stay byte-identical to `THEMES["phosphor"]` (test-pinned).
+- Logo uploads are magic-byte sniffed PNG/JPEG/WebP ≤256KB, cap enforced by bytes read, fixed destination filenames, **never SVG**. The image renders in the two browser portals only — emails and the CLI keep the text mark.
+- Brand name + mark are operator input: `html.escape()` at every hand-built-HTML seam (email renderers), `validate_mark` rejects HTML-active characters outright.
+- The footer/REPL footnote `bss-cli vX.Y.Z` is **product attribution, not operator brand** — never rebrand it, never move the version back into a header. Grep guard covers the header patterns.
+- `BSS_OPERATOR_NAME` is an explicit override; unset, the chat greets with `[branding].brand_name`. `BSS_BRAND_*` env overrides exist for mount-less containers — deliberately re-read per render (non-secret preference, unlike the v0.9 tokens-load-once rule).
 
 **Provider adapters & webhooks (v0.14):**
 

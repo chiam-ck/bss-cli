@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Terms of Service · bss-cli self-serve{% endblock %}
+{% block title %}Terms of Service · {{ branding().brand_name }} self-serve{% endblock %}
 
 {% block main %}
 <section class="legal-page">
@@ -18,7 +18,7 @@
 
   <h2>2. The service</h2>
   <p>
-    BSS-CLI Mobile (the "Service") is a prepaid mobile telecommunications
+    {{ branding().brand_name }} (the "Service") is a prepaid mobile telecommunications
     service. Plans are bundled-prepaid: an upfront monthly charge to
     your card on file, no proration, no overage charges. When a bundle
     runs out, the line is blocked until the next renewal or a VAS

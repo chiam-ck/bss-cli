@@ -207,7 +207,7 @@
   display: block;
   height: 100%;
   /* Default — proportional fill matched to v0.6 ASCII bar's intent. */
-  background: linear-gradient(90deg, #2ecc71 0%, #27ae60 100%);
+  background: linear-gradient(90deg, var(--accent) 0%, var(--accent-dim) 100%);
   transition: width 200ms ease;
 }
 .line-card-bar--low .line-card-bar-fill {
@@ -335,7 +335,7 @@
   flex-wrap: wrap;
 }
 .cof-action-form { margin: 0; }
-.cof-remove { color: #c0392b; }
+.cof-remove { color: var(--accent-error); }
 .cof-form {
   display: flex;
   flex-direction: column;
@@ -393,11 +393,11 @@
   font-size: 14px;
 }
 .form-flash {
-  background: #eaf6ee;
-  border: 1px solid #27ae60;
+  background: var(--bg-inset);
+  border: 1px solid var(--accent-dim);
   border-radius: 4px;
   padding: 8px 12px;
-  color: #1e6e3e;
+  color: var(--accent);
   font-size: 14px;
 }
 
@@ -443,13 +443,13 @@
   letter-spacing: 0.05em;
   font-weight: 600;
 }
-.billing-status--succeeded { color: #1e6e3e; }
+.billing-status--succeeded { color: var(--accent); }
 .billing-status--declined,
-.billing-status--failed { color: #c0392b; }
-.billing-status--pending { color: #f39c12; }
+.billing-status--failed { color: var(--accent-error); }
+.billing-status--pending { color: var(--accent-amber); }
 .billing-decline {
   display: block;
-  color: #c0392b;
+  color: var(--accent-error);
   font-size: 12px;
   margin-top: 2px;
 }
@@ -757,14 +757,14 @@
 }
 .plan-change-card-form { margin: 0; }
 .plan-change-no-proration {
-  background: #eaf6ee;
-  border: 1px solid #27ae60;
+  background: var(--bg-inset);
+  border: 1px solid var(--accent-dim);
   border-radius: 4px;
   padding: 12px 16px;
   font-size: 14px;
-  color: #1a1a1a;
+  color: var(--fg);
 }
-.plan-change-no-proration strong { color: #1e6e3e; }
+.plan-change-no-proration strong { color: var(--accent); }
 
 /* ─── Top-up (v0.10) ─────────────────────────────────────────── */
 
@@ -925,7 +925,7 @@
 .auth-error {
   background: rgba(220, 80, 80, 0.12);
   border: 1px solid rgba(220, 80, 80, 0.4);
-  color: #ff8a8a;
+  color: var(--accent-error);
   padding: 10px 12px;
   border-radius: 4px;
   font-size: 14px;
@@ -1169,7 +1169,7 @@
 .confirmation-lpa {
   display: inline-block; word-break: break-all;
   background: var(--bg-code); padding: 6px 10px; border-radius: 4px;
-  color: var(--accent-amber); font-size: 13px; max-width: 100%;
+  color: var(--accent-alt); font-size: 13px; max-width: 100%;
 }
 .copy-btn {
   background: transparent; border: 1px solid var(--border);
@@ -1265,9 +1265,9 @@
   width: 8px; height: 8px; border-radius: 50%;
   background: var(--fg-muted);
 }
-.chat-status .dot.live  { background: #2ea043; box-shadow: 0 0 6px #2ea043; }
-.chat-status .dot.done  { background: #2ea043; }
-.chat-status .dot.error { background: #c84f4f; }
+.chat-status .dot.live  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.chat-status .dot.done  { background: var(--accent); }
+.chat-status .dot.error { background: var(--accent-error); }
 .chat-status .dot.idle  { background: var(--fg-muted); opacity: 0.6; }
 
 .chat-log {
@@ -1337,7 +1337,7 @@
   padding: 18px 20px;
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-left: 3px solid #c89400;
+  border-left: 3px solid var(--accent-amber);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
@@ -1512,7 +1512,7 @@
 .chat-bubble-user {
   align-self: flex-end;
   background: var(--accent-dim);
-  color: #f4fbe8;
+  color: #ffffff;
   border-color: transparent;
   max-width: 80%;
 }

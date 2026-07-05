@@ -38,7 +38,7 @@
   font-family: var(--mono); font-weight: 600;
   border-radius: 4px; cursor: pointer; font-size: 14px;
 }
-.login-form button:hover { background: #b5ff80; }
+.login-form button:hover { background: var(--accent-bright); }
 
 /* Header logout button styled like a nav link */
 .nav-link-btn {
@@ -98,7 +98,7 @@
   margin-bottom: 12px;
 }
 .customer-summary-row .page-title { margin: 0; }
-.customer-id { color: var(--accent-amber); font-size: 14px; }
+.customer-id { color: var(--accent-alt); font-size: 14px; }
 
 .customer-summary-meta {
   display: grid;
@@ -177,7 +177,7 @@
   display: flex; justify-content: space-between; align-items: baseline;
   margin-bottom: 8px;
 }
-.sub-id { color: var(--accent-amber); font-size: 13px; }
+.sub-id { color: var(--accent-alt); font-size: 13px; }
 .sub-state {
   font-family: var(--mono); font-size: 12px;
   padding: 2px 8px; border-radius: 3px;
@@ -208,7 +208,7 @@
   display: flex; gap: 10px; align-items: baseline;
   margin-bottom: 6px;
 }
-.case-card a { color: var(--accent-amber); text-decoration: none; }
+.case-card a { color: var(--accent-alt); text-decoration: none; }
 .case-card a:hover { color: var(--accent); }
 .case-state {
   font-family: var(--mono); font-size: 12px;
@@ -216,7 +216,7 @@
   background: var(--bg-code); color: var(--fg-muted);
 }
 .case-priority {
-  font-family: var(--mono); font-size: 12px; color: var(--accent-amber);
+  font-family: var(--mono); font-size: 12px; color: var(--accent-alt);
 }
 .case-subject { margin: 4px 0; font-size: 14px; }
 .case-card footer { color: var(--fg-dim); font-size: 12px; font-family: var(--mono); }
@@ -232,7 +232,7 @@
   border-radius: 4px;
   font-family: var(--mono); font-size: 13px;
 }
-.payment-brand { color: var(--accent-amber); width: 60px; }
+.payment-brand { color: var(--accent-alt); width: 60px; }
 .payment-pan { color: var(--fg); }
 .payment-exp { color: var(--fg-muted); font-size: 12px; }
 .payment-default {
@@ -261,7 +261,7 @@
   background: var(--bg-code);
 }
 .channel-portal_csr { color: var(--accent); }
-.channel-portal_self_serve { color: var(--accent-amber); }
+.channel-portal_self_serve { color: var(--accent-alt); }
 .channel-llm { color: #cbb6e8; }
 .channel-cli { color: var(--fg-muted); }
 
@@ -301,7 +301,7 @@
   margin-bottom: 6px;
   font-family: var(--mono); font-size: 12px;
 }
-.note-author { color: var(--accent-amber); font-weight: 600; }
+.note-author { color: var(--accent-alt); font-weight: 600; }
 .note-at { color: var(--fg-muted); }
 .note-body { margin: 0; font-size: 14px; line-height: 1.5; }
 
@@ -360,6 +360,8 @@ body {
 .cockpit-brand-mark { color: var(--accent); font-size: 12px; }
 .cockpit-brand-name { font-weight: 600; letter-spacing: 0.5px; }
 .cockpit-brand-tag { color: var(--fg-muted); font-size: 12px; }
+/* v1.8 — uploaded operator logo replaces .cockpit-brand-mark. */
+.cockpit-brand-logo { height: 20px; width: auto; display: block; align-self: center; }
 
 .cockpit-nav-link {
   padding: 6px 12px; border-radius: 4px;
@@ -392,6 +394,19 @@ body {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
   overflow-y: auto;
+}
+/* v1.8 — product-attribution footnote ("bss-cli vX.Y.Z"), demoted
+   from the header. Fixed-height flex child so the 100dvh shell
+   still never scrolls; NEVER carries the operator brand. */
+.cockpit-footer {
+  flex: 0 0 auto;
+  padding: 2px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: right;
 }
 .cockpit-page {
   flex: 1; display: flex; flex-direction: column;
@@ -677,7 +692,7 @@ body {
   background: var(--bg-inset); border: 1px solid var(--border);
   font-family: var(--mono); font-size: 11px; color: var(--fg-muted);
 }
-.chat-tool-icon { color: var(--accent-amber); }
+.chat-tool-icon { color: var(--accent-alt); }
 
 /* v0.19+ Option-1 — unified cockpit tool-result block.
    One HTML shape served by both the page-load transcript path AND
@@ -710,7 +725,7 @@ body {
   background: var(--bg-elev);
   border-bottom-left-radius: 0; border-bottom-right-radius: 0;
 }
-.tool-row-icon { color: var(--accent-amber); font-weight: 600; }
+.tool-row-icon { color: var(--accent-alt); font-weight: 600; }
 .tool-row-name { color: var(--fg); }
 .tool-row-summary::after {
   content: "▾";
@@ -1462,3 +1477,120 @@ body {
   50% { opacity: 1; }
 }
 .bss-reload { display: none; }
+
+/* ── v1.8 — Branding screen ─────────────────────────────────
+   Theme picker swatches, mark picker, logo upload, and the live
+   preview card. The preview div carries INLINE CSS-variable
+   overrides (candidate palette), so everything inside styled with
+   var(--…) previews the candidate while the page keeps the active
+   theme. */
+
+.branding-columns {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 16px; align-items: start;
+}
+@media (max-width: 900px) { .branding-columns { grid-template-columns: 1fr; } }
+
+.branding-label { display: block; margin: 14px 0 6px; font-family: var(--mono); font-size: 12px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.branding-input {
+  width: 100%; max-width: 360px; padding: 8px 10px;
+  background: var(--bg-inset); color: var(--fg);
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  font-family: var(--mono); font-size: 14px;
+}
+.branding-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.branding-theme-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.branding-theme-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; background: var(--bg-elev);
+}
+.branding-theme-option:hover { border-color: var(--border-strong); }
+.branding-theme-option.is-selected,
+.branding-theme-option:has(input:checked) { border-color: var(--accent); }
+.branding-theme-option input { position: absolute; opacity: 0; pointer-events: none; }
+.branding-swatches {
+  display: inline-flex; gap: 3px; padding: 5px 6px;
+  border: 1px solid; border-radius: 4px;
+}
+.branding-swatches i { width: 12px; height: 12px; border-radius: 2px; display: block; }
+.branding-theme-name { font-family: var(--mono); font-size: 13px; }
+
+.branding-mark-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.branding-mark-option {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-elev); cursor: pointer;
+}
+.branding-mark-option:hover { border-color: var(--border-strong); }
+.branding-mark-option.is-selected,
+.branding-mark-option:has(input[type="radio"]:checked) { border-color: var(--accent); }
+.branding-mark-option input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.branding-mark-glyph { color: var(--accent); font-family: var(--mono); font-weight: 700; font-size: 16px; }
+.branding-mark-input {
+  width: 64px; padding: 4px 6px; margin-left: 6px;
+  background: var(--bg-inset); color: var(--accent);
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  font-family: var(--mono); font-size: 14px; text-align: center;
+}
+
+.branding-form .cockpit-cta-btn { margin-top: 16px; }
+
+/* Preview card — colors resolve against the scoped inline overrides. */
+.branding-preview {
+  background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: 8px; overflow: hidden;
+}
+.branding-preview-chrome {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 10px 14px; background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 13px; color: var(--fg);
+}
+.branding-preview-mark { color: var(--accent); font-weight: 700; }
+.branding-preview-name { font-weight: 600; color: var(--fg); }
+.branding-preview-tag { color: var(--fg-muted); font-size: 12px; }
+.branding-preview-body { padding: 14px; color: var(--fg); font-size: 14px; }
+.branding-preview-copy { margin: 0 0 4px; }
+.branding-preview-muted { margin: 0 0 12px; color: var(--fg-muted); font-size: 12px; }
+.branding-preview-btn {
+  display: inline-block; padding: 8px 18px; border-radius: 6px;
+  background: var(--accent); color: var(--on-accent, var(--bg));
+  border: 1px solid var(--accent-dim);
+  font-weight: 600; font-size: 13px; font-family: var(--sans);
+}
+.branding-preview-email {
+  margin-top: 14px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.branding-preview-email-head {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12px;
+}
+.branding-preview-otp {
+  margin: 12px auto; width: fit-content; padding: 10px 18px;
+  background: var(--bg-inset); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--accent);
+  font-family: var(--mono); font-size: 20px; letter-spacing: 5px; font-weight: 600;
+}
+.branding-preview-email-foot {
+  padding: 0 12px 10px; text-align: center;
+  color: var(--fg-dim); font-family: var(--mono); font-size: 10px;
+}
+.branding-preview-theme-label {
+  margin-top: 10px; text-align: right;
+  color: var(--fg-dim); font-family: var(--mono); font-size: 11px;
+}
+
+.branding-logo-current { display: flex; align-items: center; gap: 16px; margin: 8px 0 14px; }
+.branding-logo-current img {
+  height: 40px; width: auto; display: block;
+  background: var(--bg-inset); border: 1px solid var(--border);
+  border-radius: 4px; padding: 6px;
+}
+.branding-logo-none { color: var(--fg-muted); font-size: 13px; }
+.branding-logo-upload { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.branding-logo-upload input[type="file"] { font-family: var(--mono); font-size: 12px; color: var(--fg-muted); }

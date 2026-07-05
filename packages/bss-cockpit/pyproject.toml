@@ -10,6 +10,8 @@ dependencies = [
     "pydantic-settings>=2.0",
     "structlog>=24.0",
     "qrcode>=7.4",
+    "tomlkit>=0.12",
+    "bss-branding",
     "bss-clock",
     "bss-models",
 ]
@@ -25,6 +27,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
+bss-branding = { workspace = true }
 bss-clock = { workspace = true }
 bss-models = { workspace = true }
 

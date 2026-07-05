@@ -1,8 +1,11 @@
 <!DOCTYPE html>
+{% set brand = branding() %}
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>{% block title %}BSS-CLI Self-Serve{% endblock %}</title>
+  {# Blocks don't see parent-scope {% set %} vars — child overrides
+     call the branding() GLOBAL instead (same hot-reloaded view). #}
+  <title>{% block title %}{{ branding().brand_name }} Self-Serve{% endblock %}</title>
   {# v0.11 — switched from forced ``width=1200`` to device-width +
      initial-scale=1 so the portal renders correctly on phones. The
      CSS at ``packages/bss-portal-ui/.../portal_base.css`` adds a
@@ -17,14 +20,18 @@
      into blue-underlined tel: links. We render those values inside our
      own forms and links, so disable the heuristic globally. #}
   <meta name="format-detection" content="telephone=no, address=no, email=no" />
-  <link rel="stylesheet" href="/portal-ui/static/css/portal_base.css" />
-  <link rel="stylesheet" href="/static/css/portal.css" />
-  <script src="/portal-ui/static/js/htmx.min.js" defer></script>
+  <link rel="stylesheet" href="/portal-ui/static/css/portal_base.css?v={{ asset_v }}" />
+  <link rel="stylesheet" href="/static/css/portal.css?v={{ asset_v }}" />
+  {# v1.8 — active theme wins over the phosphor fallback in
+     portal_base.css by document order. Re-emitted per render, so a
+     settings.toml theme change shows on the next refresh. #}
+  {{ branding_style() }}
+  <script src="/portal-ui/static/js/htmx.min.js?v={{ asset_v }}" defer></script>
   {# The htmx-sse extension only matters on the chat surface (when it
      lands). v0.11 retired SSE from signup; the script stays vendored
      in bss-portal-ui for the future chat page to opt in via
      ``hx-ext="sse"`` on the body. #}
-  <script src="/portal-ui/static/js/htmx-sse.js" defer></script>
+  <script src="/portal-ui/static/js/htmx-sse.js?v={{ asset_v }}" defer></script>
 </head>
 {# v0.11+ — the right-hand aside is a pluggable slot for any future
    "always visible companion panel" surface (v0.4 used it for the
@@ -47,9 +54,13 @@
 >
   <header class="portal-header">
     <div class="brand">
-      <span class="brand-mark">$</span>
-      <span class="brand-name">bss-cli</span>
-      <span class="brand-tag">/ self-serve / v{{ bss_release }}</span>
+      {% if brand.logo_version %}
+      <img class="brand-logo" src="/branding/logo?v={{ brand.logo_version }}" alt="" />
+      {% else %}
+      <span class="brand-mark">{{ brand.mark }}</span>
+      {% endif %}
+      <span class="brand-name">{{ brand.brand_name }}</span>
+      <span class="brand-tag">/ self-serve</span>
     </div>
     <nav class="portal-nav">
       <a href="/plans">plans</a>
@@ -127,6 +138,9 @@
       ·
       <a href="/privacy">Privacy Policy</a>
     </span>
+    {# v1.8 — product attribution, deliberately NOT the operator brand.
+       The version lives here now, demoted from the header. #}
+    <span class="portal-footer-version">bss-cli v{{ bss_release }}</span>
   </footer>
 </body>
 </html>

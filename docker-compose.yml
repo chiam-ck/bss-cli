@@ -69,6 +69,11 @@ services:
       BSS_CRM_URL: http://crm:8000
       BSS_CATALOG_URL: http://catalog:8000
       BSS_PAYMENT_URL: http://payment:8000
+      # v1.8 — the renewal-reminder emails brand themselves from the
+      # operator branding config; read-only, absence-tolerant.
+      BSS_BRANDING_DIR: /bss-cli-state
+    volumes:
+      - ./.bss-cli:/bss-cli-state:ro
     depends_on: [crm, catalog, payment]
 
   mediation:
@@ -141,10 +146,17 @@ services:
       # production deployments override via .env to 0 (and terminate
       # TLS upstream).
       BSS_PORTAL_DEV_INSECURE_COOKIE: ${BSS_PORTAL_DEV_INSECURE_COOKIE:-1}
+      # v1.8 — operator branding ([branding] in settings.toml + logo
+      # file), read-only. Absence-tolerant: without the mount the
+      # portal renders phosphor defaults (+ BSS_BRAND_* env overrides).
+      BSS_BRANDING_DIR: /bss-cli-state
     volumes:
       # Host-side bind mount so the hero auth scenarios can read OTPs
       # written by LoggingEmailAdapter. Created on first portal write.
       - ./.dev-mailbox:/var/bss-mailbox
+      # v1.8 — branding config written by the cockpit; this portal
+      # only reads it (headers, theme, emails).
+      - ./.bss-cli:/bss-cli-state:ro
     depends_on:
       catalog: { condition: service_healthy }
       crm:     { condition: service_healthy }

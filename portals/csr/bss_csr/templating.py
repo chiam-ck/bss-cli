@@ -25,8 +25,23 @@ templates.env.loader = ChoiceLoader(
         FileSystemLoader(str(SHARED_TEMPLATE_DIR)),
     ]
 )
-# v0.14 — every template gets ``bss_release`` for the brand-tag.
+# v0.14 — every template gets ``bss_release``. v1.8 demoted it from
+# the header brand-tag to the footer footnote (product attribution).
 templates.env.globals["bss_release"] = BSS_RELEASE
+
+# v1.8 — operator branding. CALLABLE globals, evaluated per render so
+# the settings.toml mtime hot-reload is visible on the next refresh.
+import bss_branding  # noqa: E402
+from bss_branding import branding_css_block  # noqa: E402
+from markupsafe import Markup  # noqa: E402
+
+
+def _branding_style() -> Markup:
+    return Markup("<style>" + branding_css_block(bss_branding.current().theme) + "</style>")
+
+
+templates.env.globals["branding"] = bss_branding.current
+templates.env.globals["branding_style"] = _branding_style
 
 # v1.6.1 — static-asset cache-buster, stamped at process start. Safari
 # (iPad especially) caches CSS/JS aggressively across deploys; a fresh

@@ -15,6 +15,22 @@ from bss_portal_auth.email import ResendEmailAdapter, resolve_provider_name
 from bss_portal_auth.test_helpers import last_login_codes, last_step_up_code
 
 
+@pytest.fixture(autouse=True)
+def _default_branding(tmp_path, monkeypatch):
+    """v1.8 — emails brand themselves from bss_branding.current().
+    Pin the tests to defaults so an operator's live .bss-cli/
+    settings.toml (or BSS_BRAND_* env) can't change the expected
+    subjects/colors."""
+    import bss_branding
+
+    monkeypatch.setenv("BSS_BRANDING_DIR", str(tmp_path))
+    for var in ("BSS_BRAND_NAME", "BSS_BRAND_THEME", "BSS_BRAND_MARK"):
+        monkeypatch.delenv(var, raising=False)
+    bss_branding.reset_cache()
+    yield
+    bss_branding.reset_cache()
+
+
 def test_noop_adapter_records_login_otp_and_magic_link():
     adapter = NoopEmailAdapter()
     adapter.send_login("ada@example.sg", "424242", "MAGIC_LINK_TOKEN")
@@ -121,7 +137,7 @@ def test_resend_adapter_send_login_calls_sdk_with_correct_params(fake_resend):
     assert params["to"] == ["ada@example.sg"]
     assert "424242" in params["html"] and "424242" in params["text"]
     assert "https://x/m" in params["html"] and "https://x/m" in params["text"]
-    assert params["subject"] == "Your BSS-CLI sign-in code"
+    assert params["subject"] == "Your bss-cli sign-in code"
 
 
 def test_resend_adapter_send_step_up_includes_action_label(fake_resend):

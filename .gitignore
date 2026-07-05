@@ -62,3 +62,4 @@ v0.6-baseline.md
 # artefacts; only the README pointer is checked in.
 /docs/e2e-reports/*
 !/docs/e2e-reports/README.md
+*.backup-20260704-demo-bss-cli
