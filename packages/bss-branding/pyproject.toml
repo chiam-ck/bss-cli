@@ -1,0 +1,25 @@
+[project]
+name = "bss-branding"
+version = "0.1.0"
+requires-python = ">=3.12"
+description = "Operator branding for BSS-CLI — theme palettes, logo marks, and the read path for the [branding] section of .bss-cli/settings.toml. Single source of truth for portal CSS variables and email colors. Deliberately tiny: pydantic + structlog only (starlette confined to a lazily-imported web submodule)."
+dependencies = [
+    "pydantic>=2.7",
+    "structlog>=24.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bss_branding"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
