@@ -47,6 +47,7 @@ class ThemePalette:
     accent_bright: str
     accent_dim: str
     accent_amber: str
+    accent_alt: str
     accent_error: str
     border: str
     border_strong: str
@@ -73,6 +74,7 @@ THEMES: dict[str, ThemePalette] = {
             accent_bright="#9fe870",
             accent_dim="#4d8a22",
             accent_amber="#ffb454",
+            accent_alt="#ffb454",
             accent_error="#ff6b6b",
             border="#2a2e38",
             border_strong="#3a3f4a",
@@ -93,6 +95,7 @@ THEMES: dict[str, ThemePalette] = {
             accent_bright="#ffcf4d",
             accent_dim="#a87400",
             accent_amber="#ff8c3f",
+            accent_alt="#ff8c3f",
             accent_error="#ff6b5e",
             border="#332d20",
             border_strong="#453d2c",
@@ -113,6 +116,7 @@ THEMES: dict[str, ThemePalette] = {
             accent_bright="#85d8ff",
             accent_dim="#2d7ca6",
             accent_amber="#ffb454",
+            accent_alt="#9fb8ff",
             accent_error="#ff6b6b",
             border="#24303c",
             border_strong="#34424f",
@@ -133,6 +137,7 @@ THEMES: dict[str, ThemePalette] = {
             accent_bright="#f48ae2",
             accent_dim="#9c3a8c",
             accent_amber="#ffb454",
+            accent_alt="#b08aff",
             accent_error="#ff6b6b",
             border="#302536",
             border_strong="#423448",
@@ -153,6 +158,7 @@ THEMES: dict[str, ThemePalette] = {
             accent_bright="#ffffff",
             accent_dim="#a8a8a8",
             accent_amber="#ffb454",
+            accent_alt="#bdbdbd",
             accent_error="#ff6b6b",
             border="#2c2c2c",
             border_strong="#3e3e3e",
@@ -173,6 +179,7 @@ THEMES: dict[str, ThemePalette] = {
             accent_bright="#3fc7bc",
             accent_dim="#1e7770",
             accent_amber="#b58900",
+            accent_alt="#b58900",
             accent_error="#dc322f",
             border="#0e4a58",
             border_strong="#17596a",

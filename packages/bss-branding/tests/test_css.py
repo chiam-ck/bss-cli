@@ -14,7 +14,7 @@ def test_block_shape() -> None:
 def test_all_fifteen_slots_present_for_every_theme() -> None:
     for theme in THEMES.values():
         block = branding_css_block(theme)
-        assert block.count(":") == 15 + 1  # 15 declarations + :root
+        assert block.count(":") == 16 + 1  # 16 declarations + :root
         for prop in (
             "--bg",
             "--bg-elev",
@@ -27,6 +27,7 @@ def test_all_fifteen_slots_present_for_every_theme() -> None:
             "--accent-bright",
             "--accent-dim",
             "--accent-amber",
+            "--accent-alt",
             "--accent-error",
             "--border",
             "--border-strong",

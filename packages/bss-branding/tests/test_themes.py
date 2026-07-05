@@ -25,6 +25,7 @@ _COLOR_FIELDS = (
     "accent_bright",
     "accent_dim",
     "accent_amber",
+    "accent_alt",
     "accent_error",
     "border",
     "border_strong",
@@ -70,6 +71,8 @@ def test_accent_contrast() -> None:
     for theme in THEMES.values():
         ratio = _contrast(theme.accent, theme.bg)
         assert ratio >= 3.0, f"{theme.id}: accent/bg = {ratio:.2f}"
+        alt_ratio = _contrast(theme.accent_alt, theme.bg)
+        assert alt_ratio >= 3.0, f"{theme.id}: accent_alt/bg = {alt_ratio:.2f}"
 
 
 def test_button_text_readable_on_accent() -> None:
@@ -94,6 +97,7 @@ def test_phosphor_matches_portal_base_css() -> None:
     assert phosphor.accent_bright == "#9fe870"
     assert phosphor.accent_dim == "#4d8a22"
     assert phosphor.accent_amber == "#ffb454"
+    assert phosphor.accent_alt == "#ffb454"  # default look stays identical
     assert phosphor.accent_error == "#ff6b6b"
     assert phosphor.border == "#2a2e38"
     assert phosphor.border_strong == "#3a3f4a"

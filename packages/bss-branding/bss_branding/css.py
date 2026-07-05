@@ -23,6 +23,7 @@ _CSS_SLOTS: tuple[tuple[str, str], ...] = (
     ("accent_bright", "--accent-bright"),
     ("accent_dim", "--accent-dim"),
     ("accent_amber", "--accent-amber"),
+    ("accent_alt", "--accent-alt"),
     ("accent_error", "--accent-error"),
     ("border", "--border"),
     ("border_strong", "--border-strong"),

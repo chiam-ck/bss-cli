@@ -14,7 +14,8 @@
   --accent: #74d535;           /* phosphor green — deepened v0.11 for contrast */
   --accent-bright: #9fe870;    /* the previous shade, kept as the hover lift */
   --accent-dim: #4d8a22;
-  --accent-amber: #ffb454;
+  --accent-amber: #ffb454;   /* semantic warn — fixed across themes */
+  --accent-alt: #ffb454;     /* v1.8 secondary accent — IDs, tool chrome; themed */
   --accent-error: #ff6b6b;
   --border: #2a2e38;
   --border-strong: #3a3f4a;
@@ -88,7 +89,7 @@ body { display: flex; flex-direction: column; }
   padding: 4px 8px; border-radius: 4px;
 }
 .portal-header nav a:hover { color: var(--accent); background: var(--bg-inset); }
-.portal-header nav .nav-actor { color: var(--accent-amber); }
+.portal-header nav .nav-actor { color: var(--accent-alt); }
 
 /* ─── Layout: 2-column main ───────────────────────────────── */
 
@@ -198,7 +199,7 @@ code {
   background: var(--bg-code);
   padding: 1px 6px; border-radius: 3px;
   font-size: 13px;
-  color: var(--accent-amber);
+  color: var(--accent-alt);
 }
 
 .empty-state {
@@ -245,7 +246,7 @@ code {
   background: var(--accent); box-shadow: 0 0 4px var(--accent);
 }
 .agent-log-status .dot.idle { background: var(--fg-dim); }
-.agent-log-status .dot.done { background: var(--accent-amber); }
+.agent-log-status .dot.done { background: var(--accent-alt); }
 .agent-log-status .dot.error { background: var(--accent-error); }
 
 .agent-log-intro {
@@ -290,8 +291,8 @@ code {
 .agent-event--prompt { border-left-color: var(--accent); }
 .agent-event--prompt .agent-event-icon { color: var(--accent); }
 
-.agent-event--tool_started { border-left-color: var(--accent-amber); }
-.agent-event--tool_started .agent-event-icon { color: var(--accent-amber); }
+.agent-event--tool_started { border-left-color: var(--accent-alt); }
+.agent-event--tool_started .agent-event-icon { color: var(--accent-alt); }
 
 .agent-event--tool_completed .agent-event-icon { color: var(--accent-dim); }
 
