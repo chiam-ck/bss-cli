@@ -13,6 +13,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "bss-clients",
     "bss-cockpit",
+    "bss-branding",
     "bss-orchestrator",
     "bss-telemetry",
     "bss-middleware",
@@ -40,6 +41,7 @@ packages = ["bss_csr"]
 [tool.uv.sources]
 bss-clients = { workspace = true }
 bss-cockpit = { workspace = true }
+bss-branding = { workspace = true }
 bss-orchestrator = { workspace = true }
 bss-telemetry = { workspace = true }
 bss-middleware = { workspace = true }

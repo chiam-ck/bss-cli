@@ -1,11 +1,15 @@
 <!DOCTYPE html>
+{% set brand = branding() %}
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>BSS-CLI Cockpit{% block title_suffix %}{% endblock %}</title>
+  <title>{{ brand.brand_name }} Cockpit{% block title_suffix %}{% endblock %}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <link rel="stylesheet" href="/portal-ui/static/css/portal_base.css?v={{ asset_v }}" />
   <link rel="stylesheet" href="/static/css/csr.css?v={{ asset_v }}" />
+  {# v1.8 — active theme wins over the phosphor fallback in
+     portal_base.css by document order; re-emitted per render. #}
+  {{ branding_style() }}
   <script src="/portal-ui/static/js/htmx.min.js?v={{ asset_v }}" defer></script>
   <script src="/portal-ui/static/js/htmx-sse.js?v={{ asset_v }}" defer></script>
   <script>
@@ -49,9 +53,13 @@
   <header class="cockpit-header">
     <div class="cockpit-header-left">
       <a href="/" class="cockpit-brand">
-        <span class="cockpit-brand-mark">●</span>
-        <span class="cockpit-brand-name">bss-cli</span>
-        <span class="cockpit-brand-tag">operator cockpit · v{{ bss_release }}</span>
+        {% if brand.logo_version %}
+        <img class="cockpit-brand-logo" src="/branding/logo?v={{ brand.logo_version }}" alt="" />
+        {% else %}
+        <span class="cockpit-brand-mark">{{ brand.mark }}</span>
+        {% endif %}
+        <span class="cockpit-brand-name">{{ brand.brand_name }}</span>
+        <span class="cockpit-brand-tag">operator cockpit</span>
       </a>
     </div>
     <nav class="cockpit-header-nav">
@@ -73,5 +81,9 @@
   <main class="cockpit-main">
     {% block main %}{% endblock %}
   </main>
+
+  {# v1.8 — product attribution, deliberately NOT the operator brand.
+     Fixed-height flex child: the 100dvh shell still never scrolls. #}
+  <footer class="cockpit-footer">bss-cli v{{ bss_release }}</footer>
 </body>
 </html>

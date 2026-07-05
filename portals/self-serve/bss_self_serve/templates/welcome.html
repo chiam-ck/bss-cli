@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Welcome · bss-cli self-serve{% endblock %}
+{% block title %}Welcome · {{ branding().brand_name }} self-serve{% endblock %}
 
 {% block main %}
 <section class="welcome-card">
-  <h1 class="page-title">bss-cli self-serve</h1>
+  <h1 class="page-title">{{ branding().brand_name }} self-serve</h1>
   <p class="page-subtitle">
     Prepaid mobile bundles, no contract. Pick a plan, verify your email,
     pay with a card, get an eSIM QR code in under a minute.

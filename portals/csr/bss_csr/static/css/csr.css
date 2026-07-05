@@ -360,6 +360,8 @@ body {
 .cockpit-brand-mark { color: var(--accent); font-size: 12px; }
 .cockpit-brand-name { font-weight: 600; letter-spacing: 0.5px; }
 .cockpit-brand-tag { color: var(--fg-muted); font-size: 12px; }
+/* v1.8 — uploaded operator logo replaces .cockpit-brand-mark. */
+.cockpit-brand-logo { height: 20px; width: auto; display: block; align-self: center; }
 
 .cockpit-nav-link {
   padding: 6px 12px; border-radius: 4px;
@@ -392,6 +394,19 @@ body {
   flex: 1; min-height: 0;
   display: flex; flex-direction: column;
   overflow-y: auto;
+}
+/* v1.8 — product-attribution footnote ("bss-cli vX.Y.Z"), demoted
+   from the header. Fixed-height flex child so the 100dvh shell
+   still never scrolls; NEVER carries the operator brand. */
+.cockpit-footer {
+  flex: 0 0 auto;
+  padding: 2px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: right;
 }
 .cockpit-page {
   flex: 1; display: flex; flex-direction: column;

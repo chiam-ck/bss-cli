@@ -79,6 +79,8 @@ body { display: flex; flex-direction: column; }
 .brand-mark { color: var(--accent); font-weight: 700; }
 .brand-name { font-weight: 600; }
 .brand-tag { color: var(--fg-muted); font-size: 13px; }
+/* v1.8 — uploaded operator logo replaces .brand-mark when present. */
+.brand-logo { height: 20px; width: auto; display: block; align-self: center; }
 
 .portal-header nav { display: flex; align-items: center; gap: 4px; }
 .portal-header nav a, .portal-header nav .nav-actor {
@@ -181,6 +183,9 @@ body { display: flex; flex-direction: column; }
   border-top: 1px solid var(--border);
   text-align: center;
 }
+/* v1.8 — product attribution ("bss-cli vX.Y.Z"), demoted from the
+   header. Own line, one notch quieter than the rest of the footer. */
+.portal-footer-version { display: block; margin-top: 4px; font-size: 11px; }
 
 /* ─── Typography ──────────────────────────────────────────── */
 

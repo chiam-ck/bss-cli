@@ -2412,6 +2412,7 @@ name = "portal-csr"
 version = "0.1.0"
 source = { editable = "portals/csr" }
 dependencies = [
+    { name = "bss-branding" },
     { name = "bss-clients" },
     { name = "bss-cockpit" },
     { name = "bss-middleware" },
@@ -2436,6 +2437,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bss-branding", editable = "packages/bss-branding" },
     { name = "bss-clients", editable = "packages/bss-clients" },
     { name = "bss-cockpit", editable = "packages/bss-cockpit" },
     { name = "bss-middleware", editable = "packages/bss-middleware" },
@@ -2464,6 +2466,7 @@ version = "0.1.0"
 source = { editable = "portals/self-serve" }
 dependencies = [
     { name = "asyncpg" },
+    { name = "bss-branding" },
     { name = "bss-clients" },
     { name = "bss-middleware" },
     { name = "bss-orchestrator" },
@@ -2494,6 +2497,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.29" },
+    { name = "bss-branding", editable = "packages/bss-branding" },
     { name = "bss-clients", editable = "packages/bss-clients" },
     { name = "bss-middleware", editable = "packages/bss-middleware" },
     { name = "bss-orchestrator", editable = "orchestrator" },
