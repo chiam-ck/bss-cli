@@ -20,18 +20,18 @@
      into blue-underlined tel: links. We render those values inside our
      own forms and links, so disable the heuristic globally. #}
   <meta name="format-detection" content="telephone=no, address=no, email=no" />
-  <link rel="stylesheet" href="/portal-ui/static/css/portal_base.css" />
-  <link rel="stylesheet" href="/static/css/portal.css" />
+  <link rel="stylesheet" href="/portal-ui/static/css/portal_base.css?v={{ asset_v }}" />
+  <link rel="stylesheet" href="/static/css/portal.css?v={{ asset_v }}" />
   {# v1.8 — active theme wins over the phosphor fallback in
      portal_base.css by document order. Re-emitted per render, so a
      settings.toml theme change shows on the next refresh. #}
   {{ branding_style() }}
-  <script src="/portal-ui/static/js/htmx.min.js" defer></script>
+  <script src="/portal-ui/static/js/htmx.min.js?v={{ asset_v }}" defer></script>
   {# The htmx-sse extension only matters on the chat surface (when it
      lands). v0.11 retired SSE from signup; the script stays vendored
      in bss-portal-ui for the future chat page to opt in via
      ``hx-ext="sse"`` on the body. #}
-  <script src="/portal-ui/static/js/htmx-sse.js" defer></script>
+  <script src="/portal-ui/static/js/htmx-sse.js?v={{ asset_v }}" defer></script>
 </head>
 {# v0.11+ — the right-hand aside is a pluggable slot for any future
    "always visible companion panel" surface (v0.4 used it for the

@@ -757,3 +757,22 @@ def authed_client(fake_clients: FakeClientsBundle):
             yield c
 
     asyncio.run(_scrub())
+
+
+# v1.8 — every page render reads bss_branding.current(). Pin ALL tests
+# in this suite to default branding so the operator's live
+# .bss-cli/settings.toml (or BSS_BRAND_* env) can't change assertion
+# targets — the suite must pass on a rebranded deployment. Branding-
+# specific tests override BSS_BRANDING_DIR with their own fixture.
+@pytest.fixture(autouse=True)
+def _default_branding(tmp_path_factory, monkeypatch):
+    import bss_branding
+
+    monkeypatch.setenv(
+        "BSS_BRANDING_DIR", str(tmp_path_factory.mktemp("branding-default"))
+    )
+    for var in ("BSS_BRAND_NAME", "BSS_BRAND_THEME", "BSS_BRAND_MARK"):
+        monkeypatch.delenv(var, raising=False)
+    bss_branding.reset_cache()
+    yield
+    bss_branding.reset_cache()

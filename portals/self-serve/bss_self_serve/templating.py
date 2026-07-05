@@ -45,3 +45,14 @@ def _branding_style() -> Markup:
 
 templates.env.globals["branding"] = bss_branding.current
 templates.env.globals["branding_style"] = _branding_style
+
+# v1.8.0 fix — static-asset cache-buster, stamped at process start.
+# Mirrors the cockpit's v1.6.1 asset_v: without it browsers keep a
+# stale portal.css across deploys, so a theme change appears to
+# half-apply (chrome recolors via the inline :root block while
+# stylesheet-driven components keep the cached palette — the "data
+# bar is still green" bug). Process wall-clock, not bss_clock: this
+# is infrastructure, not business logic.
+import time  # noqa: E402
+
+templates.env.globals["asset_v"] = str(int(time.time()))
