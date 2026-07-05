@@ -373,6 +373,47 @@ doctrine-check: check-clock
 		exit 1; \
 	fi; \
 	echo "✓ COM/SOM consumers go through the safe bind_consumer helper"
+	@# v1.8 — email colors come from bss_branding.THEMES only. Any hex
+	@# literal in email.py means the palette single-source is broken
+	@# (the pre-v1.8 duplication with portal_base.css coming back).
+	@hits=$$(grep -nE '#[0-9a-fA-F]{6}' \
+		packages/bss-portal-auth/bss_portal_auth/email.py 2>/dev/null \
+		|| true); \
+	if [ -n "$$hits" ]; then \
+		echo "✗ hex color literal in email.py — colors must come from bss_branding.THEMES:"; \
+		echo "$$hits"; \
+		exit 1; \
+	fi; \
+	echo "✓ email palette comes from bss_branding.THEMES only"
+	@# v1.8 — the operator brand is config, not template text. The
+	@# footer's literal 'bss-cli v{{ bss_release }}' (product
+	@# attribution) deliberately does not match these patterns.
+	@hits=$$(grep -rnE 'brand-name">bss-cli|brand-mark">\$$|BSS-CLI (Self-Serve|Cockpit)</title>|· bss-cli self-serve' \
+		portals/self-serve/bss_self_serve/templates/ portals/csr/bss_csr/templates/ 2>/dev/null \
+		|| true); \
+	if [ -n "$$hits" ]; then \
+		echo "✗ operator brand hardcoded in a portal template — use branding().brand_name / .mark:"; \
+		echo "$$hits"; \
+		exit 1; \
+	fi; \
+	echo "✓ operator brand not hardcoded in portal templates"
+	@# v1.8 — settings.toml stays behind its two sanctioned modules:
+	@# bss_cockpit.config (bootstrap + ALL writes) and bss_branding
+	@# (read-only [branding]). repl.py's /config-edit $EDITOR seam is
+	@# the documented v0.13 carve-out.
+	@hits=$$(grep -rn "['\"]settings\.toml['\"]" --include='*.py' \
+		services portals cli orchestrator packages scenarios 2>/dev/null \
+		| grep -v '/tests/' \
+		| grep -v 'packages/bss-cockpit/bss_cockpit/config\.py' \
+		| grep -v 'packages/bss-branding/bss_branding/' \
+		| grep -v 'cli/bss_cli/repl\.py' \
+		|| true); \
+	if [ -n "$$hits" ]; then \
+		echo "✗ settings.toml touched outside bss_cockpit.config / bss_branding:"; \
+		echo "$$hits"; \
+		exit 1; \
+	fi; \
+	echo "✓ settings.toml stays behind bss_cockpit.config + bss_branding"
 
 fmt:
 	uv run ruff format .
