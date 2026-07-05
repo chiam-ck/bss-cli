@@ -9,6 +9,7 @@ dependencies = [
     "structlog>=24.0",
     "pydantic-settings>=2.0",
     "resend>=2.0",
+    "bss-branding",
     "bss-clock",
     "bss-models",
 ]
@@ -24,6 +25,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
+bss-branding = { workspace = true }
 bss-clock = { workspace = true }
 bss-models = { workspace = true }
 

@@ -24,6 +24,7 @@ the listed values raises at startup.
 
 from __future__ import annotations
 
+import html
 import time
 import warnings
 from datetime import datetime
@@ -31,6 +32,8 @@ from pathlib import Path
 from typing import Protocol
 
 import structlog
+from bss_branding import BrandingView
+from bss_branding import current as branding_current
 from bss_clock import now as clock_now
 
 log = structlog.get_logger(__name__)
@@ -38,7 +41,13 @@ log = structlog.get_logger(__name__)
 
 # ── HTML email template (matches the self-serve portal's vibe) ─────────
 #
-# Dark phosphor-green theme matching ``bss-portal-ui/portal_base.css``.
+# v1.8 — every color comes from the active ``bss_branding`` theme
+# palette (single source of truth with the portal CSS; the old
+# hardcoded ``_EMAIL_*`` hex constants are gone and ``make
+# doctrine-check`` greps this file for stray hex). Adapters resolve
+# ``bss_branding.current()`` per SEND, not at construction — the
+# settings.toml hot-reload applies to the next email, no restart.
+#
 # Inline styles only — gmail/outlook/apple-mail strip <style> blocks.
 # Table-based outer layout because email clients still distrust flexbox.
 # Web-safe font stack with monospace fallback for the OTP block.
@@ -46,17 +55,13 @@ log = structlog.get_logger(__name__)
 # The template is intentionally small: a header brand line, a heading,
 # one paragraph, an OTP block, an optional CTA button, and a footnote.
 # No images, no remote resources — keeps it compact and avoids
-# tracking-pixel paranoia from receiving servers.
-
-_EMAIL_BG = "#0e1014"          # body bg (matches --bg)
-_EMAIL_CARD = "#171a20"        # card bg (--bg-elev)
-_EMAIL_INSET = "#1f232b"       # OTP block bg (--bg-inset)
-_EMAIL_FG = "#d8d8d4"          # primary text (--fg)
-_EMAIL_MUTED = "#8a8f99"       # muted text (--fg-muted)
-_EMAIL_DIM = "#5a5e66"         # dim text (--fg-dim)
-_EMAIL_ACCENT = "#74d535"      # phosphor green (--accent)
-_EMAIL_ACCENT_DIM = "#4d8a22"  # accent-dim
-_EMAIL_BORDER = "#2a2e38"      # border
+# tracking-pixel paranoia from receiving servers. The uploaded logo
+# image (if any) deliberately does NOT appear here: emails keep the
+# text mark.
+#
+# SECURITY: brand name + mark are operator input flowing into
+# hand-built HTML. ``html.escape`` at this seam is mandatory, not
+# cosmetic — Jinja autoescape does not cover these f-strings.
 
 _FONT_SANS = (
     "-apple-system, BlinkMacSystemFont, 'Segoe UI', "
@@ -99,6 +104,7 @@ def _humanize_action_label(label: str) -> str:
 
 def _render_notification_email(
     *,
+    brand: BrandingView,
     preheader: str,
     heading: str,
     intro: str,
@@ -120,16 +126,19 @@ def _render_notification_email(
     ``highlight_sub`` is an optional smaller line under it (e.g.
     ``"renews 5 Jun 2026"``); pass ``None`` to omit.
     """
+    t = brand.theme
+    name_html = html.escape(brand.brand_name)
+    mark_html = html.escape(brand.mark)
     cta_html = ""
     if cta_label and cta_url:
         cta_html = (
             f'<tr><td align="center" style="padding: 8px 0 24px 0;">'
             f'<a href="{cta_url}" '
             f'style="display:inline-block;'
-            f'background:{_EMAIL_ACCENT};color:#0e1014;'
+            f'background:{t.accent};color:{t.on_accent};'
             f'font-family:{_FONT_SANS};font-weight:600;font-size:14px;'
             f'text-decoration:none;padding:11px 24px;border-radius:6px;'
-            f'border:1px solid {_EMAIL_ACCENT_DIM};">{cta_label}</a>'
+            f'border:1px solid {t.accent_dim};">{cta_label}</a>'
             f'</td></tr>'
         )
 
@@ -137,7 +146,7 @@ def _render_notification_email(
     if highlight_sub:
         sub_html = (
             f'<div style="margin-top:8px;font-family:{_FONT_SANS};'
-            f'font-size:13px;color:{_EMAIL_MUTED};">{highlight_sub}</div>'
+            f'font-size:13px;color:{t.fg_muted};">{highlight_sub}</div>'
         )
 
     return (
@@ -149,53 +158,53 @@ def _render_notification_email(
         '<meta name="supported-color-schemes" content="dark light">'
         f'<title>{heading}</title>'
         '</head>'
-        f'<body style="margin:0;padding:0;background:{_EMAIL_BG};'
-        f'color:{_EMAIL_FG};font-family:{_FONT_SANS};">'
+        f'<body style="margin:0;padding:0;background:{t.bg};'
+        f'color:{t.fg};font-family:{_FONT_SANS};">'
         f'<div style="display:none;max-height:0;overflow:hidden;'
         f'opacity:0;color:transparent;">{preheader}</div>'
         '<table role="presentation" width="100%" cellspacing="0" '
-        f'cellpadding="0" border="0" style="background:{_EMAIL_BG};">'
+        f'cellpadding="0" border="0" style="background:{t.bg};">'
         '<tr><td align="center" style="padding: 32px 16px;">'
         '<table role="presentation" width="100%" cellspacing="0" '
         f'cellpadding="0" border="0" '
-        f'style="max-width:480px;background:{_EMAIL_CARD};'
-        f'border:1px solid {_EMAIL_BORDER};border-radius:8px;'
+        f'style="max-width:480px;background:{t.bg_elev};'
+        f'border:1px solid {t.border};border-radius:8px;'
         f'overflow:hidden;">'
         f'<tr><td style="padding:18px 24px;border-bottom:1px solid '
-        f'{_EMAIL_BORDER};font-family:{_FONT_MONO};font-size:13px;">'
-        f'<span style="color:{_EMAIL_ACCENT};font-weight:700;">▶</span>'
-        f'<span style="color:{_EMAIL_FG};font-weight:600;'
-        ' margin-left:8px;">bss-cli</span>'
-        f'<span style="color:{_EMAIL_MUTED};margin-left:8px;">'
+        f'{t.border};font-family:{_FONT_MONO};font-size:13px;">'
+        f'<span style="color:{t.accent};font-weight:700;">{mark_html}</span>'
+        f'<span style="color:{t.fg};font-weight:600;'
+        f' margin-left:8px;">{name_html}</span>'
+        f'<span style="color:{t.fg_muted};margin-left:8px;">'
         ' / self-serve portal</span>'
         '</td></tr>'
         f'<tr><td style="padding:28px 24px 12px 24px;">'
         f'<h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;'
-        f'color:{_EMAIL_FG};font-weight:600;">{heading}</h1>'
+        f'color:{t.fg};font-weight:600;">{heading}</h1>'
         f'<p style="margin:0 0 20px 0;font-size:15px;line-height:1.5;'
-        f'color:{_EMAIL_FG};">{intro}</p>'
+        f'color:{t.fg};">{intro}</p>'
         '</td></tr>'
-        # Highlight block — same border + green color as the OTP block,
+        # Highlight block — same border + accent color as the OTP block,
         # but content is non-secret (amount, plan, etc.).
         '<tr><td align="center" style="padding: 0 24px 16px 24px;">'
-        f'<div style="display:inline-block;background:{_EMAIL_INSET};'
-        f'border:1px solid {_EMAIL_BORDER};border-radius:6px;'
+        f'<div style="display:inline-block;background:{t.bg_inset};'
+        f'border:1px solid {t.border};border-radius:6px;'
         f'padding:14px 22px;font-family:{_FONT_MONO};'
         f'font-size:22px;font-weight:600;'
-        f'color:{_EMAIL_ACCENT};">{highlight}{sub_html}</div>'
+        f'color:{t.accent};">{highlight}{sub_html}</div>'
         '</td></tr>'
         + cta_html +
         f'<tr><td style="padding: 12px 24px 24px 24px;">'
         f'<p style="margin:0;font-family:{_FONT_SANS};font-size:12px;'
-        f'line-height:1.5;color:{_EMAIL_MUTED};">{footnote}</p>'
+        f'line-height:1.5;color:{t.fg_muted};">{footnote}</p>'
         '</td></tr>'
         '</table>'
         f'<table role="presentation" width="100%" cellspacing="0" '
         f'cellpadding="0" border="0" style="max-width:480px;'
         f'margin-top:16px;">'
         f'<tr><td align="center" style="font-family:{_FONT_MONO};'
-        f'font-size:11px;color:{_EMAIL_DIM};">'
-        '— sent by BSS-CLI · transactional only —'
+        f'font-size:11px;color:{t.fg_dim};">'
+        f'— sent by {name_html} · powered by bss-cli · transactional only —'
         '</td></tr>'
         '</table>'
         '</td></tr></table>'
@@ -205,6 +214,7 @@ def _render_notification_email(
 
 def _render_email(
     *,
+    brand: BrandingView,
     preheader: str,
     heading: str,
     intro: str,
@@ -227,16 +237,19 @@ def _render_email(
     Step-up emails skip the CTA (OTP-only) because there's no neutral
     page to land on.
     """
+    t = brand.theme
+    name_html = html.escape(brand.brand_name)
+    mark_html = html.escape(brand.mark)
     cta_html = ""
     if cta_label and cta_url:
         cta_html = (
             f'<tr><td align="center" style="padding: 8px 0 24px 0;">'
             f'<a href="{cta_url}" '
             f'style="display:inline-block;'
-            f'background:{_EMAIL_ACCENT};color:#0e1014;'
+            f'background:{t.accent};color:{t.on_accent};'
             f'font-family:{_FONT_SANS};font-weight:600;font-size:14px;'
             f'text-decoration:none;padding:11px 24px;border-radius:6px;'
-            f'border:1px solid {_EMAIL_ACCENT_DIM};">{cta_label}</a>'
+            f'border:1px solid {t.accent_dim};">{cta_label}</a>'
             f'</td></tr>'
         )
 
@@ -249,49 +262,49 @@ def _render_email(
         '<meta name="supported-color-schemes" content="dark light">'
         f'<title>{heading}</title>'
         '</head>'
-        f'<body style="margin:0;padding:0;background:{_EMAIL_BG};'
-        f'color:{_EMAIL_FG};font-family:{_FONT_SANS};">'
+        f'<body style="margin:0;padding:0;background:{t.bg};'
+        f'color:{t.fg};font-family:{_FONT_SANS};">'
         # Hidden preheader for inbox preview.
         f'<div style="display:none;max-height:0;overflow:hidden;'
         f'opacity:0;color:transparent;">{preheader}</div>'
         '<table role="presentation" width="100%" cellspacing="0" '
-        f'cellpadding="0" border="0" style="background:{_EMAIL_BG};">'
+        f'cellpadding="0" border="0" style="background:{t.bg};">'
         '<tr><td align="center" style="padding: 32px 16px;">'
         # Card.
         '<table role="presentation" width="100%" cellspacing="0" '
         f'cellpadding="0" border="0" '
-        f'style="max-width:480px;background:{_EMAIL_CARD};'
-        f'border:1px solid {_EMAIL_BORDER};border-radius:8px;'
+        f'style="max-width:480px;background:{t.bg_elev};'
+        f'border:1px solid {t.border};border-radius:8px;'
         f'overflow:hidden;">'
         # Header.
         f'<tr><td style="padding:18px 24px;border-bottom:1px solid '
-        f'{_EMAIL_BORDER};font-family:{_FONT_MONO};font-size:13px;">'
-        f'<span style="color:{_EMAIL_ACCENT};font-weight:700;">▶</span>'
-        f'<span style="color:{_EMAIL_FG};font-weight:600;'
-        ' margin-left:8px;">bss-cli</span>'
-        f'<span style="color:{_EMAIL_MUTED};margin-left:8px;">'
+        f'{t.border};font-family:{_FONT_MONO};font-size:13px;">'
+        f'<span style="color:{t.accent};font-weight:700;">{mark_html}</span>'
+        f'<span style="color:{t.fg};font-weight:600;'
+        f' margin-left:8px;">{name_html}</span>'
+        f'<span style="color:{t.fg_muted};margin-left:8px;">'
         ' / self-serve portal</span>'
         '</td></tr>'
         # Body.
         f'<tr><td style="padding:28px 24px 12px 24px;">'
         f'<h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;'
-        f'color:{_EMAIL_FG};font-weight:600;">{heading}</h1>'
+        f'color:{t.fg};font-weight:600;">{heading}</h1>'
         f'<p style="margin:0 0 20px 0;font-size:15px;line-height:1.5;'
-        f'color:{_EMAIL_FG};">{intro}</p>'
+        f'color:{t.fg};">{intro}</p>'
         '</td></tr>'
         # OTP block.
         '<tr><td align="center" style="padding: 0 24px 16px 24px;">'
-        f'<div style="display:inline-block;background:{_EMAIL_INSET};'
-        f'border:1px solid {_EMAIL_BORDER};border-radius:6px;'
+        f'<div style="display:inline-block;background:{t.bg_inset};'
+        f'border:1px solid {t.border};border-radius:6px;'
         f'padding:14px 22px;font-family:{_FONT_MONO};'
         f'font-size:26px;letter-spacing:6px;font-weight:600;'
-        f'color:{_EMAIL_ACCENT};">{otp}</div>'
+        f'color:{t.accent};">{otp}</div>'
         '</td></tr>'
         + cta_html +
         # Footnote.
         f'<tr><td style="padding: 12px 24px 24px 24px;">'
         f'<p style="margin:0;font-family:{_FONT_SANS};font-size:12px;'
-        f'line-height:1.5;color:{_EMAIL_MUTED};">{footnote}</p>'
+        f'line-height:1.5;color:{t.fg_muted};">{footnote}</p>'
         '</td></tr>'
         '</table>'
         # Outer footer.
@@ -299,8 +312,8 @@ def _render_email(
         f'cellpadding="0" border="0" style="max-width:480px;'
         f'margin-top:16px;">'
         f'<tr><td align="center" style="font-family:{_FONT_MONO};'
-        f'font-size:11px;color:{_EMAIL_DIM};">'
-        '— sent by BSS-CLI · transactional only —'
+        f'font-size:11px;color:{t.fg_dim};">'
+        f'— sent by {name_html} · powered by bss-cli · transactional only —'
         '</td></tr>'
         '</table>'
         '</td></tr></table>'
@@ -368,10 +381,13 @@ class LoggingEmailAdapter:
                 fh.write(line + "\n")
 
     def send_login(self, email: str, otp: str, magic_link: str) -> None:
+        # e2e contract: helpers match on the "portal login code"
+        # substring — keep it invariant however the brand is set.
+        brand_name = branding_current().brand_name
         self._append(
             [
                 f"To: {email}",
-                "Subject: Your bss-cli portal login code",
+                f"Subject: Your {brand_name} portal login code",
                 "",
                 f"OTP: {otp}",
                 f"Magic link: {magic_link}",
@@ -407,10 +423,11 @@ class LoggingEmailAdapter:
     def send_email_change_verification(
         self, new_email: str, otp: str, magic_link: str
     ) -> None:
+        brand_name = branding_current().brand_name
         self._append(
             [
                 f"To: {new_email}",
-                "Subject: Verify your new email for bss-cli",
+                f"Subject: Verify your new email for {brand_name}",
                 "",
                 f"OTP: {otp}",
                 f"Magic link: {magic_link}",
@@ -553,9 +570,12 @@ class ResendEmailAdapter:
     # ── public API (sync) ────────────────────────────────────────────
 
     def send_login(self, email: str, otp: str, magic_link: str) -> None:
+        brand = branding_current()
+        name, name_html = brand.brand_name, html.escape(brand.brand_name)
         body_html = _render_email(
+            brand=brand,
             preheader=f"Your login code: {otp}. Expires in 15 minutes.",
-            heading="Sign in to BSS-CLI",
+            heading=f"Sign in to {name_html}",
             intro="Use the code below or click the button to sign in.",
             otp=otp,
             cta_label="Sign in",
@@ -563,7 +583,7 @@ class ResendEmailAdapter:
             footnote="Code expires in 15 minutes. If you didn't request this, you can ignore this email.",
         )
         body_text = (
-            f"BSS-CLI — sign in\n"
+            f"{name} — sign in\n"
             f"\n"
             f"OTP: {otp}\n"
             f"Magic link: {magic_link}\n"
@@ -574,14 +594,16 @@ class ResendEmailAdapter:
         self._send(
             operation="send_login",
             to=email,
-            subject="Your BSS-CLI sign-in code",
+            subject=f"Your {name} sign-in code",
             html=body_html,
             text=body_text,
         )
 
     def send_step_up(self, email: str, otp: str, action_label: str) -> None:
         human = _humanize_action_label(action_label)
+        brand = branding_current()
         body_html = _render_email(
+            brand=brand,
             preheader=f"Confirm: {human}. Code: {otp}. Expires in 5 minutes.",
             heading=human,
             intro=(
@@ -600,7 +622,7 @@ class ResendEmailAdapter:
             ),
         )
         body_text = (
-            f"BSS-CLI — confirm: {human}\n"
+            f"{brand.brand_name} — confirm: {human}\n"
             f"\n"
             f"OTP: {otp}\n"
             f"\n"
@@ -618,17 +640,23 @@ class ResendEmailAdapter:
     def send_email_change_verification(
         self, new_email: str, otp: str, magic_link: str
     ) -> None:
+        brand = branding_current()
+        name, name_html = brand.brand_name, html.escape(brand.brand_name)
         body_html = _render_email(
+            brand=brand,
             preheader=f"Verify your new email. Code: {otp}.",
             heading="Verify your new email",
-            intro="Enter this code or click the button to confirm this email address for your BSS-CLI account.",
+            intro=(
+                "Enter this code or click the button to confirm this "
+                f"email address for your {name_html} account."
+            ),
             otp=otp,
             cta_label="Verify email",
             cta_url=magic_link,
             footnote="If you didn't request an email change, ignore this email and your account stays unchanged.",
         )
         body_text = (
-            f"BSS-CLI — verify your new email\n"
+            f"{name} — verify your new email\n"
             f"\n"
             f"OTP: {otp}\n"
             f"Magic link: {magic_link}\n"
@@ -638,7 +666,7 @@ class ResendEmailAdapter:
         self._send(
             operation="send_email_change",
             to=new_email,
-            subject="Verify your new email for BSS-CLI",
+            subject=f"Verify your new email for {name}",
             html=body_html,
             text=body_text,
         )
@@ -653,7 +681,9 @@ class ResendEmailAdapter:
         currency: str,
         renewal_date: str,
     ) -> None:
+        brand = branding_current()
         body_html = _render_notification_email(
+            brand=brand,
             preheader=(
                 f"Your {plan_name} plan renews {renewal_date} for "
                 f"{currency} {amount}."
@@ -676,7 +706,7 @@ class ResendEmailAdapter:
             ),
         )
         body_text = (
-            f"BSS-CLI — your {plan_name} plan renews soon\n"
+            f"{brand.brand_name} — your {plan_name} plan renews soon\n"
             f"\n"
             f"Line: {msisdn}\n"
             f"Renews on: {renewal_date}\n"

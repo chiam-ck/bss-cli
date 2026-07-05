@@ -121,7 +121,7 @@ def test_resend_adapter_send_login_calls_sdk_with_correct_params(fake_resend):
     assert params["to"] == ["ada@example.sg"]
     assert "424242" in params["html"] and "424242" in params["text"]
     assert "https://x/m" in params["html"] and "https://x/m" in params["text"]
-    assert params["subject"] == "Your BSS-CLI sign-in code"
+    assert params["subject"] == "Your bss-cli sign-in code"
 
 
 def test_resend_adapter_send_step_up_includes_action_label(fake_resend):
