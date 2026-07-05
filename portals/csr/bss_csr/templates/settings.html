@@ -36,6 +36,8 @@
       dev URL overrides. Validated by Pydantic before saving; a parse
       error keeps the prior good view in effect.
       <code>{{ settings_path }}</code>
+      The <code>[branding]</code> section has a visual editor at
+      <a href="/settings/branding">Settings → Branding</a>.
     </p>
     {% if error and error_section == "config" %}
       <p class="settings-error">{{ error }}</p>

@@ -106,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     from .routes import (
+        branding,
         branding_assets,
         case,
         cases,
@@ -131,7 +132,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(subscriptions.router)
     app.include_router(search.router)
     app.include_router(settings_routes.router)
-    # v1.8 — uploaded operator logo (layout header <img>).
+    # v1.8 — branding screen + uploaded operator logo.
+    app.include_router(branding.router)
     app.include_router(branding_assets.router)
 
     return app

@@ -1,0 +1,28 @@
+{# v1.8 — live branding preview. A scoped div overrides the CSS custom
+   properties inline, so every child styled with var(--…) follows the
+   CANDIDATE palette while the rest of the page keeps the active one.
+   Pure CSS cascade — no iframe, no JS. Rendered by
+   GET /settings/branding/preview (never writes). #}
+<div class="branding-preview"
+     style="--bg:{{ t.bg }};--bg-elev:{{ t.bg_elev }};--bg-inset:{{ t.bg_inset }};--bg-code:{{ t.bg_code }};--fg:{{ t.fg }};--fg-muted:{{ t.fg_muted }};--fg-dim:{{ t.fg_dim }};--accent:{{ t.accent }};--accent-bright:{{ t.accent_bright }};--accent-dim:{{ t.accent_dim }};--border:{{ t.border }};--border-strong:{{ t.border_strong }};--on-accent:{{ t.on_accent }}">
+  <div class="branding-preview-chrome">
+    <span class="branding-preview-mark">{{ mark }}</span>
+    <span class="branding-preview-name">{{ name }}</span>
+    <span class="branding-preview-tag">/ self-serve</span>
+  </div>
+  <div class="branding-preview-body">
+    <p class="branding-preview-copy">Your <strong>Standard</strong> plan renews on 5 Aug 2026.</p>
+    <p class="branding-preview-muted">Card on file will be charged automatically.</p>
+    <span class="branding-preview-btn">Sign in</span>
+    <div class="branding-preview-email">
+      <div class="branding-preview-email-head">
+        <span class="branding-preview-mark">{{ mark }}</span>
+        <span class="branding-preview-name">{{ name }}</span>
+        <span class="branding-preview-tag">/ self-serve portal</span>
+      </div>
+      <div class="branding-preview-otp">424242</div>
+      <div class="branding-preview-email-foot">— sent by {{ name }} · powered by bss-cli · transactional only —</div>
+    </div>
+    <div class="branding-preview-theme-label">{{ t.label }}</div>
+  </div>
+</div>
