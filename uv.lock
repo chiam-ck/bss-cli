@@ -264,6 +264,7 @@ name = "bss-cli"
 version = "0.1.0"
 source = { editable = "cli" }
 dependencies = [
+    { name = "bss-branding" },
     { name = "bss-clients" },
     { name = "bss-clock" },
     { name = "bss-cockpit" },
@@ -294,6 +295,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "bss-branding", editable = "packages/bss-branding" },
     { name = "bss-clients", editable = "packages/bss-clients" },
     { name = "bss-clock", editable = "packages/bss-clock" },
     { name = "bss-cockpit", editable = "packages/bss-cockpit" },

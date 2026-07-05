@@ -50,6 +50,9 @@ from .commands import (
     admin as admin_cmd,
 )
 from .commands import (
+    branding as branding_cmd,
+)
+from .commands import (
     case as case_cmd,
 )
 from .commands import (
@@ -123,6 +126,7 @@ app.add_typer(inventory_cmd.app, name="inventory")
 app.add_typer(clock_cmd.app, name="clock")
 app.add_typer(trace_cmd.app, name="trace")
 app.add_typer(admin_cmd.app, name="admin")
+app.add_typer(branding_cmd.app, name="branding")
 app.add_typer(scenario_cmd.app, name="scenario")
 app.add_typer(onboard_cmd.app, name="onboard")
 app.add_typer(external_calls_cmd.app, name="external-calls")

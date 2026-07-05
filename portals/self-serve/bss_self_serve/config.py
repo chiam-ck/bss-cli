@@ -80,7 +80,10 @@ class Settings(BaseSettings):
     # LLM has a real support address to mention. Operators set this
     # in ``.env``; defaults are dev-friendly.
     bss_operator_support_email: str = "support@bss-cli.local"
-    bss_operator_name: str = "BSS-CLI Mobile"
+    # v1.8 — unified with [branding].brand_name: when unset, the chat
+    # greets with the operator brand from bss_branding.current().
+    # Setting BSS_OPERATOR_NAME in .env remains an explicit override.
+    bss_operator_name: str | None = None
 
 
 settings = Settings()

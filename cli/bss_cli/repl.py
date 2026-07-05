@@ -79,6 +79,7 @@ def _make_prompt_session() -> PromptSession:
         enable_history_search=True,  # Ctrl-R / Ctrl-N substring search
     )
 
+import bss_branding
 from bss_clients.errors import ClientError
 from bss_cockpit import (
     OPERATOR_ACTOR,
@@ -155,11 +156,18 @@ def _render_banner(
     customer_focus: str | None,
     allow_destructive_default: bool,
 ) -> Panel:
-    logo = Text(_LOGO, style="bold green", no_wrap=True)
+    # v1.8 — the banner follows the operator branding (name + theme's
+    # Rich accent). Read per render: hot-reload, like the portals.
+    # The _LOGO ASCII art is product art and stays; the version is
+    # demoted to a dim footnote (product attribution, never rebranded).
+    brand = bss_branding.current()
+    accent = brand.theme.rich_accent
+    logo = Text(_LOGO, style=f"bold {accent}", no_wrap=True)
     tagline = Align.center(
         Text.from_markup(
+            f"[bold white]{brand.brand_name}[/]   [dim]·[/]   "
             "[bold white]LLM-native Business Support System[/]   "
-            f"[dim]·[/]   [magenta]operator cockpit v{BSS_RELEASE}[/]"
+            "[dim]·[/]   [magenta]operator cockpit[/]"
         )
     )
 
@@ -188,6 +196,7 @@ def _render_banner(
         meta_line,
         Text(""),
         hints,
+        Align.center(Text.from_markup(f"[dim]bss-cli v{BSS_RELEASE}[/]")),
     ]
     if allow_destructive_default:
         parts += [
@@ -201,9 +210,12 @@ def _render_banner(
         ]
     return Panel(
         Group(*parts),
-        border_style="green",
+        border_style=accent,
         padding=(0, 1),
-        title="[bold green]bss[/] [dim]·[/] [white]cockpit[/]",
+        title=(
+            f"[bold {accent}]{brand.mark}[/] "
+            f"[white]{brand.brand_name}[/] [dim]· cockpit[/]"
+        ),
         title_align="left",
         subtitle="[dim]type a request or a /command[/]",
         subtitle_align="right",

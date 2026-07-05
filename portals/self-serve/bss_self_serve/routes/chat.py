@@ -39,6 +39,7 @@ import re as _re
 from collections.abc import AsyncIterator
 from urllib.parse import urlencode
 
+import bss_branding
 import structlog
 from bss_orchestrator.chat_caps import check_caps, record_chat_turn
 from bss_orchestrator.customer_chat_prompt import (
@@ -423,7 +424,12 @@ async def chat_events(
                        if ctx["is_linked"] else "browsing"),
         current_plan=ctx["plan_id"],
         balance_summary=build_balance_summary(primary_sub),
-        operator_name=portal_settings.bss_operator_name,
+        # v1.8 — branding is the source; BSS_OPERATOR_NAME env is the
+        # explicit override for deployments that set it.
+        operator_name=(
+            portal_settings.bss_operator_name
+            or bss_branding.current().brand_name
+        ),
         operator_support_email=portal_settings.bss_operator_support_email,
         prior_messages=prior_pairs,
         is_linked=ctx["is_linked"],
