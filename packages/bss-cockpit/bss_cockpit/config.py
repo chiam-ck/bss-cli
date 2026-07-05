@@ -40,6 +40,20 @@ from datetime import datetime
 from pathlib import Path
 
 import structlog
+import tomlkit
+from bss_branding import (
+    LOGO_FILENAMES,
+    LOGO_SUBDIR,
+    MAX_LOGO_BYTES,
+    BrandingSettings,
+    sniff_image_type,
+)
+from bss_branding import (
+    file_settings as _branding_file_settings,
+)
+from bss_branding import (
+    reset_cache as _reset_branding_cache,
+)
 from bss_clock import now as clock_now
 from pydantic import BaseModel, Field, ValidationError
 
@@ -92,6 +106,15 @@ allow_destructive_default = false
 csr_portal = 9002
 
 [dev_service_urls]
+
+[branding]
+# v1.8 operator branding — portal headers, emails, REPL banner.
+# Edit visually at http://localhost:9002/settings/branding.
+# Commented keys fall back to defaults (brand_name = "bss-cli",
+# theme = "phosphor", mark = "$").
+# brand_name = "bss-cli"
+# theme = "phosphor"   # phosphor | amber-crt | ice | magenta | paper | solarized-dark
+# mark = "$"           # 1-3 char text logo; portals prefer an uploaded logo image
 """
 
 
@@ -130,6 +153,10 @@ class CockpitSettings(BaseModel):
     ports: _PortsSection = _PortsSection()
     # Free-form per-service URL overrides. Empty by default.
     dev_service_urls: dict[str, str] = Field(default_factory=dict)
+    # v1.8 — operator branding. The section model lives in
+    # bss-branding (the shared READ path); embedding it here puts the
+    # cockpit's whole-document validation gate in front of every write.
+    branding: BrandingSettings = BrandingSettings()
 
 
 @dataclass(frozen=True)
@@ -219,9 +246,7 @@ def _autobootstrap_if_missing(path: Path, template_suffix: str = ".template") ->
         )
 
 
-def _load_from_disk(
-    operator_md_path: Path, settings_path: Path
-) -> CockpitConfig:
+def _load_from_disk(operator_md_path: Path, settings_path: Path) -> CockpitConfig:
     """Read both files, validate, return a fresh ``CockpitConfig``.
 
     Raises any IO / validation error to the caller. ``current()`` is
@@ -250,7 +275,7 @@ def current(*, root: Path | None = None) -> CockpitConfig:
 
     ``root`` overrides the auto-located ``.bss-cli/`` (used in tests).
     """
-    bss_cli = (root if root is not None else _bss_cli_dir())
+    bss_cli = root if root is not None else _bss_cli_dir()
     operator_md_path = bss_cli / "OPERATOR.md"
     settings_path = bss_cli / "settings.toml"
 
@@ -309,7 +334,7 @@ def write_operator_md(content: str, *, root: Path | None = None) -> None:
     """
     if not content.strip():
         raise ValueError("OPERATOR.md cannot be empty")
-    bss_cli = (root if root is not None else _bss_cli_dir())
+    bss_cli = root if root is not None else _bss_cli_dir()
     bss_cli.mkdir(parents=True, exist_ok=True)
     (bss_cli / "OPERATOR.md").write_text(content, encoding="utf-8")
     # Force a reload on the next current() call.
@@ -325,8 +350,94 @@ def write_settings_toml(content: str, *, root: Path | None = None) -> CockpitSet
     """
     raw = tomllib.loads(content)
     validated = CockpitSettings.model_validate(raw)
-    bss_cli = (root if root is not None else _bss_cli_dir())
+    bss_cli = root if root is not None else _bss_cli_dir()
     bss_cli.mkdir(parents=True, exist_ok=True)
     (bss_cli / "settings.toml").write_text(content, encoding="utf-8")
     reset_cache()
+    # A raw-textarea edit can change [branding] too — the read-side
+    # cache in bss-branding must not serve a stale view.
+    _reset_branding_cache()
     return validated
+
+
+# ─────────────────────────────────────────────────────────────────────
+# v1.8 branding writers — the [branding] section + logo file.
+# Read side lives in bss-branding (bss_branding.current()); every
+# WRITE stays here behind the same validation gate as the rest of
+# settings.toml (doctrine, amended v1.8).
+# ─────────────────────────────────────────────────────────────────────
+
+
+def write_branding_settings(update: BrandingSettings, *, root: Path | None = None) -> CockpitSettings:
+    """Replace the ``[branding]`` table, preserving the rest of the file.
+
+    tomlkit round-trips the document so operator comments in other
+    sections ([llm], [dev_service_urls], …) survive; comments *inside*
+    [branding] are machine-owned and replaced wholesale. The whole
+    document is re-validated as ``CockpitSettings`` before anything
+    touches disk. Raises ``ValidationError`` / ``TOMLDecodeError`` on
+    bad input — callers surface the message (400 page, CLI error).
+    """
+    bss_cli = root if root is not None else _bss_cli_dir()
+    settings_path = bss_cli / "settings.toml"
+    _autobootstrap_if_missing(settings_path)
+
+    doc = tomlkit.parse(settings_path.read_text(encoding="utf-8"))
+    table = tomlkit.table()
+    for key, value in update.model_dump().items():
+        table[key] = value
+    doc["branding"] = table
+    content = tomlkit.dumps(doc)
+
+    validated = CockpitSettings.model_validate(tomllib.loads(content))
+    settings_path.write_text(content, encoding="utf-8")
+    reset_cache()
+    _reset_branding_cache()
+    log.info(
+        "cockpit.branding.settings_saved",
+        theme=update.theme,
+        mark=update.mark,
+        has_logo=bool(update.logo_image),
+    )
+    return validated
+
+
+def write_branding_logo(data: bytes, *, root: Path | None = None) -> str:
+    """Persist an uploaded logo image; returns the fixed filename.
+
+    The bytes decide everything: magic-byte sniff picks the type (PNG/
+    JPEG/WebP only — never SVG), the type picks the fixed filename.
+    No user-controlled path component ever reaches the filesystem.
+    Stale siblings of other extensions are removed so ``logo_image``
+    always names the only file present. Logs size + type only.
+    """
+    if len(data) > MAX_LOGO_BYTES:
+        raise ValueError(f"logo is {len(data)} bytes — the cap is {MAX_LOGO_BYTES} (256 KB)")
+    kind = sniff_image_type(data)
+    if kind is None:
+        raise ValueError("logo must be a PNG, JPEG or WebP image (SVG is not accepted)")
+
+    bss_cli = root if root is not None else _bss_cli_dir()
+    logo_dir = bss_cli / LOGO_SUBDIR
+    logo_dir.mkdir(parents=True, exist_ok=True)
+    filename = LOGO_FILENAMES[kind]
+    (logo_dir / filename).write_bytes(data)
+    for stale in set(LOGO_FILENAMES.values()) - {filename}:
+        (logo_dir / stale).unlink(missing_ok=True)
+
+    branding = _branding_file_settings(root=bss_cli)
+    write_branding_settings(branding.model_copy(update={"logo_image": filename}), root=bss_cli)
+    log.info("cockpit.branding.logo_saved", size=len(data), type=kind)
+    return filename
+
+
+def remove_branding_logo(*, root: Path | None = None) -> None:
+    """Delete the uploaded logo and clear ``logo_image``. Portals fall
+    back to the text mark on the next render."""
+    bss_cli = root if root is not None else _bss_cli_dir()
+    logo_dir = bss_cli / LOGO_SUBDIR
+    for filename in LOGO_FILENAMES.values():
+        (logo_dir / filename).unlink(missing_ok=True)
+    branding = _branding_file_settings(root=bss_cli)
+    write_branding_settings(branding.model_copy(update={"logo_image": ""}), root=bss_cli)
+    log.info("cockpit.branding.logo_removed")

@@ -19,6 +19,7 @@ from .config import (
     BrandingView,
     branding_dir,
     current,
+    file_settings,
     reset_cache,
 )
 from .css import branding_css_block
@@ -41,6 +42,7 @@ __all__ = [
     "branding_css_block",
     "branding_dir",
     "current",
+    "file_settings",
     "reset_cache",
     "sniff_image_type",
     "validate_mark",

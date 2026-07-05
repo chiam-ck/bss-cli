@@ -22,3 +22,12 @@ csr_portal = 9002
 [dev_service_urls]
 # Optional per-service URL overrides. Empty table = use env defaults.
 # crm = "http://localhost:8002"
+
+[branding]
+# v1.8 operator branding — portal headers, emails, REPL banner.
+# Edit visually at http://localhost:9002/settings/branding.
+# Commented keys fall back to defaults (brand_name = "bss-cli",
+# theme = "phosphor", mark = "$").
+# brand_name = "bss-cli"
+# theme = "phosphor"   # phosphor | amber-crt | ice | magenta | paper | solarized-dark
+# mark = "$"           # 1-3 char text logo; portals prefer an uploaded logo image

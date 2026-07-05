@@ -32,7 +32,10 @@ from .config import (
     CockpitConfig,
     CockpitSettings,
     current,
+    remove_branding_logo,
     reset_cache,
+    write_branding_logo,
+    write_branding_settings,
     write_operator_md,
     write_settings_toml,
 )
@@ -64,9 +67,12 @@ __all__ = [
     "configure_store",
     "current",
     "knowledge_called",
+    "remove_branding_logo",
     "reset_cache",
     "strip_channel_markup",
     "strip_reasoning_leakage",
+    "write_branding_logo",
+    "write_branding_settings",
     "write_operator_md",
     "write_settings_toml",
 ]

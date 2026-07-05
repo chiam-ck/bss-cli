@@ -241,6 +241,18 @@ def current(*, root: Path | None = None) -> BrandingView:
     )
 
 
+def file_settings(*, root: Path | None = None) -> BrandingSettings:
+    """The ``[branding]`` table exactly as persisted — no env
+    overrides, no cache. Write-side callers (cockpit UI, CLI) use this
+    to seed their forms/mutations so an ``BSS_BRAND_*`` env override is
+    never accidentally baked into the file."""
+    base = root if root is not None else branding_dir()
+    try:
+        return _load_settings(base / "settings.toml")
+    except (tomllib.TOMLDecodeError, ValidationError, OSError):
+        return BrandingSettings()
+
+
 def reset_cache() -> None:
     """Clear the cache. Tests use this between cases."""
     with _lock:
