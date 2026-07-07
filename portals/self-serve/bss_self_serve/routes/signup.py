@@ -93,6 +93,7 @@ async def signup_form(
     # to empty placeholder behaviour if the CRM call fails.
     prefill_name = ""
     is_returning = bool(identity.customer_id)
+    returning_needs_card = False
     if is_returning:
         try:
             cust = await clients.crm.get_customer(identity.customer_id)
@@ -103,6 +104,17 @@ async def signup_form(
                 prefill_name = f"{given} {family}".strip()
         except Exception:  # noqa: BLE001 — best-effort read
             prefill_name = ""
+        # A linked identity doesn't guarantee a card on file — the
+        # first signup may have died before the COF step. If it did,
+        # the form must not promise "charged to the card on file", and
+        # in mock mode it must render the card input. Best-effort read;
+        # POST /signup re-checks authoritatively.
+        try:
+            returning_needs_card = not await clients.payment.list_methods(
+                identity.customer_id
+            )
+        except Exception:  # noqa: BLE001 — best-effort read
+            returning_needs_card = False
 
     # v1.1 — surface the customer's best applicable assigned (targeted) offer so
     # it shows pre-applied on the form with a remove toggle. Only a linked
@@ -129,6 +141,7 @@ async def signup_form(
             "identity_email": identity.email,
             "prefill_name": prefill_name,
             "is_returning": is_returning,
+            "returning_needs_card": returning_needs_card,
             "assigned_offer": assigned_offer,
             # v0.16 — drives the form's mode-switch (mock card-number
             # input vs Stripe-Elements-deferred-to-COF-step). The
@@ -276,13 +289,57 @@ async def signup_submit(
 
     if existing_customer_id:
         session.customer_id = existing_customer_id
-        # Skip create-customer (already exists), KYC (already attested
-        # — CRM's ``document_hash_unique_per_tenant`` would reject a
-        # duplicate anyway), AND COF (the customer's existing default
-        # method on file pays for the new line; no need to make them
-        # re-enter card details for a second line). Jump straight to
-        # placing the order.
-        session.step = "pending_order"
+        # Skip create-customer (the record exists), but do NOT infer
+        # that KYC and COF are done just because the identity is
+        # linked. Linking happens BEFORE the KYC/COF steps run (by
+        # design — see the atomic-bind comment below), so an abandoned
+        # or KYC-declined first signup leaves a linked identity with
+        # no attestation and no card on file. v0.11–v1.8 jumped
+        # straight to ``pending_order`` here and COM rejected the
+        # order with ``order.create.no_payment_method`` — a dead end
+        # for the customer. Instead, read the actual state and resume
+        # at the first incomplete step. A verified customer is still
+        # never re-attested (CRM's ``document_hash_unique_per_tenant``
+        # would reject the duplicate).
+        try:
+            kyc = await clients.crm.get_kyc_status(existing_customer_id)
+            methods = await clients.payment.list_methods(existing_customer_id)
+        except PolicyViolationFromServer as exc:
+            await _record_step(
+                factory,
+                session,
+                customer_id=existing_customer_id,
+                action="signup_create_customer",
+                route="/signup",
+                success=False,
+                error_rule=exc.rule,
+                request=request,
+            )
+            if not is_known(exc.rule):
+                log.info("portal.signup.unknown_policy_rule", rule=exc.rule)
+            session.step = "failed"
+            session.step_error = exc.rule
+            await store.update(session)
+            return await _render_failed(request, session, exc.rule)
+
+        kyc_verified = (
+            isinstance(kyc, dict) and kyc.get("kyc_status") == "verified"
+        )
+        # Mock mode collects the PAN on this form; a returning customer
+        # who still needs a card must supply one (the form renders the
+        # card input when it detects the missing COF).
+        if payment_provider == "mock" and not methods and not card_pan.strip():
+            await store.update(session)
+            return await _render_failed(
+                request, session, "policy.payment.method.invalid_card"
+            )
+
+        if not kyc_verified:
+            session.step = "pending_kyc"
+        elif not methods:
+            session.step = "pending_cof"
+        else:
+            session.step = "pending_order"
         await _record_step(
             factory,
             session,

@@ -332,6 +332,11 @@ class FakeCRM:
     attest_kyc_calls: list[dict[str, Any]] = field(default_factory=list)
     next_customer_id: str | None = None
     next_error: Exception | None = None
+    # v1.8.x — the returning-customer signup branch reads real KYC
+    # state instead of assuming a linked identity means verified.
+    # Mirrors crm.customer.kyc_status: unknown customers are
+    # "not_verified"; attest_kyc flips to "verified".
+    kyc_status_by_customer: dict[str, str] = field(default_factory=dict)
 
     async def create_customer(
         self,
@@ -375,11 +380,25 @@ class FakeCRM:
                 "provider_reference": provider_reference,
             }
         )
+        self.kyc_status_by_customer[customer_id] = "verified"
         return {
             "customerId": customer_id,
             "provider": provider,
             "status": "verified",
             "verifiedAt": "2026-04-27T00:00:00+00:00",
+        }
+
+    async def get_kyc_status(self, customer_id: str) -> dict[str, Any]:
+        # Snake_case shape — mirrors the CRM service's KycStatusResponse.
+        status = self.kyc_status_by_customer.get(customer_id, "not_verified")
+        return {
+            "customer_id": customer_id,
+            "kyc_status": status,
+            "kyc_verified_at": (
+                "2026-04-27T00:00:00+00:00" if status == "verified" else None
+            ),
+            "kyc_verification_method": "didit" if status == "verified" else None,
+            "kyc_reference": None,
         }
 
     async def get_customer(self, customer_id: str) -> dict[str, Any]:

@@ -54,7 +54,26 @@ RULE_MESSAGES: Final[Mapping[str, str]] = {
     "policy.subscription.plan_change.no_pending_change": (
         "No pending plan change to cancel."
     ),
+    # Order
+    "order.create.no_payment_method": (
+        "There's no payment card on your account yet. Add a card "
+        "first, then place your order again."
+    ),
+    # KYC — signup step errors set portal-side from the Didit decision
+    "kyc.declined": (
+        "We couldn't verify your identity, so signup can't continue. "
+        "Please check your document details and try again, or contact "
+        "support."
+    ),
+    "kyc.expired": (
+        "Your identity verification session expired before it was "
+        "completed. Please start the signup again."
+    ),
     # Payment
+    "policy.payment.method.invalid_card": (
+        "That card number doesn't look right. Please check it and "
+        "try again."
+    ),
     "policy.payment.method.declined": (
         "Your card was declined. Please check the details or use a different card."
     ),
