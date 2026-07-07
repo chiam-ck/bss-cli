@@ -10,7 +10,7 @@ service ``/health`` versions). One bump per release; doctrine.
 # Single source of truth for the platform release version. Every surface
 # (REPL, CSR cockpit, self-serve portal, service /health) imports this
 # so a release bump is one line. Bump on every release tag.
-BSS_RELEASE = "1.8.0"
+BSS_RELEASE = "1.8.1"
 
 # Audit (3 tables — v0.12 added ChatUsage + ChatTranscript)
 from .audit import ChatTranscript, ChatUsage, DomainEvent

@@ -36,22 +36,31 @@
     <label>Contact phone
       <input type="tel" name="phone" required autocomplete="tel" placeholder="+65 9000 0000" value="+65" />
     </label>
-    {% if is_returning %}
+    {% if is_returning and not returning_needs_card %}
     <p class="form-hint">
       Welcome back — your name's pre-filled from your existing line.
       The new line will be charged to the card on file you used last
       time, so you don't need to re-enter card details.
     </p>
+    {% elif is_returning %}
+    <p class="form-hint">
+      Welcome back — your name's pre-filled from your existing account.
+      Your previous signup didn't finish, so we'll pick up where it
+      left off after you submit.
+    </p>
     {% endif %}
   </fieldset>
 
-  {% if is_returning %}
-    {# v0.11 — second-line shortcut. Returning visitors keep their
-       existing KYC attestation + default card on file; the chain
-       skips both steps server-side, so the form drops the prompts
-       too. ``card_pan`` is still submitted as an empty hidden field
-       to satisfy the POST /signup form contract; the route ignores
-       it on the reuse path. #}
+  {% if is_returning and not returning_needs_card %}
+    {# v0.11 — second-line shortcut. Returning visitors with a card
+       on file keep their existing KYC attestation + default card; the
+       chain skips the completed steps server-side, so the form drops
+       the prompts too. ``card_pan`` is still submitted as an empty
+       hidden field to satisfy the POST /signup form contract; the
+       route ignores it on the reuse path. A returning customer whose
+       first signup died before the COF step falls through to the
+       payment branches below instead — a linked identity alone
+       doesn't mean a card exists. #}
     <input type="hidden" name="card_pan" value="" />
   {% elif payment_provider == 'stripe' %}
     {# v0.16 stripe mode — card data does NOT touch this form. PCI
