@@ -40,6 +40,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 
 # Workspace-internal crates (path deps).
+bss-clock = { path = "crates/bss-clock" }
 bss-context = { path = "crates/bss-context" }
 bss-db = { path = "crates/bss-db" }
 

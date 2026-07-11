@@ -138,15 +138,29 @@ hello-world service (see `03-PHASES.md`).
     the OTLP/OTel exporter, and the tracing `Layer` that applies `redact_event` to
     live events (validated against Jaeger there) — "instrument at the chokepoint".
 
-### Next (Phase 0 remainder)
+- **`bss-events`** (core done) — the transactional-outbox plane, broker-free core:
+  - `stage_event` builds the `audit.domain_event` row stamped from `RequestCtx` +
+    `bss_clock::now()` (ports `events/publisher.publish`); `published_to_mq=false`.
+  - `drain_batch` — the relay orchestration (publish→mark, at-least-once, null
+    payload→`{}`) over an `EventPublisher` trait; tested against a fake. The
+    `DRAIN_SQL`/`MARK_OK_SQL`/`MARK_FAIL_SQL` are verbatim (SKIP LOCKED, oldest
+    first). `relay_mode(None)=Off` (delivery off, log still records).
+  - `decide_retry` (park at `>= max_retries`, else nack-retry) + `death_count`
+    (`x-death[0].count`) — the safe-consumer decision, plus `CLAIM_INBOX_SQL`.
+  - `topology` — the frozen RabbitMQ contract as assertable data (exchange names,
+    main/retry queue args, parked/retry names) so a Rust and a Python service share
+    a broker byte-identically during migration.
+  - 8 tests (port `test_relay.py` + `test_consumer.py` intent + contract pins).
+  - Deferred to conformance: lapin connect/declare/consume, the sqlx tick loop, and
+    the `/audit-api/v1` read router (needs Postgres+RabbitMQ to validate).
 
-1. `bss-events` — outbox relay (SKIP LOCKED drain → publish → mark, off-mode when
-   MQ unset) + safe consumer (retry/parked topology, inbox dedup) + audit router.
-   lapin for RabbitMQ; the off-mode + a fake publisher make the relay unit-testable
-   without a broker.
-2. The tracing/OTel bootstrap + redaction Layer (folds back into bss-telemetry).
-3. Golden-contract capture rig + hello-world conformance service → **Phase 0 tag
-   `v2.0.0-phase.0`**.
+### Next (Phase 0 remainder — all seven crates now have their broker/DB-free cores)
+
+1. The tracing/OTel bootstrap + redaction Layer (folds back into bss-telemetry).
+2. Golden-contract capture rig + hello-world conformance service — wires all seven
+   crates against real Postgres + RabbitMQ + Jaeger, proving the pattern end to end
+   (token vectors, an audit row the Python relay publishes, a trace in Jaeger).
+3. → **Phase 0 tag `v2.0.0-phase.0`** once conformance is green.
 
 ### Notes / decisions taken
 

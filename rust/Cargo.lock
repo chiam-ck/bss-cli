@@ -189,6 +189,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bss-events"
+version = "0.1.0"
+dependencies = [
+ "bss-clock",
+ "bss-context",
+ "chrono",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "bss-middleware"
 version = "0.1.0"
 dependencies = [
