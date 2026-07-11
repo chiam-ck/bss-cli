@@ -42,8 +42,8 @@ touching `rust/**`.
 | `bss-clock` | `packages/bss-clock` | ✅ done — clock + admin router, 15 tests (ports `test_clock.py` 1:1), fmt + clippy clean |
 | `bss-context` | `auth_context` / RequestCtx | ✅ done — `RequestCtx` + task-local scope + axum propagate layer; 10 tests, fmt + clippy clean |
 | `bss-middleware` | `packages/bss-middleware` (TokenMap) | ✅ done — HMAC TokenMap + constant-time lookup + axum token gate; 28 tests incl. golden-vector conformance vs Python; fmt + clippy clean |
-| `bss-db` | pool + `PolicyViolation` | ⬜ |
-| `bss-models` | `packages/bss-models` structs | ⬜ |
+| `bss-db` | pool + `PolicyViolation` | ✅ done — sqlx PgPool (5+5) + typed `PolicyViolation` (IntoResponse 422, wire round-trip); 7 tests, clean |
+| `bss-models` | `packages/bss-models` structs | ◐ started — `BSS_RELEASE` const (guard #14); per-table structs land per-service |
 | `bss-events` | `packages/bss-events` relay/consumer | ⬜ |
 | `bss-clients` | `packages/bss-clients` | ⬜ |
 | `bss-telemetry` | `packages/bss-telemetry` | ⬜ |

@@ -104,10 +104,25 @@ hello-world service (see `03-PHASES.md`).
   - 28 tests (port `test_api_token.py` + `test_token_auth.py` + golden). Deferred:
     the per-`(remote,path)` 401 log throttle (observability; lands with bss-telemetry).
 
+- **`bss-db`** — the `PolicyViolation` type (the single most load-bearing payload;
+  the LLM reads it) + sqlx pool. Ports `policies/base.PolicyViolation` (raise side,
+  field `rule`), the `RequestIdMiddleware` 422 serialization (wire side: `rule`→
+  `reason` + derived `referenceError`, five keys exactly), and the client parse
+  (`bss_clients.base._handle_response`) as `from_wire`. `IntoResponse` makes the
+  422 contract compiler-enforced. sqlx `PgPool` with the SQLAlchemy 5+5 config
+  (`connect`). 7 tests pin the exact wire shape + server→client round-trip.
+  - Deferred: a live-captured golden 422 from the running stack can augment the
+    hand-pinned shape once the conformance service exists.
+- **`bss-models`** (started) — `BSS_RELEASE` single source of truth (guard #14),
+  tracking the Python baseline `1.8.1`. The ~60 per-table `FromRow` structs are
+  intentionally deferred: each ports **with its service** (P1–P4) against that
+  service's golden contract tests, where the R1 dict-shape hazards concentrate.
+
 ### Next (Phase 0 remainder)
 
-1. `bss-db`, `bss-models`, `bss-events`, `bss-clients`, `bss-telemetry`.
-2. Golden-contract capture rig + hello-world conformance service.
+1. `bss-events` (relay + consumer + audit router), `bss-clients` (reqwest base +
+   typed clients), `bss-telemetry` (tracing + OTel + redaction).
+2. Golden-contract capture rig + hello-world conformance service → Phase 0 tag.
 
 ### Notes / decisions taken
 
