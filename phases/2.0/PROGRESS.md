@@ -42,7 +42,13 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
-## Phase 0 — Foundations — IN PROGRESS
+## Phase 0 — Foundations — ✅ COMPLETE (tag `v2.0.0-phase.0`)
+
+All exit criteria green against the live oracle via `cargo run -p conformance`
+(2026-07-11): token-middleware conformance, an audit row the **Python** relay
+publishes, a Rust-emitted trace in **Jaeger**, and golden HMAC vectors matching
+the oracle. 8 platform crates + conformance harness; 84 unit tests + 5 live
+checks; clippy `-D warnings` + fmt clean; CI wired.
 
 Goal: Cargo workspace + CI + the seven platform crates against a throwaway
 hello-world service (see `03-PHASES.md`).
@@ -169,11 +175,26 @@ hello-world service (see `03-PHASES.md`).
     compiled into the binary — **no new infra, nothing to deploy**; Rust reuses the
     existing Postgres/RabbitMQ/Jaeger. (D-note in `rust/README.md`.)
 
-### Next (last Phase-0 item)
+- **`bss-telemetry` OTel bootstrap** — `init_telemetry(service)` builds a
+  `TracerProvider` with an OTLP/HTTP-protobuf exporter to the same Jaeger the
+  Python stack uses (`service.name = bss-<service>`, `TraceIdRatioBased` sampler,
+  batch export), bridges `tracing` spans via tracing-opentelemetry, adds a JSON
+  log layer, and never panics (falls back to logs-only). `TelemetryGuard` flushes
+  on drop. `emit_probe_span` returns a trace id for the Jaeger conformance check.
+  opentelemetry 0.27.x pinned (R6 version-matrix resolved cleanly).
+  - One follow-up: the redaction **Layer** over live `tracing` fields (the rules +
+    `redact_event` exist; wiring them as a fmt field-visitor lands when the first
+    service logs sensitive fields — no service does yet).
 
-1. tracing/OTel bootstrap + redaction `Layer` (folds into bss-telemetry) → add the
-   "trace lands in Jaeger" check to the conformance harness.
-2. → **Phase 0 tag `v2.0.0-phase.0`** once the Jaeger check is green.
+### Phase 0 done → Phase 1 (rating pilot)
+
+Tagged `v2.0.0-phase.0`. Next: **Phase 1 — port the rating service** (smallest,
+"rating is a pure function"), the pilot that turns the platform crates into a
+running Rust service and produces the per-service porting playbook. This is where
+the per-endpoint golden-contract capture rig gets fleshed out (capture rating's
+request/response/event JSON from the Python oracle, diff the Rust service against
+it), and where bss-clients' first typed client (catalog) + the lapin/sqlx service
+wiring (relay tick loop, consumer, `/audit-api/v1` router) land.
 
 ### Notes / decisions taken
 

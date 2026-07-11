@@ -9,9 +9,11 @@
 //! never-fail-startup" posture of the Python crate.
 #![forbid(unsafe_code)]
 
+pub mod bootstrap;
 pub mod redaction;
 pub mod semconv;
 
+pub use bootstrap::{emit_probe_span, init_telemetry, TelemetryGuard};
 pub use redaction::{redact_event, should_redact, REDACTED, REDACTED_KEYS, SAFE_SUFFIXES};
 
 #[cfg(test)]

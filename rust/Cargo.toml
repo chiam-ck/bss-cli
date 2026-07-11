@@ -38,6 +38,16 @@ reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls",
 ] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
+tracing-opentelemetry = "0.28"
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", default-features = false, features = [
+    "trace",
+    "http-proto",
+    "reqwest-client",
+] }
 
 # Workspace-internal crates (path deps).
 bss-clock = { path = "crates/bss-clock" }
@@ -45,6 +55,7 @@ bss-context = { path = "crates/bss-context" }
 bss-db = { path = "crates/bss-db" }
 bss-middleware = { path = "crates/bss-middleware" }
 bss-events = { path = "crates/bss-events" }
+bss-telemetry = { path = "crates/bss-telemetry" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.

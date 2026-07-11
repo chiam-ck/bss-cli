@@ -200,9 +200,57 @@ async fn main() -> Result<(), Err> {
         );
     }
 
-    println!(
-        "\n── OTel trace → Jaeger: deferred (tracing/otel bootstrap is the last Phase-0 item) ──"
-    );
+    // ── Check 5: a Rust-emitted trace lands in the live Jaeger ──────────────
+    let guard = bss_telemetry::init_telemetry("conformance"); // Jaeger service: bss-conformance
+    let trace_id = bss_telemetry::emit_probe_span("conformance.probe");
+    guard.force_flush();
+    match trace_id {
+        None => report(
+            &mut failures,
+            "OTel trace → Jaeger",
+            false,
+            "span not sampled / no provider",
+        ),
+        Some(tid) => {
+            let jaeger = std::env::var("BSS_JAEGER_UI_URL")
+                .ok()
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "http://tech-vm:16686".to_string());
+            let http = reqwest::Client::new();
+            let mut found = false;
+            for _ in 0..30 {
+                let resp = http
+                    .get(format!("{}/api/traces/{tid}", jaeger.trim_end_matches('/')))
+                    .send()
+                    .await;
+                if let Ok(r) = resp {
+                    if r.status() == 200 {
+                        let body: serde_json::Value = r.json().await.unwrap_or_default();
+                        if body
+                            .get("data")
+                            .and_then(|d| d.as_array())
+                            .is_some_and(|a| !a.is_empty())
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            report(
+                &mut failures,
+                "Rust-emitted OTel trace lands in the live Jaeger (bss-conformance)",
+                found,
+                &if found {
+                    format!("trace {tid} found via {jaeger}/api/traces")
+                } else {
+                    format!("trace {tid} not found within 15s")
+                },
+            );
+        }
+    }
+
     println!(
         "\n{}",
         if failures == 0 {

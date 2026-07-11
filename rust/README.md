@@ -61,6 +61,6 @@ ones only at Phase 8.
 | `bss-models` | `packages/bss-models` structs | ◐ started — `BSS_RELEASE` const (guard #14); per-table structs land per-service |
 | `bss-events` | `packages/bss-events` relay/consumer | ◐ core done — staging + drain orchestration + retry/park + topology contract; 8 tests. lapin/sqlx binding with conformance service |
 | `bss-clients` | `packages/bss-clients` | ◐ base done — reqwest client (timeouts, no-retry, typed errors, ctx propagation) + AuthProviders; 11 tests. 12 typed clients land per-phase |
-| `bss-telemetry` | `packages/bss-telemetry` | ◐ rules done — redaction rules + semconv attr keys (4 tests); tracing/OTel bootstrap lands with conformance service |
+| `bss-telemetry` | `packages/bss-telemetry` | ✅ redaction + semconv + OTel/tracing bootstrap (traces → live Jaeger, proven); redaction *Layer* over tracing fields is the one follow-up |
 
 See [`../phases/2.0/PROGRESS.md`](../phases/2.0/PROGRESS.md) for the running log.
