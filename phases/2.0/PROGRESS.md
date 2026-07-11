@@ -130,12 +130,23 @@ hello-world service (see `03-PHASES.md`).
   - Deferred: the 12 typed clients (CRMClient, …) port per-phase (P1–P4); the
     per-call service-identity token override lands with the orchestrator (P5, §2.1).
 
+- **`bss-telemetry`** (rules done) — the two pure, load-bearing pieces: the
+  log-field **redaction** rules (`REDACTED_KEYS` minus `_ref`/`_id` suffixes →
+  `***REDACTED***`, top-level keys only, no recursion — ports `redact_sensitive`)
+  and the **semconv** span attribute keys (`bss.*`, last4-only discipline). 4 tests.
+  - Deferred to the conformance-service step: the tracing-subscriber JSON setup,
+    the OTLP/OTel exporter, and the tracing `Layer` that applies `redact_event` to
+    live events (validated against Jaeger there) — "instrument at the chokepoint".
+
 ### Next (Phase 0 remainder)
 
-1. `bss-events` (outbox relay + safe consumer + audit router; lapin, off-mode
-   when MQ unset) and `bss-telemetry` (tracing + OTel OTLP + JSON logs +
-   redaction rules).
-2. Golden-contract capture rig + hello-world conformance service → Phase 0 tag.
+1. `bss-events` — outbox relay (SKIP LOCKED drain → publish → mark, off-mode when
+   MQ unset) + safe consumer (retry/parked topology, inbox dedup) + audit router.
+   lapin for RabbitMQ; the off-mode + a fake publisher make the relay unit-testable
+   without a broker.
+2. The tracing/OTel bootstrap + redaction Layer (folds back into bss-telemetry).
+3. Golden-contract capture rig + hello-world conformance service → **Phase 0 tag
+   `v2.0.0-phase.0`**.
 
 ### Notes / decisions taken
 

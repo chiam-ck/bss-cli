@@ -44,8 +44,8 @@ touching `rust/**`.
 | `bss-middleware` | `packages/bss-middleware` (TokenMap) | ✅ done — HMAC TokenMap + constant-time lookup + axum token gate; 28 tests incl. golden-vector conformance vs Python; fmt + clippy clean |
 | `bss-db` | pool + `PolicyViolation` | ✅ done — sqlx PgPool (5+5) + typed `PolicyViolation` (IntoResponse 422, wire round-trip); 7 tests, clean |
 | `bss-models` | `packages/bss-models` structs | ◐ started — `BSS_RELEASE` const (guard #14); per-table structs land per-service |
-| `bss-events` | `packages/bss-events` relay/consumer | ⬜ |
+| `bss-events` | `packages/bss-events` relay/consumer | ⬜ next |
 | `bss-clients` | `packages/bss-clients` | ◐ base done — reqwest client (timeouts, no-retry, typed errors, ctx propagation) + AuthProviders; 11 tests. 12 typed clients land per-phase |
-| `bss-telemetry` | `packages/bss-telemetry` | ⬜ next |
+| `bss-telemetry` | `packages/bss-telemetry` | ◐ rules done — redaction rules + semconv attr keys (4 tests); tracing/OTel bootstrap lands with conformance service |
 
 See [`../phases/2.0/PROGRESS.md`](../phases/2.0/PROGRESS.md) for the running log.
