@@ -91,13 +91,23 @@ hello-world service (see `03-PHASES.md`).
     field on the orchestrator tool-context in P5 (§2.1), not a task-local — noted so
     bss-clients doesn't reach for one.
 
+- **`bss-middleware`** — perimeter `X-BSS-API-Token` auth (risk R4). `TokenMap`
+  (HMAC-SHA-256 via `hmac`+`sha2`, constant-time full-scan lookup via `subtle`,
+  env-name→identity derivation), loader + validator (default-required, unique
+  identities/tokens, sentinel/length), and the axum `require_api_token` gate
+  (`/health*` + `/webhooks/` exemptions, 401 shapes). Wires to bss-context: the
+  gate inserts `ServiceIdentity` (guard #6 — identity from the token only, never a
+  header), the context layer reads it — proven by a composed layer test.
+  - **Golden-vector conformance**: captured HMAC digests + identity derivations
+    from the live Python oracle → `tests/golden_vectors.json`; two Rust tests
+    assert byte-identical hashing/derivation. This is the R4 mitigation.
+  - 28 tests (port `test_api_token.py` + `test_token_auth.py` + golden). Deferred:
+    the per-`(remote,path)` 401 log throttle (observability; lands with bss-telemetry).
+
 ### Next (Phase 0 remainder)
 
-1. `bss-middleware` — `TokenMap` (HMAC-hashed, constant-time full-scan,
-   env-name→identity), `/health*` + `/webhooks/` exemptions, sentinel/length
-   validation. Needs golden HMAC vectors captured from the Python oracle first.
-3. `bss-db`, `bss-models`, `bss-events`, `bss-clients`, `bss-telemetry`.
-4. Golden-contract capture rig + hello-world conformance service.
+1. `bss-db`, `bss-models`, `bss-events`, `bss-clients`, `bss-telemetry`.
+2. Golden-contract capture rig + hello-world conformance service.
 
 ### Notes / decisions taken
 

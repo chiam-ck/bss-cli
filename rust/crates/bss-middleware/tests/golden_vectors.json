@@ -1,0 +1,49 @@
+{
+  "_note": "Golden vectors captured from packages/bss-middleware (Python oracle). Do not edit by hand; regenerate from the oracle. R4 conformance.",
+  "env_var_rejected": [
+    [
+      "BSS_PARTNER_API_TOKEN_ACME",
+      "rejected"
+    ],
+    [
+      "BSS_DB_URL",
+      "rejected"
+    ],
+    [
+      "PATH",
+      "rejected"
+    ],
+    [
+      "BSS_API_TOKEN_",
+      "rejected"
+    ]
+  ],
+  "hmac_sha256_hex": {
+    "CSR_TOKEN": "5a0b340a45294e64c7eb1884ef216ddf75fd03de3d4a5a82f2a863275500150b",
+    "PORTAL_TOKEN": "c1ef48b251179c08401569ad1190e90ea6804bfda89a58461274c45446aa9b0a",
+    "TEST_TOKEN": "72a021581d401a70ca37bb280cd1faf3f7c7220ec9315d90a3aba75dc65003a5",
+    "a32": "48fa03a0dfda12bf8d60249308b834defa403e74ee5968bf6ed0c07c57f24513",
+    "empty": "ef704a30a6dc8ffe25eaa62c17f457613040bbbbee92dcdbaaa6c6c19a76f807",
+    "unicode": "5e7fbfaece7e74ff0d8f7f54df595abb690273e2f1786347e3021888f4a273a9"
+  },
+  "identity_from_env_var": {
+    "BSS_ALPHA_API_TOKEN": "alpha",
+    "BSS_API_TOKEN": "default",
+    "BSS_OPERATOR_COCKPIT_API_TOKEN": "operator_cockpit",
+    "BSS_PARTNER_ACME_API_TOKEN": "partner_acme",
+    "BSS_PORTAL_SELF_SERVE_API_TOKEN": "portal_self_serve",
+    "BSS_ZED_API_TOKEN": "zed"
+  },
+  "min_length": 32,
+  "salt_utf8": "bss-cli-token-map-v0.9-fixed-salt",
+  "sentinel": "changeme",
+  "test_token": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "tokens": {
+    "CSR_TOKEN": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    "PORTAL_TOKEN": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    "TEST_TOKEN": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "a32": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "empty": "",
+    "unicode": "t\u00f6k\u00e9n-\u03c0-32-chars-padding-xxxxxxx"
+  }
+}

@@ -24,6 +24,12 @@ axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
 uuid = { version = "1", features = ["v4"] }
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+
+# Workspace-internal crates (path deps).
+bss-context = { path = "crates/bss-context" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.
