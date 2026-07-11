@@ -76,12 +76,24 @@ hello-world service (see `03-PHASES.md`).
     process-global `Mutex` since the clock is a singleton). All green; fmt +
     clippy clean.
 
+- **`bss-context`** — the §2.1 ContextVar translation. Unifies the Python
+  per-service `auth_context.AuthContext` **and** `bss_clients.base` context vars
+  into one `RequestCtx` (actor/tenant/channel/service_identity/request_id + roles/
+  permissions, defaults matching the dataclass). Carried explicitly in axum
+  extensions (`Extension<RequestCtx>`) *and* mirrored into a `tokio::task_local!`
+  scope for the two chokepoint readers (bss-clients, bss-events) — the task-local
+  lives only in this crate (future doctrine guard). `propagate_context` middleware
+  ports `RequestIdMiddleware` (header→ctx, echo `x-request-id`); `service_identity`
+  comes from a `ServiceIdentity` extension the token layer will set, never a header
+  (guard #6 made structural). 10 tests (ports `test_auth_context.py` +
+  `test_header_propagation.py` intent + task isolation); fmt + clippy clean.
+  - Deferred: the `set_service_identity_token` per-call override becomes an explicit
+    field on the orchestrator tool-context in P5 (§2.1), not a task-local — noted so
+    bss-clients doesn't reach for one.
+
 ### Next (Phase 0 remainder)
 
-1. `bss-context` — `RequestCtx` struct + `tokio::task_local!` scope; header
-   extraction (`x-request-id`/`x-bss-actor`/`x-bss-channel`/`x-bss-tenant`).
-   Establishes the §2.1 ContextVar translation the whole tree depends on.
-2. `bss-middleware` — `TokenMap` (HMAC-hashed, constant-time full-scan,
+1. `bss-middleware` — `TokenMap` (HMAC-hashed, constant-time full-scan,
    env-name→identity), `/health*` + `/webhooks/` exemptions, sentinel/length
    validation. Needs golden HMAC vectors captured from the Python oracle first.
 3. `bss-db`, `bss-models`, `bss-events`, `bss-clients`, `bss-telemetry`.

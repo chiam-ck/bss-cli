@@ -23,6 +23,7 @@ serde_json = "1"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
+uuid = { version = "1", features = ["v4"] }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.
