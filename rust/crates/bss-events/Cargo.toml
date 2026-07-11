@@ -10,11 +10,20 @@ description = "Transactional-outbox event plane: staging, relay drain, safe-cons
 workspace = true
 
 [dependencies]
+serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+sqlx = { workspace = true }
+axum = { workspace = true }
+lapin = { workspace = true }
+tokio-executor-trait = { workspace = true }
+tokio-reactor-trait = { workspace = true }
+futures-util = { workspace = true }
+tracing = { workspace = true }
 bss-clock = { workspace = true }
 bss-context = { workspace = true }
+bss-db = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

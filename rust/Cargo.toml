@@ -7,7 +7,7 @@
 #   cli/      ← bss bin (Typer/Rich/REPL equivalent)         — P7
 [workspace]
 resolver = "2"
-members = ["crates/*", "conformance"]
+members = ["crates/*", "services/*", "conformance"]
 
 [workspace.package]
 edition = "2021"
@@ -38,6 +38,13 @@ reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls",
 ] }
+# RabbitMQ (aio-pika equivalent). lapin drives its own async-io reactor; the
+# tokio-*-trait shims run it on the tokio runtime so we don't spin a second
+# reactor thread (matches the single-runtime posture of the Python services).
+lapin = { version = "2", default-features = false, features = ["rustls"] }
+tokio-executor-trait = "2"
+tokio-reactor-trait = "1"
+futures-util = "0.3"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
 tracing-opentelemetry = "0.28"
@@ -56,6 +63,8 @@ bss-db = { path = "crates/bss-db" }
 bss-middleware = { path = "crates/bss-middleware" }
 bss-events = { path = "crates/bss-events" }
 bss-telemetry = { path = "crates/bss-telemetry" }
+bss-clients = { path = "crates/bss-clients" }
+bss-models = { path = "crates/bss-models" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.

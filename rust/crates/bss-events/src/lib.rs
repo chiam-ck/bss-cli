@@ -10,15 +10,19 @@
 
 pub mod consumer;
 pub mod event;
+pub mod mq;
 pub mod relay;
+pub mod router;
 pub mod topology;
 
 pub use consumer::{death_count, decide_retry, RetryAction, CLAIM_INBOX_SQL};
 pub use event::{stage_event, DomainEvent};
+pub use mq::MqChannel;
 pub use relay::{
     drain_batch, relay_mode, EventPublisher, OutboxRow, RelayMode, RowOutcome, DRAIN_SQL,
     MARK_FAIL_SQL, MARK_OK_SQL,
 };
+pub use router::audit_events_router;
 pub use topology::{
     main_queue_args, parked_queue_name, retry_queue_args, retry_queue_name, EXCHANGE_NAME,
     RETRY_EXCHANGE_NAME,

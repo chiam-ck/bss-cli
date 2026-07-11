@@ -12,7 +12,7 @@ rust/
 ├── Cargo.toml         # [workspace]; members added phase by phase
 ├── rust-toolchain.toml
 ├── crates/            # packages/bss-* equivalents (lib crates)  — P0, P5
-├── services/          # 9 bin crates                             — P1–P4  (not yet)
+├── services/          # 9 bin crates  (rating ✅ — P1)           — P1–P4
 ├── portals/           # 2 bin crates                             — P6     (not yet)
 └── cli/               # bss bin                                  — P7     (not yet)
 ```
@@ -49,6 +49,17 @@ schema match, the Python relay publishing a Rust-written row, token middleware
 end-to-end). **No new infrastructure** — sqlx/lapin/reqwest/otel are libraries
 inside the binary; Rust reuses the existing infra. Rust *containers* replace Python
 ones only at Phase 8.
+
+## Status — Phase 1 (rating pilot) ✅ — tag `v2.0.0-phase.1`
+
+First service ported. `rust/services/rating` (lib+bin): pure `rate_usage` +
+`usage.recorded → usage.rated` consumer, wired with the token/context/telemetry
+layers, the first typed client (`CatalogClient`), the `/audit-api/v1` router, and
+the lapin `MqChannel`. **Proven against the live stack** — the Rust rating service
+consumed a real `usage.recorded` and emitted the `usage.rated` (audit + MQ) via
+the live Catalog. The reusable recipe is [`../phases/2.0/PLAYBOOK.md`](../phases/2.0/PLAYBOOK.md).
+Run its live smoke: `cargo test -p rating --test live_smoke -- --ignored` (see
+that file's header; needs the stack up + `BSS_CATALOG_URL=http://localhost:8001`).
 
 ## Status — Phase 0 (Foundations)
 

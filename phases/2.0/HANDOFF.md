@@ -6,13 +6,24 @@ for the why.
 
 ## Where we are (2026-07-11)
 
-**Phase 0 (Foundations) is COMPLETE and tagged `v2.0.0-phase.0`.**
+**Phase 1 (rating pilot) is COMPLETE and tagged `v2.0.0-phase.1`.**
+(Phase 0 foundations before it: tag `v2.0.0-phase.0`.)
 
-All 8 platform crates are built and green, and proven **against the live Python
-stack** (not just in isolation) via a conformance harness. The single most
-important fact: a Rust binary already interoperates byte-for-byte with the running
-Python system — same Postgres, same RabbitMQ (the *Python* relay publishes a
-Rust-written audit row), same Jaeger, same token perimeter.
+The first Python service (`rating`) is ported to Rust and **proven end-to-end
+against the live stack**: the Rust rating service consumed a real `usage.recorded`
+and emitted the `usage.rated` (audit row + published to MQ) via the live Catalog
+and live Postgres. The **per-service porting playbook** — the real Phase-1
+deliverable — is [`PLAYBOOK.md`](PLAYBOOK.md); it gets stamped 8 more times.
+
+All 8 platform crates are built and green (now grown with `CatalogClient`, the
+`/audit-api/v1` router, and the lapin `MqChannel`), proven against the live stack
+via the P0 conformance harness + the P1 live smoke. A Rust binary interoperates
+byte-for-byte with the running Python system — same Postgres, RabbitMQ, Jaeger,
+token perimeter.
+
+**Resuming? Start at Phase 2** (event-plane services: mediation, provisioning-sim,
+som) using [`PLAYBOOK.md`](PLAYBOOK.md) as the step-by-step recipe. This is also
+where the relay tick loop's lapin/sqlx binding lands (som/com/subscription run it).
 
 - Work lives in [`../../rust/`](../../rust/) — a Cargo workspace (subtree of this
   monorepo; decision D7). The Python repo alongside stays the **oracle**.
@@ -39,7 +50,7 @@ source "$HOME/.cargo/env"
 cd rust
 cargo fmt --all --check                        # formatting gate
 cargo clippy --all-targets --all-features -- -D warnings   # lint gate
-cargo test                                     # 84 unit tests
+cargo test                                     # 96 unit/integration tests (5 live smoke are #[ignore])
 
 # Live conformance (needs the tech-vm stack up; never runs in CI):
 set -a; source ../.env; set +a
@@ -79,30 +90,30 @@ the 12 typed clients, the lapin/sqlx service wiring (relay tick loop, consumer,
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: Phase 1 — the rating pilot
+## What to do next: Phase 2 — event-plane services (mediation, provisioning-sim, som)
 
-Port the **rating** service (`services/rating`, ~1.4k LOC, "rating is a pure
-function over JSON tariff") — the smallest service, chosen to exercise the whole
-per-service pattern on the least business logic. See [`03-PHASES.md`](03-PHASES.md)
-§Phase 1. Concretely, first steps:
+Follow [`PLAYBOOK.md`](PLAYBOOK.md) — the validated recipe from the rating pilot —
+for each of the three. See [`03-PHASES.md`](03-PHASES.md) §Phase 2. Highlights:
 
-1. Read `services/rating/` (the Python oracle) — routers → services → policies →
-   repositories, its events, its `/audit-api/v1` mount, its tariff/rating fn.
-2. Stand up `rust/services/rating` (bin crate): axum app factory wired with the
-   token + context + telemetry layers; sqlx repositories; the rating pure fn;
-   the first typed `bss-clients` client it needs (catalog); the lapin/sqlx event
-   wiring (relay tick loop + consumer via bss-events).
-3. Build the **golden-contract rig**: capture rating's request/response + emitted
-   audit events from the Python oracle, then diff the Rust service's output.
-4. Exit criteria: swap the Rust rating container into compose, `make
-   scenarios-hero` (usage-flow) green on the mixed stack, golden diffs clean.
-   **The real deliverable is the written per-service playbook** — the pattern gets
-   stamped 8 more times, so get it right here.
+- **mediation** (~1.6k) — block-at-edge synchronous rating path + roaming-indicator
+  purity (guard 11); it *calls* the rating surface, so its golden tests lean on P1.
+- **provisioning-sim** (~1.5k) — fault injection + "stuck" state + a domain worker.
+- **som** (~1.8k) — atomic MSISDN+eSIM reservation (calls crm-hosted Inventory) +
+  CFS/RFS decomposition.
+- **This is where the relay tick loop lands** — som/com/subscription run the
+  outbox relay (rating inline-publishes and doesn't). Bind the lapin/sqlx tick
+  loop (drain→publish→mark, SKIP LOCKED) in `bss-events` and validate it against
+  the real retry/parked topology + the provisioning-retry-resilience hero scenario.
+- Exit criteria: provisioning-retry-resilience + inventory hero scenarios green on
+  the mixed stack; parked/retry verified by killing handlers mid-run. Tag
+  `v2.0.0-phase.2`.
 
-Then tag `v2.0.0-phase.1`.
+Rating pilot reference to copy from: `rust/services/rating/` (crate layout),
+`rust/services/rating/tests/live_smoke.rs` (the live-proof pattern).
 
 ## Quick pointers
 
+- **Per-service porting recipe: [`PLAYBOOK.md`](PLAYBOOK.md)** (use this for every P2+ service)
 - Detailed running log + tagging discipline: [`PROGRESS.md`](PROGRESS.md)
 - Strategy / frozen contracts / what doesn't port: [`00-STRATEGY.md`](00-STRATEGY.md)
 - Python "before" baseline for motto #6 (re-measured at Phase 8): [`05-BASELINE.md`](05-BASELINE.md)

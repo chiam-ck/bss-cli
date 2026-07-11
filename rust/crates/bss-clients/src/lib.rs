@@ -11,6 +11,7 @@
 
 mod auth;
 mod base;
+mod catalog;
 mod errors;
 
 pub use auth::{
@@ -18,4 +19,5 @@ pub use auth::{
     TokenAuthProvider,
 };
 pub use base::{BssClient, DEFAULT_TIMEOUT};
+pub use catalog::CatalogClient;
 pub use errors::ClientError;

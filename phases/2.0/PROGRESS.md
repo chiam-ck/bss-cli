@@ -42,6 +42,89 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
+## Phase 1 — Pilot: rating — ✅ COMPLETE (tag `v2.0.0-phase.1`)
+
+The first Python service ported to Rust, and the **per-service porting playbook**
+([`PLAYBOOK.md`](PLAYBOOK.md)) — the real Phase-1 deliverable — validated by
+stamping it once. Proven end-to-end against the **live stack**: the Rust rating
+service, as the sole consumer of `rating.usage.recorded`, turned a
+`usage.recorded` into a `usage.rated` (audit row + published to MQ) via the live
+Catalog and live Postgres. 96 unit/integration tests green (12 new for rating),
+5 `#[ignore]` live-smoke checks green against the running stack; fmt + clippy
+`-D warnings` clean.
+
+### Done
+
+- **`rust/services/rating`** (lib + bin) — port of `services/rating`:
+  - **`domain.rs`** — pure `rate_usage` (over `serde_json::Value` tariff, faithful
+    dict-shape reads) + `decide_usage_outcome` (the consumer's roaming-routing
+    branch factored out as a pure fn so the full event-shape decision is CI-testable).
+    12 unit tests port `test_rating_pure_function.py` + the payload assertions of
+    `test_rating_event_consumer.py` 1:1 (error-substring matched for wire stability).
+  - **HTTP** (`routes.rs` + `error.rs` + `lib.rs::create_app`) — `/health` (exempt)
+    + `/ready` (token-required — only `/health*` is exempt, matching the oracle),
+    `/rating-api/v1/{tariff/{id},rate-test}`, mounts `clock_admin_router` +
+    `audit_events_router`. `ApiError` `IntoResponse` reproduces the ASGI middleware
+    shapes (`RatingError`→422 `{code:"RATING_ERROR"}`, upstream 5xx→500, 404).
+    axum-0.7 `:param` paths; token gate outermost, context inside.
+  - **`consumer.rs`** — lapin consume loop on `usage.recorded`; inline-publish
+    (rating runs **no** relay — only subscription/com/som do); publish-then-INSERT
+    with resolved `published_to_mq`; consumer rows stamped from `RequestCtx::default()`
+    (Python `auth_context` default). Acks unconditionally (handler owns its errors).
+  - **`config.rs`** — `Settings::from_env()` (`BSS_<UPPER>`), sqlx DB-url normalize.
+  - **`Dockerfile`** — multi-stage, distroless-cc final, non-root, port 8000.
+
+- **Platform crates grown (reused by P2+):**
+  - **`bss-clients::CatalogClient`** — first typed client (`get_offering`); thin
+    wrapper over `BssClient`, only the call rating needs.
+  - **`bss-events::audit_events_router(pool)`** — the shared `/audit-api/v1` read
+    router (dynamic filters via `QueryBuilder`, camelCase out, ISO 422). Was
+    deferred from P0; lands here where a service mounts it.
+  - **`bss-events::MqChannel`** — lapin connect / declare `bss.events` topic
+    exchange / `publish_json` (inline-publish parity, no `message_id`) /
+    `declare_and_bind`. Runs lapin on the tokio runtime via the `tokio-*-trait`
+    shims. **vhost fix:** an AMQP URL ending in bare `/` (empty vhost to lapin,
+    default `/` to aio-pika) is normalized to `%2f`.
+  - Workspace: `lapin` + `tokio-executor-trait`/`tokio-reactor-trait`/`futures-util`
+    added; `bss-clients`/`bss-models` path deps + `services/*` member glob.
+
+- **Live proof** (`services/rating/tests/live_smoke.rs`, `#[ignore]`, 4 checks) —
+  the Phase-1 analogue of the P0 conformance harness, all **inert / cleaned up**:
+  1. `CatalogClient` ↔ live Catalog + `rate_usage` on the **real** PLAN_M (caught
+     the R1 shape: live PLAN_M carries `data_roaming`, `taxIncludedAmount.value`
+     is a number, currency is `.unit`);
+  2. full HTTP stack (health / authed tariff / 401 / rate-test / 422 / audit read)
+     against live infra via in-process `axum::serve`;
+  3. outbox INSERT + audit read-back for an inert aggregate, then `DELETE`;
+  4. **consumer cutover** — `docker stop bss-cli-rating-1`, Rust binary drains the
+     shared durable queue, publish one synthetic `usage.recorded` (non-existent
+     sub → subscription catches-and-acks, no side effect), assert the Rust-written
+     `usage.rated` (`published_to_mq=true`), clean up, `trap`-restart the container.
+
+### Deferred (by design, land where they're validated by real behaviour)
+
+- The **relay tick loop** lapin/sqlx binding (drain→publish→mark) — only
+  subscription/com/som run it, so it lands in P2/P3 against the real retry/park
+  topology + the provisioning-retry hero scenario. The relay *core* (SQL, drain
+  orchestration) already exists in `bss-events` from P0.
+- The **compose image-swap** run of `make scenarios-hero` — the Dockerfile lands
+  now; the container build + mixed-stack scenario sweep is the P8 image pass. The
+  consumer cutover smoke already proves the runtime path against the live stack.
+- Remaining `CatalogClient` surface (list/price/promotions/admin) — ports when
+  Catalog itself lands (P3) or a consumer first needs a call.
+
+### Notes / decisions taken
+
+- **Local topology discovered:** the bss **app** containers run locally (published
+  `localhost:8001`–`:8010`); the **infra** (Postgres/RabbitMQ/Jaeger) runs on the
+  remote `tech-vm` over Tailscale. Point `BSS_CATALOG_URL=http://localhost:8001`
+  for the live smoke; DB/MQ use the `.env` `tech-vm` URLs.
+- **Consumer decision extracted as a pure fn** (`decide_usage_outcome`) is the
+  reusable pattern — it moves the event-shape spec into CI without infra. Baked
+  into the playbook.
+
+---
+
 ## Phase 0 — Foundations — ✅ COMPLETE (tag `v2.0.0-phase.0`)
 
 All exit criteria green against the live oracle via `cargo run -p conformance`
