@@ -87,6 +87,20 @@ the existing monorepo (easier shared assets/scenarios during transition, messier
 story). If staying separate, scenario YAML + templates + prompts are *copied* at each phase
 with a checksum check against the oracle, not symlinked.
 
+**D8 — When does a service actually cut over? (resolved 2026-07-11.)** Two plan statements read
+as a conflict: "retire the Python container from compose" *at each phase* (§03 opening, §1
+per-service cutover) vs "the Python oracle must stay runnable until P8" (§03 parallelization).
+**Resolution: per-service cutover into the *running* stack, at each service's own phase**
+(P1–P4), because it surfaces integration errors at one-service blast radius while the cost to
+fix is lowest — not deferred to a Phase-8 big bang. "Oracle stays runnable" means *reproducible
+on demand*, not *primary running container*: the Python image build stays in the base
+`docker-compose.yml`, and the Rust container is layered on via the `docker-compose.rust.yml`
+overlay (`docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d <svc>`).
+Dropping the overlay brings the Python oracle back for a golden diff. **Phase 8 is the *final*
+cutover** — Alembic freeze, image hardening, archiving the Python repo, the 14-day soak — i.e.
+when the *last* Python service is retired and the tree is decommissioned, not the first time
+Rust runs. The overlay's "cut over so far" list is the running ledger.
+
 ## 3. Estimate & error bars
 
 **55–77 person-weeks** across phases (doc 03). Basis: ~87k LOC of non-test Python that

@@ -131,15 +131,39 @@ published ports (`localhost:8001` catalog … `:8008` rating); the **infra**
 
 - `cargo fmt --all --check` + `cargo clippy --all-targets --all-features -- -D
   warnings` + `cargo test` (CI-safe; the live smoke is `#[ignore]`).
-- **Hero scenario on the mixed stack** — the true cutover proof: build the image
-  (`docker build -f services/<svc>/Dockerfile -t bss-<svc>:rust .` from `rust/`),
-  swap it into compose for the Python one, run `make scenarios-hero` (rating:
-  the usage-flow scenarios), confirm green, then restore. (Phase 1 proved the
-  consumer path via the cutover smoke; the compose-swap image build is the P8
-  container pass, but the Dockerfile lands now.)
+- **Cut the service over into the running stack — this is per-phase, not P8**
+  (Decision D8). Build the image from the `rust/` context and swap it in via the
+  overlay:
+  ```bash
+  docker build -f rust/services/<svc>/Dockerfile -t bss-<svc>:rust rust/
+  # add the service to docker-compose.rust.yml, then:
+  docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d <svc>
+  ```
+  The overlay **stays on** afterwards — the running stack is the mixed stack, and
+  the next phase adds one more Rust container. Dropping the overlay brings the
+  Python oracle back for a golden diff.
+- **Baseline first, then diff.** Run the affected hero scenarios against the
+  all-Python stack *before* swapping (record the pass + the `audit.domain_event`
+  rows), then against the mixed stack. A red baseline means a stack/data problem,
+  not your port — fix the environment (or narrow to the service's own path)
+  before blaming the Rust code. *(Rating hit exactly this: the full signup→exhaust
+  hero needs `make scenarios-hero`'s provider-flip wrapper — payment→mock,
+  kyc→prebaked — plus seeded data and a healthy provisioning path; run scenarios
+  through `make`, not a bare `bss scenario run`, and validate the service's own
+  event path directly when upstream is red.)*
 - Update `PROGRESS.md`, tag `v2.0.0-phase.N` (annotated, exit-criteria evidence
   in the message). Intra-phase service cutovers are commits; the phase tag caps
   the set.
+
+## 7. Watch the deployed container's logs (it catches what tests don't)
+
+The first thing to check after the swap is `docker logs`. Rating's cutover
+surfaced a real bug this way: with no level filter, `lapin` logged at TRACE and
+**dumped the AMQP PLAIN handshake — i.e. the broker password — into the logs**.
+`bss_telemetry::init_telemetry` now defaults to `info` and pins
+`lapin`/`amq_protocol*` to `warn` (never default the subscriber to TRACE). Confirm
+the deployed service logs clean `INFO` lines (`service.starting`,
+`mq.consumer.started`) and **no** secret material before calling the cutover done.
 
 ## What landed in the platform crates while porting rating (reuse these)
 

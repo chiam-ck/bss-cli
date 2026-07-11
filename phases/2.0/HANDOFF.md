@@ -21,9 +21,26 @@ via the P0 conformance harness + the P1 live smoke. A Rust binary interoperates
 byte-for-byte with the running Python system — same Postgres, RabbitMQ, Jaeger,
 token perimeter.
 
+**Rating is cut over in the running stack** (Decision D8 — per-service cutover, not
+a Phase-8 big bang). The `rating` container runs `bss-rating:rust` via the
+`docker-compose.rust.yml` overlay. Bring the stack up with the overlay to keep it:
+`docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d`. Drop the
+overlay to fall back to the Python oracle for a golden diff. The overlay's
+"cut over so far" list is the running ledger — add each service as it lands.
+
 **Resuming? Start at Phase 2** (event-plane services: mediation, provisioning-sim,
 som) using [`PLAYBOOK.md`](PLAYBOOK.md) as the step-by-step recipe. This is also
 where the relay tick loop's lapin/sqlx binding lands (som/com/subscription run it).
+
+> **Deferred to Phase 2 (decided 2026-07-11):** the full `make scenarios-hero` suite
+> wasn't run for rating. The stack's operational data is currently reset/empty and
+> the order→provisioning path stalls (tasks complete, but som/com don't flip the
+> order → `order.stuck`) — and it stalls the **same way on the pure Python stack**,
+> so it's upstream of rating, not the port. Rating's own path is validated on the
+> mixed stack (see PROGRESS Phase 1 → Cutover). Phase 2 ports mediation/
+> provisioning-sim/som and exercises this exact path, so run the full end-to-end
+> hero suite there (`make scenarios-hero` with the provider-flip wrapper + a fresh
+> seed) once the provisioning reaction is healthy — don't chase it in isolation now.
 
 - Work lives in [`../../rust/`](../../rust/) — a Cargo workspace (subtree of this
   monorepo; decision D7). The Python repo alongside stays the **oracle**.

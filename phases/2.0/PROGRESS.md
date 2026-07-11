@@ -101,6 +101,42 @@ Catalog and live Postgres. 96 unit/integration tests green (12 new for rating),
      sub → subscription catches-and-acks, no side effect), assert the Rust-written
      `usage.rated` (`published_to_mq=true`), clean up, `trap`-restart the container.
 
+### Cutover into the running stack (per Decision D8, 2026-07-11)
+
+Rating is **cut over in the running compose stack**, not just proven in isolation —
+per the per-service cutover doctrine (D8: cut over at each phase, running stack;
+oracle stays reproducible-on-demand).
+
+- **Image + overlay:** `docker build -f rust/services/rating/Dockerfile -t
+  bss-rating:rust rust/`; swapped in via `docker-compose.rust.yml`
+  (`docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d rating`).
+  `bss-cli-rating-1` now runs `bss-rating:rust` (health reports version `1.8.1`,
+  the Rust `BSS_RELEASE`, vs the Python image's `1.7.0`).
+- **Mixed-stack functional proof:** published a real `usage.recorded` to the live
+  `bss.events` exchange; the **deployed Rust container** consumed it, reached
+  `catalog:8000` **over the compose network** (the real in-network path the host
+  binary couldn't exercise), rated it, and wrote `usage.rated` (`published_to_mq=
+  true`, `allowanceType=data`, `qty=250`, `charge=0`, `actor=system`,
+  `service_identity=default`). Clean `INFO` logs; inert row cleaned up.
+- **Bug caught at the deployed container (log review):** the tracing subscriber had
+  no level filter → `lapin` logged at TRACE and **dumped the AMQP PLAIN handshake
+  (broker password) into the logs**. Fixed in `bss_telemetry::init_telemetry`
+  (default `info`; `lapin`/`amq_protocol*` pinned to `warn`; never default TRACE).
+  Rebuilt + re-swapped; 0 leaky lines. This is exactly the class of error the
+  per-service cutover is meant to surface early — logged in the playbook (§7).
+- **Full hero suite (`make scenarios-hero`) not yet run — and why:** the running
+  stack's operational data is currently empty (an `operational_data_reset`), and
+  the full `customer_signup_and_exhaust` / `customer_buys_roaming_and_uses_it`
+  scenarios need `make scenarios-hero`'s provider-flip wrapper (payment→mock,
+  kyc→prebaked, email→logging + container recreation) plus a healthy order→
+  provisioning path. A direct baseline run stuck at **order completion** —
+  provisioning tasks all `completed`, but the som/com completion-event reaction
+  didn't flip the order (`order.stuck`) — and it stuck the **same way on the pure
+  Python stack** (pre-swap baseline), so it is a stack/data-state issue upstream of
+  rating, not the port. Rating's own responsibility is validated by the mixed-stack
+  event-path proof above; the full suite is a heavier, stack-reconfiguring step to
+  run deliberately (with the wrapper + a seed) once the provisioning path is healthy.
+
 ### Deferred (by design, land where they're validated by real behaviour)
 
 - The **relay tick loop** lapin/sqlx binding (drain→publish→mark) — only

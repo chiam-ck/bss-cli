@@ -70,7 +70,10 @@ pub fn init_telemetry(service: &str) -> TelemetryGuard {
     let fmt_layer = tracing_subscriber::fmt::layer().json();
 
     if !cfg.enabled {
-        let _ = tracing_subscriber::registry().with(fmt_layer).try_init();
+        let _ = tracing_subscriber::registry()
+            .with(level_filter())
+            .with(fmt_layer)
+            .try_init();
         return TelemetryGuard { provider: None };
     }
 
@@ -79,6 +82,7 @@ pub fn init_telemetry(service: &str) -> TelemetryGuard {
             let tracer = provider.tracer("bss-telemetry");
             let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
             let _ = tracing_subscriber::registry()
+                .with(level_filter())
                 .with(fmt_layer)
                 .with(otel_layer)
                 .try_init();
@@ -90,10 +94,27 @@ pub fn init_telemetry(service: &str) -> TelemetryGuard {
         Err(err) => {
             // Never gate startup on observability — log to stderr, keep JSON logs.
             eprintln!("telemetry.setup_failed service={service} error={err}");
-            let _ = tracing_subscriber::registry().with(fmt_layer).try_init();
+            let _ = tracing_subscriber::registry()
+                .with(level_filter())
+                .with(fmt_layer)
+                .try_init();
             TelemetryGuard { provider: None }
         }
     }
+}
+
+/// Level filter for the log subscriber. Defaults to `info` (the Python services'
+/// level) and drops the chatty `lapin`/`amq_protocol` targets to `warn` — their
+/// TRACE frames dump the AMQP PLAIN auth handshake, which contains the broker
+/// password. `RUST_LOG` overrides for debugging. **Never** default this to TRACE.
+fn level_filter() -> tracing_subscriber::EnvFilter {
+    use tracing_subscriber::EnvFilter;
+    // Default INFO; pin the chatty AMQP/reactor targets to WARN so their TRACE
+    // frames (which include the PLAIN auth handshake = broker password) never
+    // reach the logs. `RUST_LOG` overrides for debugging.
+    EnvFilter::try_from_env("RUST_LOG").unwrap_or_else(|_| {
+        EnvFilter::new("info,lapin=warn,amq_protocol_tcp=warn,amq_protocol=warn,mio=warn")
+    })
 }
 
 /// Emit a single span with operation name `operation` and return its trace id

@@ -1,0 +1,17 @@
+# Rust service cutover overlay (phases/2.0). Overlaid on docker-compose.yml to
+# run the Rust port of a service in place of its Python container, per the
+# per-service cutover doctrine (03-PHASES.md: build the image, swap it into
+# compose, run the hero scenarios, retire the Python container).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d rating
+#
+# To fall back to the Python oracle, just drop this overlay (compose rebuilds the
+# Python image from the base file) — the oracle stays reproducible on demand.
+#
+# Cut over so far: rating (Phase 1).
+services:
+  rating:
+    build:
+      context: rust
+      dockerfile: services/rating/Dockerfile
+    image: bss-rating:rust

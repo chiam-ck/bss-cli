@@ -190,8 +190,13 @@ reviewed; `make demo-restore` fully Rust-driven.
   engineer roughly halves wall-clock on P2–P4 and P6.
 - P5 (orchestrator) can start during late P4 — it depends on platform crates + clients, not on
   crm being finished.
-- The Python oracle must stay runnable until P8; budget ~½ day per phase for keeping the
-  parity rig healthy (it is the schedule's real insurance policy).
+- The Python oracle must stay **runnable** until P8 — meaning *reproducible on demand* (the
+  repo stays checked out; drop the `docker-compose.rust.yml` overlay to bring the Python
+  container back for a golden-diff), **not** left as the primary running container. Per the
+  per-service cutover doctrine, the running compose stack flips to the Rust container the moment
+  it passes (that's the point — errors surface at one-service blast radius, not at a Phase-8 big
+  bang). Budget ~½ day per phase for keeping the parity rig healthy (the schedule's insurance).
+  See Decision **D8**.
 
 ## Sizing summary
 

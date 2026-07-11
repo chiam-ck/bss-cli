@@ -137,10 +137,13 @@ the project can pause there with a coherent system in production.
 
 ## 6. Verification strategy (how we know each phase worked)
 
-- **Oracle runs.** The Python repo stays checked out and runnable. For each service cutover:
-  run `make scenarios-hero` (and the affected non-hero scenarios) against (a) all-Python stack,
-  (b) stack with the one Rust container swapped in. Diff the scenario reports and the
-  `audit.domain_event` rows they generate (event types, payload shapes, actor/channel stamping).
+- **Oracle runs.** The Python repo stays checked out and *reproducible on demand* (not the
+  primary running container — see Decision D8). For each service cutover: run `make
+  scenarios-hero` (and the affected non-hero scenarios) against (a) all-Python stack,
+  (b) stack with the one Rust container swapped in via the `docker-compose.rust.yml` overlay.
+  Diff the scenario reports and the `audit.domain_event` rows they generate (event types,
+  payload shapes, actor/channel stamping). After it passes, the overlay stays on — the running
+  stack *is* the mixed stack, and the next phase adds one more Rust container to it.
 - **Contract snapshot tests.** During Phase 0, capture golden JSON for every endpoint the
   scenario suite touches (responses + emitted events) from the Python oracle; Rust services
   must match modulo timestamps/ids. These live in the Rust repo and outlast the oracle.
