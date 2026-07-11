@@ -118,10 +118,23 @@ hello-world service (see `03-PHASES.md`).
   intentionally deferred: each ports **with its service** (P1–P4) against that
   service's golden contract tests, where the R1 dict-shape hazards concentrate.
 
+- **`bss-clients`** (base done) — the reqwest S2S base. Ports `BSSClient`:
+  mandatory per-request timeouts, **no retries**, typed `ClientError` (404→NotFound,
+  422+POLICY_VIOLATION→`Policy(bss_db::PolicyViolation)` reusing that type, other
+  422/4xx→Http, 5xx→Server, timeout, transport). `AuthProvider` trait +
+  No/Token/Bearer/NamedToken (fail-fast constructors; NamedToken primary→fallback
+  env). Context propagation reads `bss_context::current().outbound_headers()` with
+  set-default semantics — **no `set_context`**, the §2.1 unification pays off. 11
+  tests run the real reqwest path against a local axum peer (respx equivalent):
+  error mapping, no-retry (call-count=1), per-call timeout, auth+ctx headers.
+  - Deferred: the 12 typed clients (CRMClient, …) port per-phase (P1–P4); the
+    per-call service-identity token override lands with the orchestrator (P5, §2.1).
+
 ### Next (Phase 0 remainder)
 
-1. `bss-events` (relay + consumer + audit router), `bss-clients` (reqwest base +
-   typed clients), `bss-telemetry` (tracing + OTel + redaction).
+1. `bss-events` (outbox relay + safe consumer + audit router; lapin, off-mode
+   when MQ unset) and `bss-telemetry` (tracing + OTel OTLP + JSON logs +
+   redaction rules).
 2. Golden-contract capture rig + hello-world conformance service → Phase 0 tag.
 
 ### Notes / decisions taken

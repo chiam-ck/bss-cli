@@ -45,7 +45,7 @@ touching `rust/**`.
 | `bss-db` | pool + `PolicyViolation` | ✅ done — sqlx PgPool (5+5) + typed `PolicyViolation` (IntoResponse 422, wire round-trip); 7 tests, clean |
 | `bss-models` | `packages/bss-models` structs | ◐ started — `BSS_RELEASE` const (guard #14); per-table structs land per-service |
 | `bss-events` | `packages/bss-events` relay/consumer | ⬜ |
-| `bss-clients` | `packages/bss-clients` | ⬜ |
-| `bss-telemetry` | `packages/bss-telemetry` | ⬜ |
+| `bss-clients` | `packages/bss-clients` | ◐ base done — reqwest client (timeouts, no-retry, typed errors, ctx propagation) + AuthProviders; 11 tests. 12 typed clients land per-phase |
+| `bss-telemetry` | `packages/bss-telemetry` | ⬜ next |
 
 See [`../phases/2.0/PROGRESS.md`](../phases/2.0/PROGRESS.md) for the running log.

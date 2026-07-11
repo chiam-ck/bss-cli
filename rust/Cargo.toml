@@ -34,9 +34,14 @@ sqlx = { version = "0.8", default-features = false, features = [
     "uuid",
     "json",
 ] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
 
 # Workspace-internal crates (path deps).
 bss-context = { path = "crates/bss-context" }
+bss-db = { path = "crates/bss-db" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.
