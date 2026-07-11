@@ -1,0 +1,36 @@
+# BSS-CLI → Rust migration (phases/2.0). Cargo workspace mirroring the uv
+# workspace. Members are added phase by phase; see phases/2.0/03-PHASES.md.
+#
+#   crates/   ← packages/bss-* equivalents (lib crates)      — P0, P5
+#   services/ ← 9 bin crates, one per service                — P1–P4
+#   portals/  ← 2 bin crates (self-serve, csr)               — P6
+#   cli/      ← bss bin (Typer/Rich/REPL equivalent)         — P7
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.80"
+repository = "https://github.com/chiam-ck/bss-cli"
+
+[workspace.dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+arc-swap = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+
+# Lints applied workspace-wide. Individual crates opt in with
+# `[lints] workspace = true`. clippy runs with `-D warnings` in CI.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Doctrine (doc 02 §4): no unwrap/expect/panic in non-test code. These are
+# `warn` here and promoted to hard errors by `cargo clippy -- -D warnings`.
+unwrap_used = "warn"
+expect_used = "warn"

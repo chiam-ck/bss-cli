@@ -32,6 +32,11 @@ build/
 # Claude Code
 .claude/
 
+# Rust (2.0 migration — rust/ workspace)
+/rust/target/
+target/
+**/*.rs.bk
+
 # Docker
 *.log
 
