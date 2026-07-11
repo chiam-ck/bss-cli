@@ -14,6 +14,7 @@ in `~/repo/bss-cli` has been touched, and no Rust has been scaffolded yet.
 | [03-PHASES.md](03-PHASES.md) | The phase plan: 9 phases (0–8), each with scope, deliverables, exit criteria, sizing, and what can run in parallel. |
 | [04-RISKS-AND-DECISIONS.md](04-RISKS-AND-DECISIONS.md) | Risk register, the open decisions that need a human call before/during the port, and the effort estimate with its error bars. |
 | [05-BASELINE.md](05-BASELINE.md) | The **Python "before" measurement** (RAM, cold start, latency, image + LOC footprint), captured 2026-07-11. The fixed comparison point Phase 8 re-measures against for motto #6. |
+| [HANDOFF.md](HANDOFF.md) | **Cold-start guide — read this first when resuming in a fresh session.** Current state, how to verify green, and exactly what to do next. |
 | [PROGRESS.md](PROGRESS.md) | Running phase-by-phase execution log (state, not design). |
 
 ## Executive summary
