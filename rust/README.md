@@ -35,6 +35,21 @@ cargo clippy --all-targets -- -D warnings         # lint gate (CI)
 CI: `.github/workflows/rust.yml` runs fmt + clippy + test on `2.0` pushes and PRs
 touching `rust/**`.
 
+### Conformance harness (live infra)
+
+```bash
+cd rust
+set -a; source ../.env; set +a      # BSS_DB_URL, BSS_MQ_URL, BSS_API_TOKEN, OTLP endpoint
+cargo run -p conformance             # NEVER runs in CI — hits the live stack
+```
+
+`conformance` wires the platform crates against the **same** Postgres/RabbitMQ the
+Python services use and checks the Phase-0 exit criteria (sqlx connect, audit
+schema match, the Python relay publishing a Rust-written row, token middleware
+end-to-end). **No new infrastructure** — sqlx/lapin/reqwest/otel are libraries
+inside the binary; Rust reuses the existing infra. Rust *containers* replace Python
+ones only at Phase 8.
+
 ## Status — Phase 0 (Foundations)
 
 | Crate | Ports | Status |

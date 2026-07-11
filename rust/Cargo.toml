@@ -7,7 +7,7 @@
 #   cli/      ← bss bin (Typer/Rich/REPL equivalent)         — P7
 [workspace]
 resolver = "2"
-members = ["crates/*"]
+members = ["crates/*", "conformance"]
 
 [workspace.package]
 edition = "2021"
@@ -43,6 +43,8 @@ reqwest = { version = "0.12", default-features = false, features = [
 bss-clock = { path = "crates/bss-clock" }
 bss-context = { path = "crates/bss-context" }
 bss-db = { path = "crates/bss-db" }
+bss-middleware = { path = "crates/bss-middleware" }
+bss-events = { path = "crates/bss-events" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.

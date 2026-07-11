@@ -300,6 +300,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "conformance"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-clock",
+ "bss-context",
+ "bss-db",
+ "bss-events",
+ "bss-middleware",
+ "chrono",
+ "reqwest",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

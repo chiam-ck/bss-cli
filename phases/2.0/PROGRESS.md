@@ -154,13 +154,26 @@ hello-world service (see `03-PHASES.md`).
   - Deferred to conformance: lapin connect/declare/consume, the sqlx tick loop, and
     the `/audit-api/v1` read router (needs Postgres+RabbitMQ to validate).
 
-### Next (Phase 0 remainder — all seven crates now have their broker/DB-free cores)
+- **`conformance` harness** (`rust/conformance`, `cargo run -p conformance`) — the
+  Phase-0 exit harness, run against the **live stack** (Postgres/RabbitMQ on
+  `tech-vm`, the same infra the Python services use; reachable from the dev host
+  over Tailscale). Never runs in CI. **All checks green (2026-07-11):**
+  - sqlx connects to the live Postgres (16.14).
+  - `audit.domain_event` schema matches `bss_events::DomainEvent` (16/16 columns).
+  - **cross-language outbox interop: the *Python* relay published a Rust-written
+    audit row** — INSERT an inert `conformance.ping` (no consumer bound), poll until
+    `published_to_mq` flips, then DELETE. Zero side effects.
+  - token middleware end-to-end over real HTTP with the live `BSS_API_TOKEN`
+    (health 200 / no-token 401 / valid-token 200, identity=`default`).
+  - Component model confirmed for the human: sqlx/lapin/reqwest/otel are libraries
+    compiled into the binary — **no new infra, nothing to deploy**; Rust reuses the
+    existing Postgres/RabbitMQ/Jaeger. (D-note in `rust/README.md`.)
 
-1. The tracing/OTel bootstrap + redaction Layer (folds back into bss-telemetry).
-2. Golden-contract capture rig + hello-world conformance service — wires all seven
-   crates against real Postgres + RabbitMQ + Jaeger, proving the pattern end to end
-   (token vectors, an audit row the Python relay publishes, a trace in Jaeger).
-3. → **Phase 0 tag `v2.0.0-phase.0`** once conformance is green.
+### Next (last Phase-0 item)
+
+1. tracing/OTel bootstrap + redaction `Layer` (folds into bss-telemetry) → add the
+   "trace lands in Jaeger" check to the conformance harness.
+2. → **Phase 0 tag `v2.0.0-phase.0`** once the Jaeger check is green.
 
 ### Notes / decisions taken
 
