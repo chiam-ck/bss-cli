@@ -412,6 +412,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bss-admin"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-clock",
+ "bss-db",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "bss-clients"
 version = "0.1.0"
 dependencies = [
@@ -1614,6 +1630,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "mediation"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-admin",
+ "bss-clients",
+ "bss-clock",
+ "bss-context",
+ "bss-db",
+ "bss-events",
+ "bss-middleware",
+ "bss-models",
+ "bss-telemetry",
+ "chrono",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2093,6 +2133,32 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "provisioning-sim"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-admin",
+ "bss-clock",
+ "bss-context",
+ "bss-db",
+ "bss-events",
+ "bss-middleware",
+ "bss-models",
+ "bss-telemetry",
+ "chrono",
+ "futures-util",
+ "lapin",
+ "rand 0.8.6",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2749,6 +2815,32 @@ checksum = "52d1cfed4120b4d927bf7c0f86d2087a4a7d6027c906d9f9d525a80573b9be51"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "som"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-admin",
+ "bss-clients",
+ "bss-clock",
+ "bss-context",
+ "bss-db",
+ "bss-events",
+ "bss-middleware",
+ "bss-models",
+ "bss-telemetry",
+ "chrono",
+ "futures-util",
+ "lapin",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

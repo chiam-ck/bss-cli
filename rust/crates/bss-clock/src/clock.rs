@@ -76,6 +76,22 @@ pub fn now() -> DateTime<Utc> {
     compute_now(&STATE.load())
 }
 
+/// Format a UTC instant the way Python's `datetime.isoformat()` does, so audit
+/// payloads and TMF response bodies stay byte-identical to the oracle across the
+/// cutover: microsecond resolution, the fractional part **omitted when zero** and
+/// otherwise exactly six digits, offset rendered as `+00:00` (never `Z`).
+///
+/// `chrono`'s `to_rfc3339()` differs on both counts (it emits nanoseconds and
+/// keeps a trailing offset either way), so anywhere a datetime is serialized into
+/// a payload string must go through here — this is an R1 (dict-shape drift) seam.
+pub fn isoformat(dt: DateTime<Utc>) -> String {
+    if dt.timestamp_subsec_micros() == 0 {
+        dt.format("%Y-%m-%dT%H:%M:%S+00:00").to_string()
+    } else {
+        dt.format("%Y-%m-%dT%H:%M:%S%.6f+00:00").to_string()
+    }
+}
+
 /// Freeze the clock at `at` (or the current [`now`] when `None`).
 ///
 /// Returns the instant the clock was frozen at. Re-calling `freeze` while

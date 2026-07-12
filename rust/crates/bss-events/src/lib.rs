@@ -15,12 +15,14 @@ pub mod relay;
 pub mod router;
 pub mod topology;
 
-pub use consumer::{death_count, decide_retry, RetryAction, CLAIM_INBOX_SQL};
+pub use consumer::{
+    bind_consumer, death_count, decide_retry, EventHandler, RetryAction, CLAIM_INBOX_SQL,
+};
 pub use event::{stage_event, DomainEvent};
 pub use mq::MqChannel;
 pub use relay::{
-    drain_batch, relay_mode, EventPublisher, OutboxRow, RelayMode, RowOutcome, DRAIN_SQL,
-    MARK_FAIL_SQL, MARK_OK_SQL,
+    drain_batch, drain_once, relay_mode, start_relay, EventPublisher, OutboxRow, Relay, RelayMode,
+    RowOutcome, DRAIN_SQL, MARK_FAIL_SQL, MARK_OK_SQL,
 };
 pub use router::audit_events_router;
 pub use topology::{

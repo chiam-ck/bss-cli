@@ -4,43 +4,46 @@ This is the cold-start guide for resuming the Rust migration. Read this first,
 then [`PROGRESS.md`](PROGRESS.md) for the detailed log and [`00-STRATEGY.md`](00-STRATEGY.md)
 for the why.
 
-## Where we are (2026-07-11)
+## Where we are (2026-07-12)
 
-**Phase 1 (rating pilot) is COMPLETE and tagged `v2.0.0-phase.1`.**
-(Phase 0 foundations before it: tag `v2.0.0-phase.0`.)
+**Phase 2 (event-plane services) is COMPLETE and tagged `v2.0.0-phase.2`.**
+(Before it: `v2.0.0-phase.1` rating pilot, `v2.0.0-phase.0` foundations.)
 
-The first Python service (`rating`) is ported to Rust and **proven end-to-end
-against the live stack**: the Rust rating service consumed a real `usage.recorded`
-and emitted the `usage.rated` (audit row + published to MQ) via the live Catalog
-and live Postgres. The **per-service porting playbook** — the real Phase-1
-deliverable — is [`PLAYBOOK.md`](PLAYBOOK.md); it gets stamped 8 more times.
+**mediation, provisioning-sim, and som** are ported and **cut over into the running
+stack**, alongside rating from P1. The order pipeline now runs on an all-Rust event
+plane against the Python catalog/com/subscription/crm/payment. This is also where
+the deferred event-plane bindings landed: the **outbox relay tick loop**
+(`bss_events::start_relay`) and the **safe retry/park consumer**
+(`bss_events::bind_consumer`) — som runs both. New platform pieces: the `bss-admin`
+crate (shared reset router), `SubscriptionClient` + `InventoryClient`, and
+`bss_clock::isoformat` (the first R1 datetime-in-payload seam).
 
-All 8 platform crates are built and green (now grown with `CatalogClient`, the
-`/audit-api/v1` router, and the lapin `MqChannel`), proven against the live stack
-via the P0 conformance harness + the P1 live smoke. A Rust binary interoperates
-byte-for-byte with the running Python system — same Postgres, RabbitMQ, Jaeger,
-token perimeter.
+**The six event-plane hero scenarios pass against the confirmed Rust event plane**
+(run directly with the overlay held) — including the two named exit criteria
+(`new_activation_with_provisioning_retry`, `inventory_low_watermark_and_replenishment`)
+and `customer_signup_and_exhaust`. The P1 "stall" turned out to be a **misrun** (no
+provider-flip wrapper → Stripe charge never approved), not a code bug — the Python
+event plane passes the same suite. Separately, the Rust port hardens a *real latent*
+concurrent lost-update race in SOM's CFS `pendingTasks` RMW (serial consumer + `FOR
+UPDATE`; noted for a Python backport). **Deployment gotcha:** `make scenarios-hero`
+reverts the Rust som/provisioning-sim to Python (portal-self-serve's health-gated
+`depends_on` + the distroless images having no `HEALTHCHECK` until P8) — validate
+with `COMPOSE_FILE=…:docker-compose.rust.yml` or run api scenarios directly. See
+PROGRESS Phase 2 for the full write-up.
 
-**Rating is cut over in the running stack** (Decision D8 — per-service cutover, not
-a Phase-8 big bang). The `rating` container runs `bss-rating:rust` via the
-`docker-compose.rust.yml` overlay. Bring the stack up with the overlay to keep it:
-`docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d`. Drop the
-overlay to fall back to the Python oracle for a golden diff. The overlay's
-"cut over so far" list is the running ledger — add each service as it lands.
+All platform crates green against the live stack. A Rust binary interoperates
+byte-for-byte with the running Python system — same Postgres, RabbitMQ (shared
+durable queues + retry topology), Jaeger, token perimeter.
 
-**Resuming? Start at Phase 2** (event-plane services: mediation, provisioning-sim,
-som) using [`PLAYBOOK.md`](PLAYBOOK.md) as the step-by-step recipe. This is also
-where the relay tick loop's lapin/sqlx binding lands (som/com/subscription run it).
+**Cutover model** (Decision D8 — per-service, not a Phase-8 big bang): the Rust
+containers run via the `docker-compose.rust.yml` overlay. Bring the stack up with
+the overlay to keep them: `docker compose -f docker-compose.yml -f
+docker-compose.rust.yml up -d`. Drop the overlay to fall back to the Python oracle
+for a golden diff. The overlay's "cut over so far" list is the running ledger —
+now rating + mediation + provisioning-sim + som.
 
-> **Deferred to Phase 2 (decided 2026-07-11):** the full `make scenarios-hero` suite
-> wasn't run for rating. The stack's operational data is currently reset/empty and
-> the order→provisioning path stalls (tasks complete, but som/com don't flip the
-> order → `order.stuck`) — and it stalls the **same way on the pure Python stack**,
-> so it's upstream of rating, not the port. Rating's own path is validated on the
-> mixed stack (see PROGRESS Phase 1 → Cutover). Phase 2 ports mediation/
-> provisioning-sim/som and exercises this exact path, so run the full end-to-end
-> hero suite there (`make scenarios-hero` with the provider-flip wrapper + a fresh
-> seed) once the provisioning reaction is healthy — don't chase it in isolation now.
+**Resuming? Start at Phase 3** (`catalog` + `com`) using [`PLAYBOOK.md`](PLAYBOOK.md)
+as the step-by-step recipe. See [`03-PHASES.md`](03-PHASES.md) §Phase 3.
 
 - Work lives in [`../../rust/`](../../rust/) — a Cargo workspace (subtree of this
   monorepo; decision D7). The Python repo alongside stays the **oracle**.
@@ -83,15 +86,16 @@ cargo run -p conformance                       # 5 checks, all should PASS
 | bss-middleware | ✅ | TokenMap (HMAC, golden vs oracle) + token gate |
 | bss-db | ✅ | PolicyViolation (compiler-enforced 422) + sqlx pool |
 | bss-models | ◐ | BSS_RELEASE only; per-table structs land per-service |
-| bss-clients | ◐ | reqwest base + AuthProviders; 12 typed clients per-phase |
+| bss-clients | ◐ | base + AuthProviders; Catalog/Subscription/Inventory done (P1–P2); 9 clients left |
 | bss-telemetry | ✅ | redaction rules + semconv + OTel bootstrap (→ Jaeger) |
-| bss-events | ◐ | staging + drain + retry/park + topology; lapin/sqlx per-service |
+| bss-events | ✅ | staging + relay tick loop + safe consumer + topology (lapin/sqlx landed P2) |
+| bss-admin | ✅ | shared `admin_reset_router` (new crate, P2) |
 
-**Deferred by design** (they land with the services that first need them, P1+, so
+**Deferred by design** (they land with the services that first need them, so
 they're tested against real behaviour rather than as untested scaffolding):
-the 12 typed clients, the lapin/sqlx service wiring (relay tick loop, consumer,
-`/audit-api/v1` router), the ~60 per-table model structs, and the redaction
-**Layer** over live `tracing` fields (the rules exist; no service logs yet).
+the remaining ~9 typed clients, the ~60 per-table model structs, and the redaction
+**Layer** over live `tracing` fields (the rules exist; no service logs sensitive
+fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in P2.
 
 ## Load-bearing conventions (don't relearn these the hard way)
 
@@ -107,26 +111,33 @@ the 12 typed clients, the lapin/sqlx service wiring (relay tick loop, consumer,
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: Phase 2 — event-plane services (mediation, provisioning-sim, som)
+## What to do next: Phase 3 — catalog + com
 
-Follow [`PLAYBOOK.md`](PLAYBOOK.md) — the validated recipe from the rating pilot —
-for each of the three. See [`03-PHASES.md`](03-PHASES.md) §Phase 2. Highlights:
+Follow [`PLAYBOOK.md`](PLAYBOOK.md) — now validated across four services. See
+[`03-PHASES.md`](03-PHASES.md) §Phase 3. Highlights:
 
-- **mediation** (~1.6k) — block-at-edge synchronous rating path + roaming-indicator
-  purity (guard 11); it *calls* the rating surface, so its golden tests lean on P1.
-- **provisioning-sim** (~1.5k) — fault injection + "stuck" state + a domain worker.
-- **som** (~1.8k) — atomic MSISDN+eSIM reservation (calls crm-hosted Inventory) +
-  CFS/RFS decomposition.
-- **This is where the relay tick loop lands** — som/com/subscription run the
-  outbox relay (rating inline-publishes and doesn't). Bind the lapin/sqlx tick
-  loop (drain→publish→mark, SKIP LOCKED) in `bss-events` and validate it against
-  the real retry/parked topology + the provisioning-retry-resilience hero scenario.
-- Exit criteria: provisioning-retry-resilience + inventory hero scenarios green on
-  the mixed stack; parked/retry verified by killing handlers mid-run. Tag
-  `v2.0.0-phase.2`.
+- **catalog** (~4.7k) — TMF620 read surface + admin writes + promotions +
+  price/window logic. The fattest client-consumer surface, so its golden tests
+  protect everyone downstream. This is where the remaining `CatalogClient` methods
+  (list/active-price/promotions/admin) land, and where the ~60-column TMF offering
+  shape gets pinned (R1-heavy — see the `bss_clock::isoformat` seam for the pattern).
+- **com** (~2.8k) — ProductOrder FSM, decomposition hand-off to som (it publishes
+  the `order.in_progress` that the **now-Rust** som consumes), price snapshot at
+  order time (guard 5's producer side). com **runs the relay + safe consumer** too
+  — both bindings already exist in `bss-events` from P2, so com just wires them.
+- Exit criteria: catalog-versioning/plan-change + order hero scenarios green; the
+  Python portals still work against the now-mostly-Rust service plane. Tag
+  `v2.0.0-phase.3`.
 
-Rating pilot reference to copy from: `rust/services/rating/` (crate layout),
-`rust/services/rating/tests/live_smoke.rs` (the live-proof pattern).
+Reference to copy from: `rust/services/som/` (relay + safe-consumer wiring, graph
+repo, event staging), `rust/services/mediation/` (typed client + first table
+write), and any service's `tests/live_smoke.rs` (the live-proof pattern).
+
+**One carry-over for Phase 3+ (or a spare-cycle Python backport):** SOM's
+`handle_task_completed` concurrent lost-update race on the CFS `pendingTasks` JSONB
+(root-caused in P2 — see PROGRESS). The Rust port fixed it (serial consumer + `FOR
+UPDATE`); the Python oracle still has it. com has an analogous multi-event reaction
+surface — port it with the same serialize/lock discipline.
 
 ## Quick pointers
 

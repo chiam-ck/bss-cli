@@ -13,10 +13,10 @@ use axum::{
     Router,
 };
 use bss_clock::{
-    advance, clock_admin_router, freeze, now, parse_duration, reset_for_tests, state, ClockError,
-    Mode,
+    advance, clock_admin_router, freeze, isoformat, now, parse_duration, reset_for_tests, state,
+    ClockError, Mode,
 };
-use chrono::{Duration, TimeZone, Utc};
+use chrono::{Duration, TimeZone, Timelike, Utc};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -237,4 +237,36 @@ async fn freeze_rejects_bad_iso() {
     )
     .await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+// ── isoformat — Python datetime.isoformat() parity (R1 seam) ────────────────
+
+#[test]
+fn isoformat_omits_zero_fraction() {
+    let dt = Utc.with_ymd_and_hms(2026, 7, 11, 21, 0, 0).unwrap();
+    // Python: datetime(2026,7,11,21,0,0,tzinfo=utc).isoformat() == "...21:00:00+00:00"
+    assert_eq!(isoformat(dt), "2026-07-11T21:00:00+00:00");
+}
+
+#[test]
+fn isoformat_renders_six_digit_micros() {
+    let dt = Utc
+        .with_ymd_and_hms(2026, 7, 11, 21, 0, 0)
+        .unwrap()
+        .with_nanosecond(834_617_000)
+        .unwrap();
+    // Micros only (6 digits), nanoseconds truncated — matches Python isoformat.
+    assert_eq!(isoformat(dt), "2026-07-11T21:00:00.834617+00:00");
+}
+
+#[test]
+fn isoformat_truncates_sub_micro_nanos_to_zero() {
+    // 500ns of sub-microsecond precision → Python has no such resolution; we drop
+    // it and, since micros are zero, omit the fraction entirely.
+    let dt = Utc
+        .with_ymd_and_hms(2026, 7, 11, 21, 0, 0)
+        .unwrap()
+        .with_nanosecond(500)
+        .unwrap();
+    assert_eq!(isoformat(dt), "2026-07-11T21:00:00+00:00");
 }

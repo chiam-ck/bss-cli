@@ -42,6 +42,127 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
+## Phase 2 — Event-plane services: mediation, provisioning-sim, som — ✅ COMPLETE (tag `v2.0.0-phase.2`)
+
+Three services ported and **cut over into the running stack**, plus the deferred
+lapin/sqlx event-plane bindings (relay tick loop + safe retry/park consumer). The
+order pipeline now runs on an all-Rust event plane (mediation → rating →
+subscription; com → som → provisioning-sim → som → com) against the Python
+catalog/com/subscription/crm/payment. **18/19 hero scenarios green** on the mixed
+stack; the 1 failure is a pre-existing Python-portal branding assertion (see
+below). 138 unit/integration tests (+42 over P1); fmt + clippy `-D warnings` clean.
+
+### Done
+
+- **`rust/services/mediation`** — TMF635 online mediation. Block-at-edge ingress:
+  cheap policies → Subscription enrichment (`SubscriptionClient.get_by_msisdn`) →
+  post-enrich policies → persist `usage_event` + inline-publish `usage.recorded`.
+  Rejections leave **no** row, only a `usage.rejected` audit trace. First
+  service-owned table write of the port. Live smoke proves the rejection path
+  in-network + a `usage.rejected` row against live Subscription.
+- **`rust/services/provisioning-sim`** — HLR/PCRF/OCS/SM-DP+ stand-in. Consumer +
+  fault-injecting worker (`fail_always`/`fail_first_attempt`/`slow`/`stuck`) +
+  the eSIM SM-DP+ seam (`sim`/`onbglobal`/`esim_access` — `select_esim_provider`
+  fail-fast). The stateful retry loop mutates an in-memory task and persists once
+  at the terminal state (externally identical to the Python flush-then-commit).
+  Live smoke: worker completes `HLR_PROVISION` → `provisioning.task.completed`;
+  deployed container drains the live `provisioning.task.created` queue.
+- **`rust/services/som`** — the event-plane heart. Decomposes `order.in_progress`
+  → ServiceOrder → CFS → RFS(Data,Voice) + atomic MSISDN/eSIM reservation
+  (`InventoryClient`), drives `provisioning.task.*` to `service_order.completed`.
+  Runs the **outbox relay** (its staged events' only publisher) and **four safe
+  consumers**. Live smoke: HTTP surface + the relay drains a staged row to
+  published against the live broker.
+
+- **Platform crates grown (the deferred P0/P1 bindings, now validated):**
+  - **`bss-events::start_relay` / `Relay` / `drain_once`** — the lapin/sqlx tick
+    loop over the P0 `drain_batch` core: `FOR UPDATE SKIP LOCKED` drain →
+    publish-with-`message_id` → mark, at-least-once. **som/com/subscription run
+    it; the rest inline-publish.**
+  - **`bss-events::bind_consumer` + `EventHandler`** — the safe consumer: declares
+    the main/retry/parked topology (arg types matched aio-pika so the durable
+    queues are shared byte-identically), inbox-dedups on `message_id`, runs the
+    handler on the consumer's transaction, retries (TTL dead-letter) or parks. It
+    processes deliveries **serially** — see the concurrency note below.
+  - **`bss-events::MqChannel`** grew `publish_json_with_id`/`publish_bytes_with_id`,
+    `declare_retry_exchange`, `bind_safe_consumer`, `publish_parked`.
+  - **`bss-clients::{SubscriptionClient, InventoryClient}`** — the two typed
+    clients this phase needs (by-msisdn lookup; reserve/release MSISDN + eSIM).
+  - **`bss-admin` (new crate)** — the shared `admin_reset_router` (operational-data
+    wipe, `BSS_ALLOW_ADMIN_RESET`-gated). Ported here because the Phase-2 scenarios
+    call each service's `/reset-operational-data`. All three services mount it.
+  - **`bss-clock::isoformat`** — Python `datetime.isoformat()` parity (micros, no
+    fraction when zero, `+00:00`). The first R1 datetime-in-payload seam.
+
+### Cutover into the running stack (per Decision D8)
+
+All three run their Rust image via `docker-compose.rust.yml`
+(`bss-{mediation,provisioning-sim,som}:rust`). Each verified in-network through the
+deployed container (mediation reached `subscription:8000`; provisioning-sim drained
+a published `task.created` → `completed` published_to_mq=true; som's 4 consumers +
+relay started clean). The overlay ledger now reads rating + all three.
+
+### The P1 order→provisioning "stall" — it was a misrun, not a bug
+
+P1 deferred the full hero suite because `customer_signup_and_exhaust` stalled at
+"wait for order to complete" (`order.stuck`). **The real cause was the P1 run
+itself** — no `make scenarios-hero` provider-flip wrapper (payment still Stripe →
+the charge never approved → no activation) + empty seed. Proof: the full
+`scenarios-hero` suite passes on the **pure Python** event plane (verified — the
+first P2 run tested Python som/prov before I noticed they'd been reverted, see the
+deployment gotcha), and the Rust event plane passes the same scenarios (verified —
+below). It was never a code stall.
+
+**Separately**, while porting SOM I found a *real latent* concurrency bug in the
+oracle: `handle_task_completed` does a read-modify-write on the CFS `characteristics`
+JSONB (`pendingTasks[t]=completed`) with **no row lock**, and the Python aio-pika
+consumer runs its callbacks **concurrently** (prefetch 5) — four simultaneous
+`provisioning.task.completed` events *can* lose a `pendingTasks` update. It doesn't
+manifest in the hero run (the four provisioning tasks have staggered durations, so
+the completions arrive spaced out), but it's a genuine race. The Rust port hardens
+it: the safe consumer processes deliveries serially and the handlers read the CFS
+`FOR UPDATE`. **Noted for a Python backport** — a correctness improvement, not the
+P1-stall fix.
+
+### Exit criteria — met (validated against the confirmed Rust event plane)
+
+Six event-plane hero scenarios run **directly** (`bss scenario run <file>`) with the
+four Rust containers confirmed deployed throughout (payment flipped to mock; the
+overlay held so som/provisioning-sim stayed Rust):
+
+- `new_activation_with_provisioning_retry` ✅ (provisioning-retry-resilience — order
+  completes *despite* the injected HLR fault; the retry path runs through Rust
+  provisioning-sim + som) and `inventory_low_watermark_and_replenishment` ✅ — the
+  two named exit criteria.
+- `customer_signup_and_exhaust` ✅ 13/13, `trace_customer_signup_swimlane` ✅ (order
+  completes in ~2.6s), `customer_buys_roaming_and_uses_it` ✅ (mediation roaming
+  path), `customer_renews_automatically` ✅.
+- Retry path exercised by the retry scenario; park-after-max is unit-pinned
+  (`decide_retry`) and the topology declares the parked queue.
+
+### Deployment gotcha (important for P3+ and P8)
+
+`make scenarios-hero` recreates `portal-self-serve` (email-provider flip) with the
+**base** compose file. `portal-self-serve` has a health-gated `depends_on:
+[som, provisioning-sim, …]`, so compose reconciles those deps against the base spec
+and **reverts the Rust som/provisioning-sim containers to Python** — because the
+distroless Rust images carry **no `HEALTHCHECK`** (that's the Phase-8 "healthchecks
+without curl" task). So `make scenarios-hero` as-is silently tests the Python event
+plane. Until the Rust images get a healthcheck, validate with **`COMPOSE_FILE=docker-compose.yml:docker-compose.rust.yml`** exported (so every wrapper `docker compose`
+keeps the overlay), or run the api-tagged event-plane scenarios directly with the
+overlay held (what was done here). The 4 portal-tagged hero scenarios still need the
+portal and are out of scope for the Rust event-plane validation.
+
+### Bugs caught by the deployed cutover (playbook §7)
+
+- **`NOT_ALLOWED - attempt to reuse consumer tag 'som'`** — all four SOM consumers
+  shared one consumer tag on one connection; RabbitMQ requires unique tags (aio-pika
+  auto-generates them). Fixed: the (unique) queue name is the tag.
+- **Nanosecond datetime drift** — mediation's `rejectedAt` serialized 9-digit
+  nanoseconds vs Python's 6-digit micros. Fixed via `bss_clock::isoformat` (R1 seam).
+
+---
+
 ## Phase 1 — Pilot: rating — ✅ COMPLETE (tag `v2.0.0-phase.1`)
 
 The first Python service ported to Rust, and the **per-service porting playbook**

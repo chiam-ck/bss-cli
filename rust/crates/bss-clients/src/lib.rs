@@ -13,6 +13,8 @@ mod auth;
 mod base;
 mod catalog;
 mod errors;
+mod inventory;
+mod subscription;
 
 pub use auth::{
     AuthError, AuthProvider, BearerAuthProvider, NamedTokenAuthProvider, NoAuthProvider,
@@ -21,3 +23,5 @@ pub use auth::{
 pub use base::{BssClient, DEFAULT_TIMEOUT};
 pub use catalog::CatalogClient;
 pub use errors::ClientError;
+pub use inventory::InventoryClient;
+pub use subscription::SubscriptionClient;

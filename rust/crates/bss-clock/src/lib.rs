@@ -16,7 +16,7 @@ mod clock;
 mod router;
 
 pub use clock::{
-    advance, freeze, now, parse_duration, reset_for_tests, state, unfreeze, ClockError, ClockState,
-    Mode,
+    advance, freeze, isoformat, now, parse_duration, reset_for_tests, state, unfreeze, ClockError,
+    ClockState, Mode,
 };
 pub use router::clock_admin_router;

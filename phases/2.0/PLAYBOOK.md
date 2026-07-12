@@ -157,13 +157,22 @@ published ports (`localhost:8001` catalog … `:8008` rating); the **infra**
 
 ## 7. Watch the deployed container's logs (it catches what tests don't)
 
-The first thing to check after the swap is `docker logs`. Rating's cutover
-surfaced a real bug this way: with no level filter, `lapin` logged at TRACE and
-**dumped the AMQP PLAIN handshake — i.e. the broker password — into the logs**.
-`bss_telemetry::init_telemetry` now defaults to `info` and pins
-`lapin`/`amq_protocol*` to `warn` (never default the subscriber to TRACE). Confirm
-the deployed service logs clean `INFO` lines (`service.starting`,
-`mq.consumer.started`) and **no** secret material before calling the cutover done.
+The first thing to check after the swap is `docker logs`. Real bugs surface here
+that no test caught:
+
+- **rating (P1):** with no level filter, `lapin` logged at TRACE and **dumped the
+  AMQP PLAIN handshake — the broker password — into the logs**.
+  `bss_telemetry::init_telemetry` now defaults to `info` and pins
+  `lapin`/`amq_protocol*` to `warn` (never default the subscriber to TRACE).
+- **som (P2):** all four consumers shared one consumer tag on one connection →
+  `NOT_ALLOWED - attempt to reuse consumer tag`. RabbitMQ requires a unique tag per
+  channel (aio-pika auto-generates them). Fix: use the (unique) queue name as the
+  tag. A multi-consumer service will hit this — grep your `basic_consume` tags.
+
+Confirm the deployed service logs clean `INFO` lines (`service.starting`,
+`mq.consumer.started`, `outbox.relay.started`) and **no** secret material or hard
+AMQP errors (`grep -icE 'password|PLAIN|NOT_ALLOWED|panic'` → 0) before calling the
+cutover done.
 
 ## What landed in the platform crates while porting rating (reuse these)
 
@@ -171,8 +180,36 @@ the deployed service logs clean `INFO` lines (`service.starting`,
   same way (thin wrapper over `BssClient`, only the calls the phase needs).
 - `bss-events::audit_events_router(pool)` — the shared `/audit-api/v1` read router.
 - `bss-events::MqChannel` — lapin connect / declare-exchange / `publish_json` /
-  `declare_and_bind`. The relay tick loop is still deferred to P2 (som/com/
-  subscription actually run it, so it's validated against real retry/park there).
+  `declare_and_bind`.
+
+## What landed while porting the P2 event-plane services (reuse these)
+
+- **`bss-events::start_relay(pool, mq, interval_ms, batch_size)` + `drain_once`** —
+  the outbox relay tick loop over the P0 `drain_batch` core (`FOR UPDATE SKIP
+  LOCKED` drain → publish-with-`message_id` → mark). A service that **runs the
+  relay** (som/com/subscription) stages events with `exchange=None` semantics (no
+  inline publish) — the relay is the sole publisher. The rest inline-publish.
+- **`bss-events::bind_consumer(mq, pool, queue, rk, tag, inbox_schema, max_retries,
+  backoff, handler)` + `EventHandler`** — the safe consumer: main/retry/parked
+  topology, inbox dedup on `message_id`, handler-on-the-transaction, retry-or-park.
+  The handler is an `Arc<dyn for<'c> Fn(&'c mut PgConnection, Value) -> BoxFuture>`.
+  **It processes deliveries serially** — the deliberate fix for the Python
+  consumer's concurrent-callback lost-update race (a read-modify-write on a shared
+  aggregate JSONB with no row lock). Also read the target aggregate `FOR UPDATE` in
+  such handlers. This is a *correctness improvement over the oracle* — legitimate,
+  but log it in PROGRESS and flag a Python backport.
+- **`bss-admin::admin_reset_router(pool, name, plans)`** — the shared
+  `/reset-operational-data` router (P2-scenarios call it per service). Mount it.
+- **`bss-clients::{SubscriptionClient, InventoryClient}`** — add per-service.
+- **`bss_clock::isoformat(dt)`** — Python `datetime.isoformat()` parity (micros,
+  fraction omitted when zero, `+00:00`). **Any datetime serialized into a payload
+  string or TMF body must go through this**, never `chrono::to_rfc3339()` (which
+  emits nanoseconds + a different zero-fraction shape). This is the #1 R1 seam once
+  a service puts timestamps in its event payloads.
+- **Queue-arg types matter:** `bind_safe_consumer` sets `x-message-ttl` as an AMQP
+  integer and the DLX names as strings, matching aio-pika so the durable queues are
+  shared without a `PRECONDITION_FAILED` on redeclare. Don't "simplify" them to all
+  strings.
 
 ## Sequencing checklist (copy per service)
 

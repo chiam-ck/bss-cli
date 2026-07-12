@@ -1,0 +1,30 @@
+[package]
+name = "bss-admin"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Shared admin-api reset router factory. Rust port of packages/bss-admin — each service mounts its own operational-data wipe plan, gated behind BSS_ALLOW_ADMIN_RESET."
+
+[lints]
+workspace = true
+
+[lib]
+name = "bss_admin"
+path = "src/lib.rs"
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+bss-clock = { workspace = true }
+bss-db = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

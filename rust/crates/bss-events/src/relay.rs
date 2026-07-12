@@ -114,3 +114,117 @@ pub async fn drain_batch<P: EventPublisher>(rows: &[OutboxRow], publisher: &P) -
 fn truncate(s: &str, max: usize) -> String {
     s.chars().take(max).collect()
 }
+
+// ── lapin/sqlx tick loop (the deferred P2 binding) ──────────────────────────
+
+use std::sync::Arc;
+
+use sqlx::{PgPool, Row};
+
+use crate::MqChannel;
+
+/// [`EventPublisher`] backed by a live [`MqChannel`] — publishes each drained row
+/// to `bss.events` with the durable `event_id` as the AMQP `message_id`.
+struct LapinPublisher(Arc<MqChannel>);
+
+impl EventPublisher for LapinPublisher {
+    async fn publish(
+        &self,
+        routing_key: &str,
+        message_id: &str,
+        body: Vec<u8>,
+    ) -> Result<(), String> {
+        self.0
+            .publish_bytes_with_id(routing_key, &body, message_id)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// A running outbox relay. Store it and call [`Relay::stop`] on shutdown.
+pub struct Relay {
+    handle: tokio::task::JoinHandle<()>,
+}
+
+impl Relay {
+    /// Cancel the tick loop.
+    pub async fn stop(self) {
+        self.handle.abort();
+        let _ = self.handle.await;
+    }
+}
+
+/// Drain one batch: select unpublished rows `FOR UPDATE SKIP LOCKED`, publish each
+/// (publish precedes the mark → at-least-once), apply the per-row mark, commit.
+/// Returns the number of rows drained. The publish I/O happens while the rows are
+/// locked, exactly like the Python relay holding its session open.
+pub async fn drain_once(
+    pool: &PgPool,
+    mq: &Arc<MqChannel>,
+    batch_size: i64,
+) -> Result<usize, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    let db_rows = sqlx::query(DRAIN_SQL)
+        .bind(batch_size)
+        .fetch_all(&mut *tx)
+        .await?;
+
+    let rows: Vec<OutboxRow> = db_rows
+        .iter()
+        .map(|r| OutboxRow {
+            id: r.get::<i64, _>("id"),
+            event_id: r.get::<uuid::Uuid, _>("event_id").to_string(),
+            event_type: r.get::<String, _>("event_type"),
+            payload: r
+                .try_get::<Option<Value>, _>("payload")
+                .ok()
+                .flatten()
+                .unwrap_or(Value::Null),
+        })
+        .collect();
+
+    let publisher = LapinPublisher(mq.clone());
+    let outcomes = drain_batch(&rows, &publisher).await;
+
+    for outcome in &outcomes {
+        match outcome {
+            RowOutcome::Published { id } => {
+                sqlx::query(MARK_OK_SQL).bind(id).execute(&mut *tx).await?;
+            }
+            RowOutcome::Failed { id, error } => {
+                tracing::warn!(id = id, error = %error, "outbox.relay.publish_failed");
+                sqlx::query(MARK_FAIL_SQL)
+                    .bind(id)
+                    .bind(error)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+    }
+
+    tx.commit().await?;
+    Ok(rows.len())
+}
+
+/// Start the outbox relay as a background task — port of `start_relay`. Drains
+/// every `interval_ms` (no wait when a full batch is drained, so a backlog
+/// clears fast). A tick failure is logged and never kills the loop.
+pub fn start_relay(pool: PgPool, mq: Arc<MqChannel>, interval_ms: u64, batch_size: i64) -> Relay {
+    let handle = tokio::spawn(async move {
+        tracing::info!(interval_ms, batch_size, "outbox.relay.started");
+        loop {
+            let drained = match drain_once(&pool, &mq, batch_size).await {
+                Ok(n) => n,
+                Err(e) => {
+                    tracing::warn!(error = %e, "outbox.relay.tick_failed");
+                    0
+                }
+            };
+            // Back off only when idle; a full batch may have more waiting.
+            if (drained as i64) < batch_size {
+                tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
+            }
+        }
+    });
+    Relay { handle }
+}
