@@ -12,8 +12,12 @@
 mod auth;
 mod base;
 mod catalog;
+mod crm;
 mod errors;
 mod inventory;
+mod loyalty;
+mod payment;
+mod som;
 mod subscription;
 
 pub use auth::{
@@ -22,6 +26,14 @@ pub use auth::{
 };
 pub use base::{BssClient, DEFAULT_TIMEOUT};
 pub use catalog::CatalogClient;
+pub use crm::CrmClient;
 pub use errors::ClientError;
 pub use inventory::InventoryClient;
+pub use loyalty::{
+    LoyaltyClient, OFFER_DEF_KIND_REGULAR, PROMO_KIND_MULTI_USE, PROMO_KIND_SINGLE_USE_SHARED,
+    PROMO_KIND_SINGLE_USE_UNIQUE, REVOKE_CUSTOMER_CHANGED_MIND, REVOKE_OPERATOR_ACTION,
+    REVOKE_ORDER_CANCELLED,
+};
+pub use payment::PaymentClient;
+pub use som::SomClient;
 pub use subscription::SubscriptionClient;

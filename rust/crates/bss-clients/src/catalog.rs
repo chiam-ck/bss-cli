@@ -55,4 +55,80 @@ impl CatalogClient {
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
+
+    /// `GET /tmf-api/productCatalogManagement/v4/productOfferingPrice/active/{id}`.
+    ///
+    /// The lowest active recurring price at the current moment. A 422 carrying
+    /// `catalog.price.no_active_row` maps to [`ClientError::Policy`] (com turns it
+    /// into `policy.offering.not_sellable_now`). Only the no-`at` variant is
+    /// ported — com's create path never passes a moment.
+    pub async fn get_active_price(&self, offering_id: &str) -> Result<Value, ClientError> {
+        let path = format!(
+            "/tmf-api/productCatalogManagement/v4/productOfferingPrice/active/{offering_id}"
+        );
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /promo/validate?code&offering[&customerId]` — full order-time discount
+    /// terms com stamps onto the order item. `customer_id` gates a targeted code
+    /// on eligibility.
+    pub async fn validate_promo(
+        &self,
+        code: &str,
+        offering: &str,
+        customer_id: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut path = format!(
+            "/promo/validate?code={}&offering={}",
+            encode(code),
+            encode(offering)
+        );
+        if let Some(cid) = customer_id {
+            path.push_str(&format!("&customerId={}", encode(cid)));
+        }
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /promo/resolve-eligible?customerId&offering` — best targeted promo the
+    /// customer is eligible for + terms + the promo's code (`{valid:false}` if none).
+    pub async fn resolve_eligible_promo(
+        &self,
+        customer_id: &str,
+        offering: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!(
+            "/promo/resolve-eligible?customerId={}&offering={}",
+            encode(customer_id),
+            encode(offering)
+        );
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+}
+
+/// Minimal query-value encoding for the characters that appear in ids/codes
+/// (space + `&`/`+`/`=`/`%`/`#`). Ids are `CUST-001`-shaped, so this is a
+/// safety net, not a general URL encoder.
+fn encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'%' => out.push_str("%25"),
+            b'&' => out.push_str("%26"),
+            b'+' => out.push_str("%2B"),
+            b'=' => out.push_str("%3D"),
+            b'#' => out.push_str("%23"),
+            b' ' => out.push_str("%20"),
+            _ => out.push(b as char),
+        }
+    }
+    out
 }

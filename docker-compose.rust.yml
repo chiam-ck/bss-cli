@@ -8,13 +8,24 @@
 # To fall back to the Python oracle, just drop this overlay (compose rebuilds the
 # Python image from the base file) — the oracle stays reproducible on demand.
 #
-# Cut over so far: rating (Phase 1); mediation, provisioning-sim, som (Phase 2).
+# Cut over so far: rating (Phase 1); mediation, provisioning-sim, som (Phase 2);
+# catalog, com (Phase 3).
 services:
   rating:
     build:
       context: rust
       dockerfile: services/rating/Dockerfile
     image: bss-rating:rust
+  catalog:
+    build:
+      context: rust
+      dockerfile: services/catalog/Dockerfile
+    image: bss-catalog:rust
+  com:
+    build:
+      context: rust
+      dockerfile: services/com/Dockerfile
+    image: bss-com:rust
   mediation:
     build:
       context: rust

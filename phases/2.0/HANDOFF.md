@@ -6,30 +6,52 @@ for the why.
 
 ## Where we are (2026-07-12)
 
-**Phase 2 (event-plane services) is COMPLETE and tagged `v2.0.0-phase.2`.**
-(Before it: `v2.0.0-phase.1` rating pilot, `v2.0.0-phase.0` foundations.)
+**Phase 3 (catalog + com) is COMPLETE and tagged `v2.0.0-phase.3`.**
+(Before it: `v2.0.0-phase.2` event plane, `v2.0.0-phase.1` rating, `v2.0.0-phase.0`
+foundations.)
 
-**mediation, provisioning-sim, and som** are ported and **cut over into the running
-stack**, alongside rating from P1. The order pipeline now runs on an all-Rust event
-plane against the Python catalog/com/subscription/crm/payment. This is also where
-the deferred event-plane bindings landed: the **outbox relay tick loop**
-(`bss_events::start_relay`) and the **safe retry/park consumer**
-(`bss_events::bind_consumer`) — som runs both. New platform pieces: the `bss-admin`
-crate (shared reset router), `SubscriptionClient` + `InventoryClient`, and
-`bss_clock::isoformat` (the first R1 datetime-in-payload seam).
+**catalog and com** are ported and **cut over into the running stack**. The service
+plane is now Rust for rating + the event plane (P2) + catalog + com; only
+subscription/crm/payment remain Python. New platform pieces this phase:
+`rust_decimal` money (the P3 R1 seam — money columns read as `amount::text` →
+`Decimal`, so `apply_discount`/`discount_label` match Python `Decimal`
+byte-for-byte); a **second datetime seam** — TMF response bodies render `Z`
+(Pydantic v2) vs the event-payload `+00:00` `bss_clock::isoformat`; the
+`Decimal(str(float))` seed-string subtlety (a JSON float `25.0` → `Value::to_string()`
+"25.0", not "25"); and six new typed clients / methods (`LoyaltyClient`,
+`CrmClient`, `PaymentClient`, `SomClient`, `CatalogClient::{get_active_price,
+validate_promo, resolve_eligible_promo}`, `SubscriptionClient::create`). com runs
+the **relay + two safe consumers** (already-existing P2 bindings) + the
+reconciliation sweeper; the SOM P2 lock/serialize lesson is applied (order read
+`FOR UPDATE` in the consumer handlers).
 
-**The six event-plane hero scenarios pass against the confirmed Rust event plane**
-(run directly with the overlay held) — including the two named exit criteria
-(`new_activation_with_provisioning_retry`, `inventory_low_watermark_and_replenishment`)
-and `customer_signup_and_exhaust`. The P1 "stall" turned out to be a **misrun** (no
-provider-flip wrapper → Stripe charge never approved), not a code bug — the Python
-event plane passes the same suite. Separately, the Rust port hardens a *real latent*
-concurrent lost-update race in SOM's CFS `pendingTasks` RMW (serial consumer + `FOR
-UPDATE`; noted for a Python backport). **Deployment gotcha:** `make scenarios-hero`
-reverts the Rust som/provisioning-sim to Python (portal-self-serve's health-gated
-`depends_on` + the distroless images having no `HEALTHCHECK` until P8) — validate
-with `COMPOSE_FILE=…:docker-compose.rust.yml` or run api scenarios directly. See
-PROGRESS Phase 2 for the full write-up.
+**Catalog was golden-diffed** against the live Python oracle across 20+ endpoints
+(TMF620 offering/price/spec, VAS, TMF671 promotions, and the live-loyalty promo
+reads) — byte-identical (`Value ==`). **com's read surface** was golden-diffed too.
+**All six P3 hero scenarios pass** against the confirmed all-Rust order plane (run
+directly with the overlay held) — both named exit criteria
+(`catalog_versioning_and_plan_change`, `new_activation_with_provisioning_retry`)
+plus signup/exhaust, roaming add + use, and auto-renewal.
+
+Loyalty-cli **is enabled** in this stack (`BSS_LOYALTY_API_TOKEN` set, pointing at
+`agentic-vm` over Tailscale), so the promotion saga runs live — catalog and com
+each hold their own `LoyaltyClient` (token never leaves the process).
+
+**Deployment gotcha (unchanged):** `make scenarios-hero` reverts the Rust services to
+Python (portal-self-serve's health-gated `depends_on` + no `HEALTHCHECK` until P8) —
+validate with `COMPOSE_FILE=docker-compose.yml:docker-compose.rust.yml` held (the
+provider-flip recreate then keeps the Rust images) or run scenarios directly. See
+PROGRESS Phase 3 for the full write-up.
+
+### Earlier: Phase 2 (event-plane services) — tagged `v2.0.0-phase.2`
+
+**mediation, provisioning-sim, som** ported + cut over. This is where the deferred
+event-plane bindings landed: the **outbox relay** (`bss_events::start_relay`) and the
+**safe retry/park consumer** (`bss_events::bind_consumer`). Plus `bss-admin`,
+`SubscriptionClient`/`InventoryClient`, `bss_clock::isoformat` (first R1 datetime
+seam). The Rust port hardens a *real latent* concurrent lost-update race in SOM's CFS
+`pendingTasks` RMW (serial consumer + `FOR UPDATE`; **Python backport still owed** —
+com's analogous handlers already apply the same discipline).
 
 All platform crates green against the live stack. A Rust binary interoperates
 byte-for-byte with the running Python system — same Postgres, RabbitMQ (shared
@@ -40,10 +62,11 @@ containers run via the `docker-compose.rust.yml` overlay. Bring the stack up wit
 the overlay to keep them: `docker compose -f docker-compose.yml -f
 docker-compose.rust.yml up -d`. Drop the overlay to fall back to the Python oracle
 for a golden diff. The overlay's "cut over so far" list is the running ledger —
-now rating + mediation + provisioning-sim + som.
+now rating + mediation + provisioning-sim + som + catalog + com.
 
-**Resuming? Start at Phase 3** (`catalog` + `com`) using [`PLAYBOOK.md`](PLAYBOOK.md)
-as the step-by-step recipe. See [`03-PHASES.md`](03-PHASES.md) §Phase 3.
+**Resuming? Start at Phase 4** (`payment` → `subscription` → `crm`) using
+[`PLAYBOOK.md`](PLAYBOOK.md) as the step-by-step recipe. See
+[`03-PHASES.md`](03-PHASES.md) §Phase 4 — the big three, each its own cutover.
 
 - Work lives in [`../../rust/`](../../rust/) — a Cargo workspace (subtree of this
   monorepo; decision D7). The Python repo alongside stays the **oracle**.
@@ -86,7 +109,7 @@ cargo run -p conformance                       # 5 checks, all should PASS
 | bss-middleware | ✅ | TokenMap (HMAC, golden vs oracle) + token gate |
 | bss-db | ✅ | PolicyViolation (compiler-enforced 422) + sqlx pool |
 | bss-models | ◐ | BSS_RELEASE only; per-table structs land per-service |
-| bss-clients | ◐ | base + AuthProviders; Catalog/Subscription/Inventory done (P1–P2); 9 clients left |
+| bss-clients | ◐ | base + AuthProviders; Catalog/Subscription/Inventory/Loyalty/Crm/Payment/Som (P1–P3); ~5 clients left, each partial to the calls used |
 | bss-telemetry | ✅ | redaction rules + semconv + OTel bootstrap (→ Jaeger) |
 | bss-events | ✅ | staging + relay tick loop + safe consumer + topology (lapin/sqlx landed P2) |
 | bss-admin | ✅ | shared `admin_reset_router` (new crate, P2) |
@@ -111,27 +134,36 @@ fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: Phase 3 — catalog + com
+## What to do next: Phase 4 — payment → subscription → crm (the big three)
 
-Follow [`PLAYBOOK.md`](PLAYBOOK.md) — now validated across four services. See
-[`03-PHASES.md`](03-PHASES.md) §Phase 3. Highlights:
+Follow [`PLAYBOOK.md`](PLAYBOOK.md) — now validated across six services. See
+[`03-PHASES.md`](03-PHASES.md) §Phase 4. Ordered by blast-radius growth; each is its
+own mini-project with its own cutover. Highlights:
 
-- **catalog** (~4.7k) — TMF620 read surface + admin writes + promotions +
-  price/window logic. The fattest client-consumer surface, so its golden tests
-  protect everyone downstream. This is where the remaining `CatalogClient` methods
-  (list/active-price/promotions/admin) land, and where the ~60-column TMF offering
-  shape gets pinned (R1-heavy — see the `bss_clock::isoformat` seam for the pattern).
-- **com** (~2.8k) — ProductOrder FSM, decomposition hand-off to som (it publishes
-  the `order.in_progress` that the **now-Rust** som consumes), price snapshot at
-  order time (guard 5's producer side). com **runs the relay + safe consumer** too
-  — both bindings already exist in `bss-events` from P2, so com just wires them.
-- Exit criteria: catalog-versioning/plan-change + order hero scenarios green; the
-  Python portals still work against the now-mostly-Rust service plane. Tag
-  `v2.0.0-phase.3`.
+- **payment** (~5.4k) — Stripe via direct reqwest (D4), tokenizer trait +
+  constructor injection (grep guard: no direct mock charge), idempotency-key rules,
+  webhook reconciliation (dedupe on `(provider,event_id)`, last-write-wins per
+  intent, drift events), the server-side `tokenize`-raises rule. `PaymentClient` is
+  currently partial (only `list_methods` from P3) — the rest of the surface lands
+  here. **The money seam is already solved** — reuse `rust_decimal` + the
+  `amount::text` read pattern from catalog/com.
+- **subscription** (~6.2k) — highest correctness stakes (double-billing + quota
+  math). Renewal worker (tick loop, three sweeps, mark-before-dispatch, SKIP
+  LOCKED), balance decrement under `FOR UPDATE`, price-snapshot renewal, plan-change
+  via pending fields, block-on-exhaust, VAS. Port the hypothesis balance suite as
+  proptests. `SubscriptionClient` is partial (`get_by_msisdn` + `create`).
+- **crm** (~7.4k) — 12 routers incl. Inventory pools, 4 FSMs, Case/Ticket
+  invariants, KYC attestation verification, port-request aggregate. `CrmClient` is
+  partial (`get_customer`).
+- Exit criteria: **all 19 hero scenarios green with an all-Rust service plane** and
+  all-Python portals/orchestrator/CLI. This is the bilingual resting point. Tag
+  `v2.0.0-phase.4`.
 
-Reference to copy from: `rust/services/som/` (relay + safe-consumer wiring, graph
-repo, event staging), `rust/services/mediation/` (typed client + first table
-write), and any service's `tests/live_smoke.rs` (the live-proof pattern).
+Reference to copy from: `rust/services/catalog/` (money via `rust_decimal` +
+`amount::text`, the TMF `Z` datetime formatter, optional `LoyaltyClient`, golden-diff
+live smoke) and `rust/services/com/` (relay + two safe consumers + reconciliation
+sweeper, promo consume lifecycle, order `FOR UPDATE` in handlers, `Decimal(str(float))`
+seed-string seam).
 
 **One carry-over for Phase 3+ (or a spare-cycle Python backport):** SOM's
 `handle_task_completed` concurrent lost-update race on the CFS `pendingTasks` JSONB

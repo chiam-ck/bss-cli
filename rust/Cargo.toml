@@ -24,6 +24,11 @@ axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 tower = { version = "0.5", features = ["util"] }
 uuid = { version = "1", features = ["v4"] }
+# Money — matches Python `decimal.Decimal` (2dp NUMERIC columns, ROUND_HALF_UP).
+# Read from Postgres as `amount::text` → `Decimal::from_str` to preserve scale
+# exactly (so "20.00" stays "20.00" and `.normalize()` matches Python's
+# `format(value.normalize(), 'f')` for discount labels). Lands with catalog (P3).
+rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
 rand = "0.8"
 hmac = "0.12"
 sha2 = "0.10"

@@ -202,14 +202,64 @@ cutover done.
   `/reset-operational-data` router (P2-scenarios call it per service). Mount it.
 - **`bss-clients::{SubscriptionClient, InventoryClient}`** — add per-service.
 - **`bss_clock::isoformat(dt)`** — Python `datetime.isoformat()` parity (micros,
-  fraction omitted when zero, `+00:00`). **Any datetime serialized into a payload
-  string or TMF body must go through this**, never `chrono::to_rfc3339()` (which
-  emits nanoseconds + a different zero-fraction shape). This is the #1 R1 seam once
-  a service puts timestamps in its event payloads.
+  fraction omitted when zero, **`+00:00`**). Use for datetimes serialized into
+  **event payload strings** and **policy-message/context strings** (never
+  `chrono::to_rfc3339()`, which emits nanoseconds). **⚠ Corrected in P3:** this is
+  NOT the seam for TMF *response bodies* — those render `Z` (see the P3 section).
 - **Queue-arg types matter:** `bind_safe_consumer` sets `x-message-ttl` as an AMQP
   integer and the DLX names as strings, matching aio-pika so the durable queues are
   shared without a `PRECONDITION_FAILED` on redeclare. Don't "simplify" them to all
   strings.
+
+## What landed while porting the P3 services — catalog + com (reuse these)
+
+- **Money = `rust_decimal`, read via `amount::text`.** Add `rust_decimal` (done,
+  workspace dep) and read every `NUMERIC` column as `col::text` → `Decimal::from_str`
+  — this preserves the 2dp scale exactly (so `"20.00"` stays `"20.00"` and
+  `.normalize()` matches Python `format(v.normalize(), 'f')`). Bind money on write as
+  text + `CAST($n AS numeric)` (no sqlx decimal feature needed). Port
+  `bss_models.discount` as `apply_discount` (`round_dp_with_strategy(2,
+  MidpointAwayFromZero)`) + `discount_label` (`{:.2}` forces the `"5.00"` pad;
+  `round_dp(2)` does NOT pad — that bit us once).
+- **Two datetime seams — keep them straight (the #1 P3 gotcha):**
+  - **TMF response bodies → `Z`** (Pydantic v2: `2026-04-01T00:00:00Z`, micros only
+    when nonzero). Write a small `tmf_datetime` per service (`%Y-%m-%dT%H:%M:%SZ` /
+    `…%.6fZ`). Capture the live wire and *look at the suffix* before assuming.
+  - **Event payloads + policy messages → `+00:00`** via `bss_clock::isoformat`.
+  - A service can use BOTH (catalog: TMF prices carry `Z`; the no-active-price 422
+    message carries `+00:00`).
+- **Money on the wire is mixed — capture, don't guess.** TMF `Money.value` is a JSON
+  **float** (`25.0`); `discountValue` and order `priceAmount` are Pydantic `Decimal`
+  → JSON **strings** (`"20.00"`). Render floats via `Decimal::to_f64()` → `json!(f)`;
+  strings via `Decimal::to_string()`.
+- **`Decimal(str(float))` seed string:** where Python does `Decimal(str(json_value))`
+  on a JSON float, replicate with `Value::to_string()` (serde_json renders `25.0`,
+  matching Python `str(25.0)`), **not** `f64::to_string()` (which gives `"25"`). This
+  keeps the event-payload string identical.
+- **A new external client with its own envelope** (`LoyaltyClient`): when a client
+  doesn't fit `BssClient` (different auth, custom headers, a refusal envelope), give
+  it its own `reqwest::Client` and map the refusal to `ClientError::Policy` so callers
+  branch on the same type as a native policy violation. `bss_context::current().actor`
+  supplies the actor header; `bss_context::new_request_id()` mints read idempotency
+  keys (no `uuid` dep needed).
+- **Optional subsystem = `Option<Client>` on `AppState`.** When a feature degrades on
+  a missing token (loyalty), thread `Option<LoyaltyClient>` and branch — never bake
+  the feature in. Matches the Python `None`-client graceful-degrade.
+- **Golden-diff live smoke > hand-rolled asserts.** Boot the Rust service in-process
+  against the live infra and assert each read endpoint's JSON `==` the live Python
+  oracle's (order-sensitive, so it also checks array ordering + float/string
+  rendering). Pull out only endpoints whose body carries `clock_now()` and assert
+  those field-by-field. This caught nothing to fix in P3 — which is the point.
+- **Physical row order = no `ORDER BY`.** The oracle's `selectinload` emits no
+  `ORDER BY` for child collections (offering prices/allowances), so it returns
+  physical/insertion order. Match by issuing the same unordered `WHERE parent = $1`
+  query — do NOT add an `ORDER BY id` (it reorders `data,voice,sms,data_roaming` →
+  alphabetical and breaks the golden diff).
+- **Provider-flip + overlay together:** run hero scenarios with
+  `COMPOSE_FILE=docker-compose.yml:docker-compose.rust.yml` exported so the flip's
+  `--force-recreate portal-self-serve crm payment` resolves against the overlay and
+  leaves your Rust images in place. Do the flip+run+restore in ONE script (trap on
+  EXIT) so the restore fires after the scenarios, not after setup.
 
 ## Sequencing checklist (copy per service)
 

@@ -1,0 +1,43 @@
+[package]
+name = "com"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Commercial Order Management (Phase 3). TMF622 ProductOrder FSM + price snapshot + promo consume lifecycle; runs the outbox relay + safe consumers. Port of services/com."
+
+[lints]
+workspace = true
+
+[lib]
+name = "com"
+path = "src/lib.rs"
+
+[[bin]]
+name = "com"
+path = "src/main.rs"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+bss-admin = { workspace = true }
+bss-clock = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-middleware = { workspace = true }
+bss-telemetry = { workspace = true }
+bss-events = { workspace = true }
+bss-clients = { workspace = true }
+bss-models = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }

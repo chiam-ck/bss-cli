@@ -56,4 +56,24 @@ impl SubscriptionClient {
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
+
+    /// `POST /subscription-api/v1/subscription` — create and activate. `body`
+    /// carries `customerId`/`offeringId`/`msisdn`/`iccid`/`paymentMethodId` plus
+    /// the optional `priceSnapshot` and `commercialOrderId` (the idempotency key —
+    /// a redelivered `service_order.completed` returns the existing subscription
+    /// rather than charging the card twice). Returns the created subscription.
+    pub async fn create(&self, body: &Value) -> Result<Value, ClientError> {
+        let resp = self
+            .inner
+            .request(
+                Method::POST,
+                "/subscription-api/v1/subscription",
+                Some(body),
+                None,
+            )
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
 }

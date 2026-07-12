@@ -42,6 +42,86 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
+## Phase 3 — catalog + com — ✅ COMPLETE (tag `v2.0.0-phase.3`)
+
+Two services ported and **cut over into the running stack**. The service plane is
+now Rust for rating + the event plane + catalog + com; only subscription/crm/payment
+remain Python. ~4.6k Rust LOC across two crates + six new typed clients/methods.
+
+**catalog** (HTTP-only — no MQ, no consumer, no audit/reset router; just a pool + an
+optional `LoyaltyClient`): TMF620 read surface (offering/price/spec) + VAS + admin
+writes (add-offering/window/retire/add-price) + the v1.1 **promotion subsystem** (the
+two-system create saga over the external loyalty-cli, targeted assign/unassign,
+exhaust, validate/preview/resolve reads). **com**: TMF622 ProductOrder FSM
+(create → submit → completed/failed/cancelled), price snapshot at order time, the
+v1.1 promo consume lifecycle at activation (claim → redeem / revoke), the outbox
+relay + two safe consumers (`service_order.completed/failed`) + the reconciliation
+sweeper.
+
+**The R1 money seam (the headline of P3).** `rust_decimal` added to the workspace;
+money columns (`NUMERIC`) are read as `amount::text` → `Decimal::from_str` so the 2dp
+scale is preserved exactly. `apply_discount` (round-half-up to 2dp) and
+`discount_label` (`normalize()` for "20% off"; `{:.2}` for "SGD 5.00 off") match
+`bss_models.discount` byte-for-byte. Two **distinct datetime seams** now coexist and
+must not be confused:
+- **TMF response bodies** render `Z` (Pydantic v2 default: `2026-04-01T00:00:00Z`,
+  fraction omitted when zero) — the `tmf_datetime` formatter in each service.
+- **Event payloads + policy-message strings** render `+00:00` micros —
+  `bss_clock::isoformat` (the P2 seam), e.g. the no-active-price 422 message.
+- **Money on the wire is mixed:** TMF `Money.value` is a JSON **float** (`25.0`);
+  `discountValue` / order `priceAmount` are Pydantic `Decimal` → JSON **strings**
+  (`"20.00"`, `"25.00"`). A third subtlety: com's create path reproduces Python's
+  `Decimal(str(value))` where `value` is a catalog JSON float — `Value::to_string()`
+  gives the seed string "25.0" (not "25"), so the `order.acknowledged` event payload
+  matches; the DB row then reads back "25.00".
+
+**New clients (each partial to the calls the phase needs):** `LoyaltyClient` (its own
+transport — bearer + `X-Actor-Id`/`Idempotency-Key`, `POST /v1/tools/<name>`, the
+refusal-422 → `ClientError::Policy` envelope), `CrmClient::get_customer`,
+`PaymentClient::list_methods`, `SomClient::list_for_order`,
+`CatalogClient::{get_active_price, validate_promo, resolve_eligible_promo}`,
+`SubscriptionClient::create`. Loyalty **is enabled** in this stack, so the promotion
+saga runs live; catalog and com each hold their own client (token never leaves the
+process).
+
+**SOM P2 lock lesson applied.** com's consumer handlers read the order aggregate
+`FOR UPDATE` and the safe consumer processes serially — the same serialize/lock
+discipline the P2 SOM port introduced. (The **Python-side backport** of the SOM CFS
+`pendingTasks` race is still owed; noted again here.)
+
+**Validation.**
+- **Golden diff (catalog):** the Rust catalog, booted in-process against the same
+  live Postgres + loyalty, was diffed (`Value ==`, order-sensitive) against the live
+  Python oracle across 20+ endpoints — every TMF620 read (list/filtered/activeAt/get/
+  404), both price paths, specs, VAS, TMF671 promotions, and the live-loyalty promo
+  reads (validate valid+invalid, preview, customer-offers) — **all byte-identical**.
+  The only endpoint pulled out of the strict loop is the no-active-price 422, whose
+  message carries `clock_now()` (differs by ms between two live calls); its shape
+  matches (asserted field-by-field). com's read surface (order get/list/404) was
+  golden-diffed the same way.
+- **Write paths (catalog):** exercised inertly against the deployed Rust container
+  (add-offering → add-price with `retire_current` rollover → active-price resolves to
+  the new row → admin-gate 422 on anonymous actor), then cleaned up via psql.
+- **Hero scenarios:** all six P3-relevant deterministic scenarios green against the
+  confirmed all-Rust order plane (overlay held) — both named exit criteria
+  (`catalog_versioning_and_plan_change`, `new_activation_with_provisioning_retry`)
+  plus `customer_signup_and_exhaust`, `operator_adds_roaming_plan`,
+  `customer_buys_roaming_and_uses_it`, `customer_renews_automatically`.
+- **Deployed-log scan:** com + catalog both clean (`password|PLAIN|NOT_ALLOWED|panic|
+  ERROR` → 0); com's two consumers + outbox relay start clean.
+
+**Deployment gotcha (same as P2), with the clean workaround proven:** run scenarios
+with `COMPOSE_FILE=docker-compose.yml:docker-compose.rust.yml` exported — the
+provider-flip recreate (`up -d --force-recreate portal-self-serve crm payment`) then
+resolves against the overlay and leaves the Rust images in place. Verified: all six
+Rust services stayed Rust through the flip; payment/crm/portal recreated as Python.
+
+### Phase 2 → Phase 3 (this work)
+
+Tagged `v2.0.0-phase.2` → next was **Phase 4 (payment → subscription → crm)**.
+
+---
+
 ## Phase 2 — Event-plane services: mediation, provisioning-sim, som — ✅ COMPLETE (tag `v2.0.0-phase.2`)
 
 Three services ported and **cut over into the running stack**, plus the deferred
