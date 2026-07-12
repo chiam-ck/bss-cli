@@ -42,10 +42,87 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
-## Phase 4 — payment → subscription → crm — 🚧 IN PROGRESS
+## Phase 4 — payment → subscription → crm — ✅ COMPLETE (tag `v2.0.0-phase.4`)
 
 The big three, each its own cutover (03-PHASES §Phase 4). Ordered by blast radius.
 The phase tag `v2.0.0-phase.4` caps the set after crm; intra-phase cutovers are commits.
+
+### Phase 4c — crm — ✅ PORTED + CUT OVER (2026-07-13)
+
+**crm** — the **last service** — is ported and **cut over into the running stack**.
+**The entire service plane is now Rust** (rating + event plane + catalog + com +
+payment + subscription + crm); only the portals + orchestrator + CLI remain Python.
+Tagged `v2.0.0-phase.4`. ~11 modules covering the widest surface of any service: 4
+FSMs, ~13 tables across the `crm` + `inventory` schemas (+ `audit.chat_transcript`).
+
+**Shape — the simplest event-wise, the widest surface-wise.** HTTP-only,
+**stage-only events**: the oracle's `publisher.publish` only stages the
+`audit.domain_event` row (`published_to_mq=false`) and the lifespan opens **no
+broker** — no relay, no consumer, no MQ (like payment). crm events are audit
+substrate; the loyalty-registry mirror is a direct HTTP call, not an event. Two
+outbound clients: `SubscriptionClient` (`get` / `list_for_customer` / `terminate` —
+added this phase) and an optional `LoyaltyClient` (`register_customer` — added,
+best-effort, never fails customer creation).
+
+**The inventory pools are the cross-service contract.** crm hosts
+`/inventory-api/v1/` (MSISDN + eSIM), which subscription (P4b) and som (P2) already
+call via `InventoryClient`. Those surfaces — reserve-next (`FOR UPDATE SKIP
+LOCKED`), assign/release/recycle, the eSIM FSM transitions, `mark_ported_out`
+(terminal `ported_out` + far-future quarantine) — port byte-for-byte so the
+already-cut services keep working unchanged.
+
+**Domains ported:** TMF629 customer (create → party+individual+customer+CMs, the
+email-unique + deactivation guards, contact-medium/individual updates, by-msisdn →
+subscription → customer resolution, by-email), TMF621 ticket + its 7-state FSM,
+TMF683 interaction (auto-logged on every customer/case/ticket write), Case FSM
+(resolve-needs-all-tickets-resolved, cancel-cascades-to-tickets, close
+fast-forwards through resolve), KYC attestation (Didit corroboration-row check +
+freshness window; prebaked/legacy gated on `BSS_KYC_ALLOW_PREBAKED`; raw-doc → last4
++ SHA-256 reduction; doc-hash uniqueness with the sandbox re-link affordance),
+PortRequest MNP (port-in seeds the pool, port-out flips to `ported_out` +
+terminates the sub with `releaseInventory=false`), agent reads, hash-addressed chat
+transcripts.
+
+**Byte-exactness seams (P3/P4 lessons, reused).** TMF projections render `@type` +
+`Z` datetimes (micros-when-nonzero) + camelCase; internal DTOs are snake_case
+(case/agent/inventory/kyc), port-request camelCase; `date` fields render ISO
+`YYYY-MM-DD`. **Relationship-backed collections carry NO `ORDER BY`** —
+`contactMedium`, case `notes`, `ticket_ids` mirror the oracle's un-ordered
+`selectinload` (physical/insertion order), the same lesson as the subscription
+balances (the one golden-diff miss, fixed). The admin reset owns **two schemas**:
+`crm` operational truncate + the `inventory` pools **UPDATE-reset** (rows kept,
+assignment cleared) via `TableReset::update`.
+
+**Cutover note — one write-body bug the read golden diff missed.** crm has no
+consumer/relay so the swap itself was clean (no queue reconciliation like 4b). But
+the two LLM blocked-subscription hero scenarios first failed: `POST /interaction`
+(TMF683) 422'd on the camelCase `customerId` the cockpit/agent sends. The oracle's
+`CreateInteractionRequest` extends `TmfBase` (`to_camel` + `populate_by_name`) so it
+accepts both cases; the Rust struct only accepted snake_case. The agent thrashed on
+the 422 (→ the 90s turn timeout + the missing `portal-csr` interaction assertion).
+Fixed by `#[serde(rename_all = "camelCase")]` + snake aliases (commit `2ecd927`);
+both scenarios then passed at normal speed (25s / 12s, down from 95s / 116s). The
+read-only golden diff doesn't cover request bodies — a lesson for P5: exercise the
+write surface too.
+
+**Verification.**
+- fmt + clippy `-D warnings` clean; **4 FSM unit tests**; workspace test suite green
+  (62 groups, no regression from the `bss-clients` additions).
+- **Live golden diff** (`tests/live_smoke.rs`, `#[ignore]`): every read endpoint
+  byte-identical to the Python oracle — customer (single/list/by-email/404), the
+  inventory pools (msisdn single/list/count, esim single/list/activation), ticket,
+  case, agent, interaction, kyc-status, port-requests; token perimeter matches.
+- **Hero suite: 15/19** — every crm-touching scenario green (signup creates
+  customer+KYC+inventory, port-in/out, inventory low-watermark, cockpit case/ticket
+  handling). The 4 failures are the exact same pre-existing portal/trace issues as
+  the 4a/4b baseline (branding text, `/auth/check-email` 400, Jaeger `spanCount`) —
+  **zero regression**. (payment flipped to mock for the run, as the harness intends.)
+- Stack fully healthy afterward: **all 8 services Rust** + both portals all 200;
+  payment restored to stripe mode.
+
+**This is the bilingual resting point (`v2.0.0-phase.4`):** an all-Rust service
+plane behind all-Python portals/orchestrator/CLI. Next is P5+ (portals, orchestrator,
+CLI) per `03-PHASES.md`.
 
 ### Phase 4b — subscription — ✅ PORTED + CUT OVER (2026-07-13)
 

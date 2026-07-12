@@ -6,20 +6,26 @@ for the why.
 
 ## Where we are (2026-07-13)
 
-**Phase 4 is IN PROGRESS: 4a (payment) and 4b (subscription) are ported + cut over;
-only 4c (crm) remains.** The phase tag `v2.0.0-phase.4` caps the set **after crm** —
-intra-phase cutovers are commits (`v2.0.0-phase.3` catalog+com; `.2` event plane;
-`.1` rating; `.0` foundations precede it).
+**Phase 4 is COMPLETE — the ENTIRE SERVICE PLANE IS NOW RUST. Tagged
+`v2.0.0-phase.4`.** All 8 backend services run Rust images: rating (`.1`), the event
+plane mediation/provisioning-sim/som (`.2`), catalog + com (`.3`), and payment (4a) +
+subscription (4b) + crm (4c) this phase. Only the **portals + orchestrator + CLI**
+remain Python — the bilingual resting point.
 
-**The service plane is now Rust for rating + the event plane (P2) + catalog + com +
-payment + subscription — only `crm` remains Python.** payment runs in stripe mode (the
-deployed config); subscription runs the outbox relay + the `usage.rated` safe consumer +
-the in-process renewal worker. Both were golden-diffed byte-identical to their Python
-oracle on the read surface and validated through the hero suite (15/19, the 4 failures
-pre-existing portal/trace issues). **One subscription-specific cutover step:** its Python
-consumer used a *plain* `usage.rated` queue (never migrated to the v1.2 safe-consumer
-pattern like com/som), so the orphaned queue had to be deleted for the Rust
-`bind_consumer` to redeclare it with the retry topology — see PROGRESS "Cutover note".
+**Each of the big-three cut over with a read-surface golden diff + the hero suite
+(15/19; the 4 failures are pre-existing portal/trace issues — branding text,
+`/auth/check-email` 400, Jaeger `spanCount`).** Two cutover lessons worth carrying to
+P5:
+- **subscription (4b):** its Python `usage.rated` consumer used a *plain* queue (never
+  migrated to the v1.2 safe-consumer pattern), so the orphaned queue had to be deleted
+  for the Rust `bind_consumer` to redeclare it with the retry topology.
+- **crm (4c):** the read-only golden diff missed a **write-body** bug — `POST
+  /interaction` 422'd on camelCase `customerId` (the oracle's `TmfBase` accepts both
+  cases). Caught by a direct endpoint probe when two LLM scenarios thrashed. **P5
+  should exercise the write surface, not just reads.**
+- **The hero harness flips `BSS_PAYMENT_PROVIDER→mock` for the run** (the scenarios use
+  mock cards); running `bss scenario run-all` directly needs that flip done manually
+  (recreate payment `--no-deps`), then restored to stripe.
 
 ---
 
@@ -147,26 +153,23 @@ fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: Phase 4c — crm (the last service)
+## What to do next: Phase 5+ — the Python side (portals / orchestrator / CLI)
 
-Follow [`PLAYBOOK.md`](PLAYBOOK.md) — now validated across eight services. See
-[`03-PHASES.md`](03-PHASES.md) §Phase 4. **payment (4a) and subscription (4b) are
-done + cut over** — only crm remains.
+The service plane is done. See [`03-PHASES.md`](03-PHASES.md) §Phase 5+. The
+remaining Python is the **portals** (self-serve 9001 + cockpit 9002, FastAPI + Jinja +
+HTMX), the **orchestrator** (LangGraph + OpenRouter — the chat/agent brain), and the
+**CLI** (`bss`, Typer/Rich REPL). These are a different shape from the services:
+session/cookie auth, SSE streaming, the tool registry + profiles, prompt assembly.
 
-- **crm** (~7.4k) — 12 routers incl. **Inventory pools** (the MSISDN + eSIM state
-  machines that subscription/som already call via `InventoryClient` — those surfaces
-  are the contract to match), 4 FSMs, Case/Ticket invariants, KYC attestation
-  verification, port-request aggregate. `CrmClient` is partial (`get_customer`);
-  `InventoryClient` already has the read/reserve/assign/release/recycle surface the
-  earlier services needed — crm is where those endpoints get *served* in Rust.
-- Seams already solved and reusable: money (`rust_decimal` + `amount::text`), the
-  two datetime seams (`Z` responses / `+00:00` events), the safe-consumer + relay
-  bindings, and — from 4b — the `bind_consumer` queue-topology cutover step (delete
-  any orphaned plain queue a legacy Python consumer left behind).
-- Exit criteria: **all 19 hero scenarios green with an all-Rust service plane** and
-  all-Python portals/orchestrator/CLI (today: 15/19, the 4 fails pre-existing portal/
-  trace issues, not service-plane). This is the bilingual resting point. Tag
-  `v2.0.0-phase.4`.
+- The **4 standing hero failures** are all portal/trace (branding text,
+  `/auth/check-email` 400, Jaeger `spanCount`) — they land in the P5 portal port and
+  are the natural first acceptance target (get to 19/19).
+- **Exercise write bodies, not just reads,** when validating a port (the 4c
+  interaction-camelCase lesson). A read golden diff is necessary, not sufficient.
+- All the service seams are solved and reusable: money (`rust_decimal` +
+  `amount::text`), the two datetime seams (`Z` responses / `+00:00` events), the
+  safe-consumer + relay bindings, the stage-only publisher, `bss-clients` typed
+  clients (now broad across all 8 services), and the per-service cutover playbook.
 
 Reference to copy from: `rust/services/catalog/` (money via `rust_decimal` +
 `amount::text`, the TMF `Z` datetime formatter, optional `LoyaltyClient`, golden-diff
