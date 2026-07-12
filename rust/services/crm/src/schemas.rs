@@ -367,8 +367,13 @@ pub struct AddNoteRequest {
     pub author_agent_id: Option<String>,
 }
 
+// The oracle's `CreateInteractionRequest` extends `TmfBase` (camelCase alias +
+// populate_by_name), so it accepts BOTH `customerId` and `customer_id`. Mirror
+// that: rename_all camelCase + a snake_case alias per field.
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateInteractionRequest {
+    #[serde(alias = "customer_id")]
     pub customer_id: String,
     #[serde(default)]
     pub channel: Option<String>,
@@ -377,11 +382,11 @@ pub struct CreateInteractionRequest {
     pub summary: String,
     #[serde(default)]
     pub body: Option<String>,
-    #[serde(default)]
+    #[serde(alias = "agent_id", default)]
     pub agent_id: Option<String>,
-    #[serde(default)]
+    #[serde(alias = "related_case_id", default)]
     pub related_case_id: Option<String>,
-    #[serde(default)]
+    #[serde(alias = "related_ticket_id", default)]
     pub related_ticket_id: Option<String>,
 }
 
