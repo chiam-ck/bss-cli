@@ -4,15 +4,28 @@ This is the cold-start guide for resuming the Rust migration. Read this first,
 then [`PROGRESS.md`](PROGRESS.md) for the detailed log and [`00-STRATEGY.md`](00-STRATEGY.md)
 for the why.
 
-## Where we are (2026-07-12)
+## Where we are (2026-07-13)
 
-**Phase 3 (catalog + com) is COMPLETE and tagged `v2.0.0-phase.3`.**
-(Before it: `v2.0.0-phase.2` event plane, `v2.0.0-phase.1` rating, `v2.0.0-phase.0`
-foundations.)
+**Phase 4 is IN PROGRESS: 4a (payment) and 4b (subscription) are ported + cut over;
+only 4c (crm) remains.** The phase tag `v2.0.0-phase.4` caps the set **after crm** —
+intra-phase cutovers are commits (`v2.0.0-phase.3` catalog+com; `.2` event plane;
+`.1` rating; `.0` foundations precede it).
 
-**catalog and com** are ported and **cut over into the running stack**. The service
-plane is now Rust for rating + the event plane (P2) + catalog + com; only
-subscription/crm/payment remain Python. New platform pieces this phase:
+**The service plane is now Rust for rating + the event plane (P2) + catalog + com +
+payment + subscription — only `crm` remains Python.** payment runs in stripe mode (the
+deployed config); subscription runs the outbox relay + the `usage.rated` safe consumer +
+the in-process renewal worker. Both were golden-diffed byte-identical to their Python
+oracle on the read surface and validated through the hero suite (15/19, the 4 failures
+pre-existing portal/trace issues). **One subscription-specific cutover step:** its Python
+consumer used a *plain* `usage.rated` queue (never migrated to the v1.2 safe-consumer
+pattern like com/som), so the orphaned queue had to be deleted for the Rust
+`bind_consumer` to redeclare it with the retry topology — see PROGRESS "Cutover note".
+
+---
+
+### Phase 3 platform pieces (historical context, still current)
+
+New platform pieces from P3:
 `rust_decimal` money (the P3 R1 seam — money columns read as `amount::text` →
 `Decimal`, so `apply_discount`/`discount_label` match Python `Decimal`
 byte-for-byte); a **second datetime seam** — TMF response bodies render `Z`
@@ -134,29 +147,25 @@ fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: Phase 4 — payment → subscription → crm (the big three)
+## What to do next: Phase 4c — crm (the last service)
 
-Follow [`PLAYBOOK.md`](PLAYBOOK.md) — now validated across six services. See
-[`03-PHASES.md`](03-PHASES.md) §Phase 4. Ordered by blast-radius growth; each is its
-own mini-project with its own cutover. Highlights:
+Follow [`PLAYBOOK.md`](PLAYBOOK.md) — now validated across eight services. See
+[`03-PHASES.md`](03-PHASES.md) §Phase 4. **payment (4a) and subscription (4b) are
+done + cut over** — only crm remains.
 
-- **payment** (~5.4k) — Stripe via direct reqwest (D4), tokenizer trait +
-  constructor injection (grep guard: no direct mock charge), idempotency-key rules,
-  webhook reconciliation (dedupe on `(provider,event_id)`, last-write-wins per
-  intent, drift events), the server-side `tokenize`-raises rule. `PaymentClient` is
-  currently partial (only `list_methods` from P3) — the rest of the surface lands
-  here. **The money seam is already solved** — reuse `rust_decimal` + the
-  `amount::text` read pattern from catalog/com.
-- **subscription** (~6.2k) — highest correctness stakes (double-billing + quota
-  math). Renewal worker (tick loop, three sweeps, mark-before-dispatch, SKIP
-  LOCKED), balance decrement under `FOR UPDATE`, price-snapshot renewal, plan-change
-  via pending fields, block-on-exhaust, VAS. Port the hypothesis balance suite as
-  proptests. `SubscriptionClient` is partial (`get_by_msisdn` + `create`).
-- **crm** (~7.4k) — 12 routers incl. Inventory pools, 4 FSMs, Case/Ticket
-  invariants, KYC attestation verification, port-request aggregate. `CrmClient` is
-  partial (`get_customer`).
+- **crm** (~7.4k) — 12 routers incl. **Inventory pools** (the MSISDN + eSIM state
+  machines that subscription/som already call via `InventoryClient` — those surfaces
+  are the contract to match), 4 FSMs, Case/Ticket invariants, KYC attestation
+  verification, port-request aggregate. `CrmClient` is partial (`get_customer`);
+  `InventoryClient` already has the read/reserve/assign/release/recycle surface the
+  earlier services needed — crm is where those endpoints get *served* in Rust.
+- Seams already solved and reusable: money (`rust_decimal` + `amount::text`), the
+  two datetime seams (`Z` responses / `+00:00` events), the safe-consumer + relay
+  bindings, and — from 4b — the `bind_consumer` queue-topology cutover step (delete
+  any orphaned plain queue a legacy Python consumer left behind).
 - Exit criteria: **all 19 hero scenarios green with an all-Rust service plane** and
-  all-Python portals/orchestrator/CLI. This is the bilingual resting point. Tag
+  all-Python portals/orchestrator/CLI (today: 15/19, the 4 fails pre-existing portal/
+  trace issues, not service-plane). This is the bilingual resting point. Tag
   `v2.0.0-phase.4`.
 
 Reference to copy from: `rust/services/catalog/` (money via `rust_decimal` +

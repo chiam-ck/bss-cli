@@ -47,6 +47,102 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 The big three, each its own cutover (03-PHASES §Phase 4). Ordered by blast radius.
 The phase tag `v2.0.0-phase.4` caps the set after crm; intra-phase cutovers are commits.
 
+### Phase 4b — subscription — ✅ PORTED + CUT OVER (2026-07-13)
+
+**subscription** is ported and **cut over into the running stack** (Rust image). Service
+plane is now Rust for rating + event plane + catalog + com + payment + subscription;
+only **crm remains Python**. ~3.9k Rust LOC (16 modules) + a `bss-clients` surface
+extension (`PaymentClient::charge`, `CatalogClient::{get_offering_price,
+list_active_offerings,get_vas}`, `InventoryClient::{get_msisdn,get_esim,assign_msisdn,
+assign_msisdn_to_esim,recycle_esim}`).
+
+**Shape.** The richest of the P4 trio: runs the **outbox relay** (its staged events'
+only publisher) + the **usage.rated safe consumer** + the **in-process renewal worker**
+— the full com-style event topology, plus HTTP write paths.
+
+**Pure domain core (10 unit tests).** `domain.rs` ports `bundle` (consume/is_exhausted/
+add_allowance/reset_for_new_period, `UNLIMITED=-1`) + the 4-state FSM (pending/active/
+blocked/terminated) as pure functions. `money.rs` reuses catalog's byte-identical
+`apply_discount` (round-half-up 2dp). All block-on-exhaust + discount-counter logic is
+unit-tested against the oracle.
+
+**Block-on-exhaust (the crux).** `handle_usage_rated` runs on the safe consumer's
+`&mut PgConnection` (bind_consumer owns the commit) with the balance row
+`SELECT … FOR UPDATE` — the decrement serialization. In sqlx each query hits Postgres
+directly (no identity-map cache), so the oracle's load-bearing `populate_existing=True`
+fix is **structurally free**. Roaming (`data_roaming`) is policy-gated independently and
+never exhausts the subscription (v0.17 doctrine).
+
+**Renewal worker (v0.18).** `worker.rs` ports the tick loop: `sweep_due`
+(`SELECT FOR UPDATE SKIP LOCKED` + commit the `last_renewal_attempted_at` **mark before
+the row lock releases** → multi-replica no-double-charge), then `service::renew` per id
+in its own tx; `sweep_skipped` emits `subscription.renewal_skipped` for blocked+overdue.
+The admin `/renewal/tick-now` (gated by `BSS_ALLOW_ADMIN_RESET`) drives one deterministic
+sweep for the renewal hero scenario. **The v0.18 upcoming-renewal *reminder* sweep is
+intentionally not ported** — it needs the portal email adapter (lands with portals in
+P6); this mirrors the oracle path when `email_adapter is None` (sweep disabled,
+`renewal_reminder_sent_at` untouched — not an API-observable field).
+
+**Renewal / plan-change pivot.** `renew()` charges the **price snapshot** on the row
+(never the catalog), applies the promo discount while the per-sub counter is live,
+decrements it (perpetual `-1` never decrements); on a due pending plan-change it pivots
+offering + snapshot + resets the bundle to the new plan's allowances and clears the
+promo (a plan change ends the promo). Price migration stamps per-sub pending fields +
+per-sub events (no batch UPDATE that loses the audit trail).
+
+**Money + datetime seams (P3 lessons, reused).** `price_amount`/`discount_value` read as
+`::text` → `Decimal`, rendered as 2dp **strings**; `effectiveAmount` computed via
+`apply_discount`; TMF response datetimes render `Z` (micros only when nonzero); event
+payloads render `+00:00` via `bss_clock::isoformat`. Balances serialize in **insertion
+order** (no `ORDER BY` — matches the oracle's un-ordered selectinload). `@type` renders
+as `atType` (the oracle's `to_camel("at_type")`, captured off the live wire).
+
+**Cutover note — the one queue-topology snag.** subscription is the **only** service
+whose Python consumer used a plain `declare_queue` for `usage.rated` (never migrated to
+the v1.2 safe-consumer pattern, though its config knobs were provisioned for it). com/som
+already used the shared `bss_events.bind_consumer` (retry topology), so their cutovers
+matched. The Rust port correctly adopts `bind_consumer` like com/som — but RabbitMQ
+refuses to redeclare the existing plain queue with the added `x-dead-letter-exchange`
+arg (`PRECONDITION_FAILED`). **Fix (one-off, subscription-specific):** delete the
+orphaned, empty `subscription.usage.rated` + `subscription.notification.logger` queues
+(0 messages, 0 consumers — Python is gone) so the Rust safe-consumer redeclares
+`usage.rated` (+ `.retry`/`.parked`) cleanly. The `notification.logger` stdout logger is
+not ported (no API/DB effect — the durable `audit.domain_event` row is the substrate).
+
+**Verification.**
+- fmt clean, clippy `-D warnings` clean, **10 subscription unit tests** green; workspace
+  test suite green (no regression from the `bss-clients` extension across the other 6
+  services).
+- **Live golden diff** (`tests/live_smoke.rs`, `#[ignore]`): every read endpoint
+  byte-identical to the Python oracle (subscription single, list-for-customer, by-msisdn,
+  balance, + 404 envelopes) — covers balances insertion-order, `priceAmount`/
+  `effectiveAmount` strings, discount fields, `Z` datetimes, `atType`; token perimeter
+  matches (health exempt / 401 / 200).
+- **Hero suite: 15/19** (auto/LLM mode) — every subscription-touching scenario green:
+  `customer_signup_and_exhaust` (block-on-exhaust), `customer_renews_automatically`
+  (renewal worker + `tick-now`), `customer_buys_roaming_and_uses_it` (roaming VAS),
+  `catalog_versioning_and_plan_change` (plan-change pivot),
+  `operator_port_out_terminates_subscription` (terminate),
+  `operator_cockpit_handle_blocked_subscription`, `llm_troubleshoot_blocked_subscription`,
+  `new_activation_with_provisioning_retry`. The **4 failures**
+  (`portal_self_serve_signup_direct`, `portal_login_with_step_up`,
+  `portal_post_login_self_serve`, `trace_customer_signup_swimlane`) are the **exact same
+  4 that fail on the pre-cutover / 4a baseline** (portal branding text, `/auth/check-email`
+  400, Jaeger `spanCount`) — none subscription-related → **zero regression**.
+
+**Cutover gotcha #1 — payment provider.** The hero suite creates **mock** payment
+methods, so the harness (`make scenarios-hero`) flips `BSS_PAYMENT_PROVIDER→mock` for the
+run and restores it after. Running `bss scenario run-all` **directly** skips that flip; with
+the live payment container in stripe mode, every activation/renewal charge trips the
+v0.16 lazy-fail guard (`token_provider='mock'` vs active `StripeTokenizerAdapter`) and the
+`service_order.completed` handler parks — an artifact, not a subscription bug. Flip
+payment→mock (recreate `--no-deps`), run, then restore to stripe.
+
+**Cutover gotcha #2 (unchanged from P2/P3/4a).** `make scenarios-hero`'s provider-flip
+force-recreates `portal-self-serve`, which health-`depends_on` the Rust services (no
+HEALTHCHECK until P8) and strands it. Ran scenarios **directly** with the overlay held and
+the portal already up. P8 (binary healthchecks) resolves this properly.
+
 ### Phase 4a — payment — ✅ PORTED + CUT OVER (2026-07-12)
 
 **payment** is ported and **cut over into the running stack** (Rust image, stripe-mode
