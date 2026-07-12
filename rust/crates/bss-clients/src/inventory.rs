@@ -58,6 +58,50 @@ impl InventoryClient {
         self.post("/inventory-api/v1/esim/reserve", None).await
     }
 
+    /// `GET /inventory-api/v1/msisdn/{msisdn}` — the MSISDN record (`{status, ...}`),
+    /// read by the create policy to confirm it's reserved/assigned.
+    pub async fn get_msisdn(&self, msisdn: &str) -> Result<Value, ClientError> {
+        let path = format!("/inventory-api/v1/msisdn/{msisdn}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /inventory-api/v1/esim/{iccid}` — the eSIM record (`{profileState, ...}`).
+    pub async fn get_esim(&self, iccid: &str) -> Result<Value, ClientError> {
+        let path = format!("/inventory-api/v1/esim/{iccid}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /inventory-api/v1/msisdn/{msisdn}/assign` — reserved → assigned.
+    pub async fn assign_msisdn(&self, msisdn: &str) -> Result<Value, ClientError> {
+        let path = format!("/inventory-api/v1/msisdn/{msisdn}/assign");
+        self.post(&path, None).await
+    }
+
+    /// `POST /inventory-api/v1/esim/{iccid}/assign-msisdn` — link the MSISDN onto
+    /// the reserved eSIM profile.
+    pub async fn assign_msisdn_to_esim(
+        &self,
+        iccid: &str,
+        msisdn: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/inventory-api/v1/esim/{iccid}/assign-msisdn");
+        let body = json!({ "msisdn": msisdn });
+        self.post(&path, Some(&body)).await
+    }
+
+    /// `POST /inventory-api/v1/esim/{iccid}/recycle` — activated → recycled (on
+    /// termination). Distinct from `release_esim` (reserved → available).
+    pub async fn recycle_esim(&self, iccid: &str) -> Result<Value, ClientError> {
+        let path = format!("/inventory-api/v1/esim/{iccid}/recycle");
+        self.post(&path, None).await
+    }
+
     /// `POST /inventory-api/v1/msisdn/{msisdn}/release` — reserved → available.
     pub async fn release_msisdn(&self, msisdn: &str) -> Result<Value, ClientError> {
         let path = format!("/inventory-api/v1/msisdn/{msisdn}/release");

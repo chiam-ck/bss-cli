@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::auth::AuthProvider;
 use crate::base::{BssClient, DEFAULT_TIMEOUT};
@@ -44,6 +44,39 @@ impl PaymentClient {
         let path =
             format!("/tmf-api/paymentMethodManagement/v4/paymentMethod?customerId={customer_id}");
         let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /tmf-api/paymentManagement/v4/payment` — charge the card-on-file.
+    /// `amount` is the already-stringified effective charge (`str(Decimal)` on the
+    /// Python side — the caller does the discount math and passes `"22.50"`).
+    /// Returns the payment-attempt document (`{id, status, declineReason, ...}`).
+    pub async fn charge(
+        &self,
+        customer_id: &str,
+        payment_method_id: &str,
+        amount: &str,
+        currency: &str,
+        purpose: &str,
+    ) -> Result<Value, ClientError> {
+        let body = json!({
+            "customerId": customer_id,
+            "paymentMethodId": payment_method_id,
+            "amount": amount,
+            "currency": currency,
+            "purpose": purpose,
+        });
+        let resp = self
+            .inner
+            .request(
+                Method::POST,
+                "/tmf-api/paymentManagement/v4/payment",
+                Some(&body),
+                None,
+            )
+            .await?;
         resp.json()
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))

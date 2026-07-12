@@ -3345,6 +3345,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "subscription"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-admin",
+ "bss-clients",
+ "bss-clock",
+ "bss-context",
+ "bss-db",
+ "bss-events",
+ "bss-middleware",
+ "bss-models",
+ "bss-telemetry",
+ "chrono",
+ "reqwest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

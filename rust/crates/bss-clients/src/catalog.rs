@@ -72,6 +72,42 @@ impl CatalogClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `GET /tmf-api/productCatalogManagement/v4/productOfferingPrice/{id}` —
+    /// direct price-row lookup, no time filter (the snapshot remembers a retired
+    /// row). Used by renewal's pending-pivot + price migration.
+    pub async fn get_offering_price(&self, price_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/productCatalogManagement/v4/productOfferingPrice/{price_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /tmf-api/productCatalogManagement/v4/productOffering?activeAt={iso}` —
+    /// sellable-now offerings, sorted by lowest price. `active_at` is the caller's
+    /// clock moment (frozen-clock-safe); the Python client defaults it to
+    /// `clock_now()`, so the subscription service passes `bss_clock::now()`.
+    pub async fn list_active_offerings(&self, active_at: &str) -> Result<Value, ClientError> {
+        let path = format!(
+            "/tmf-api/productCatalogManagement/v4/productOffering?activeAt={}",
+            encode(active_at)
+        );
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /vas/offering/{id}` — a value-added-service offering (top-up spec). A
+    /// 404 maps to [`ClientError::NotFound`].
+    pub async fn get_vas(&self, vas_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/vas/offering/{vas_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `GET /promo/validate?code&offering[&customerId]` — full order-time discount
     /// terms com stamps onto the order item. `customer_id` gates a targeted code
     /// on eligibility.
