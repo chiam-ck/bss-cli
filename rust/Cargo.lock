@@ -2050,6 +2050,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "payment"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-admin",
+ "bss-clients",
+ "bss-clock",
+ "bss-context",
+ "bss-db",
+ "bss-events",
+ "bss-middleware",
+ "bss-models",
+ "bss-telemetry",
+ "chrono",
+ "hmac",
+ "reqwest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "subtle",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "pbkdf2"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
