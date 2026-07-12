@@ -165,11 +165,13 @@ live smoke) and `rust/services/com/` (relay + two safe consumers + reconciliatio
 sweeper, promo consume lifecycle, order `FOR UPDATE` in handlers, `Decimal(str(float))`
 seed-string seam).
 
-**One carry-over for Phase 3+ (or a spare-cycle Python backport):** SOM's
-`handle_task_completed` concurrent lost-update race on the CFS `pendingTasks` JSONB
-(root-caused in P2 — see PROGRESS). The Rust port fixed it (serial consumer + `FOR
-UPDATE`); the Python oracle still has it. com has an analogous multi-event reaction
-surface — port it with the same serialize/lock discipline.
+**Carry-over — DONE (2026-07-12):** SOM's `handle_task_completed` concurrent
+lost-update race on the CFS `pendingTasks` JSONB (root-caused in P2 — see PROGRESS)
+is now backported to the Python oracle. `ServiceRepository.get_for_update`
+(`SELECT ... FOR UPDATE`) is used in all three task handlers (completed/failed/stuck),
+mirroring the Rust `get_service_for_update` fix; regression pinned by
+`services/som/tests/test_task_completion_locking.py` (two-connection lock-timeout
+proof). The oracle and Rust port now agree on this invariant.
 
 ## Quick pointers
 

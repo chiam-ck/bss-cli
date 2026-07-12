@@ -71,7 +71,7 @@ class SOMService:
         commercial_order_id: str,
     ) -> None:
         """Called when provisioning.task.completed is consumed."""
-        cfs = await self._svc_repo.get(service_id)
+        cfs = await self._svc_repo.get_for_update(service_id)
         if not cfs:
             log.error("task.completed.cfs_not_found", service_id=service_id)
             return
@@ -171,7 +171,7 @@ class SOMService:
             log.info("task.failed.transient", service_id=service_id, task_type=task_type)
             return
 
-        cfs = await self._svc_repo.get(service_id)
+        cfs = await self._svc_repo.get_for_update(service_id)
         if not cfs:
             log.error("task.failed.cfs_not_found", service_id=service_id)
             return
@@ -245,7 +245,7 @@ class SOMService:
         service_order_id: str,
     ) -> None:
         """Called when provisioning.task.stuck is consumed."""
-        cfs = await self._svc_repo.get(service_id)
+        cfs = await self._svc_repo.get_for_update(service_id)
         if not cfs:
             log.error("task.stuck.cfs_not_found", service_id=service_id)
             return
