@@ -9,7 +9,7 @@
 # Python image from the base file) — the oracle stays reproducible on demand.
 #
 # Cut over so far: rating (Phase 1); mediation, provisioning-sim, som (Phase 2);
-# catalog, com (Phase 3).
+# catalog, com (Phase 3); payment (Phase 4a).
 services:
   rating:
     build:
@@ -41,3 +41,8 @@ services:
       context: rust
       dockerfile: services/som/Dockerfile
     image: bss-som:rust
+  payment:
+    build:
+      context: rust
+      dockerfile: services/payment/Dockerfile
+    image: bss-payment:rust

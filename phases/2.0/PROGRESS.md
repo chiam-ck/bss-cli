@@ -42,6 +42,75 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
+## Phase 4 — payment → subscription → crm — 🚧 IN PROGRESS
+
+The big three, each its own cutover (03-PHASES §Phase 4). Ordered by blast radius.
+The phase tag `v2.0.0-phase.4` caps the set after crm; intra-phase cutovers are commits.
+
+### Phase 4a — payment — ✅ PORTED + CUT OVER (2026-07-12)
+
+**payment** is ported and **cut over into the running stack** (Rust image, stripe-mode
+— the live deployed config). Service plane is now Rust for rating + event plane +
+catalog + com + payment; only subscription/crm remain Python. ~1.9k Rust LOC (14
+modules) + the `PaymentClient` surface extension deferred to 4b (com only needs
+`list_methods`, already present).
+
+**Shape.** HTTP-only, like catalog — **no MQ, no relay**: the oracle's
+`publisher.publish` only stages the `audit.domain_event` row (`published_to_mq=false`)
+and returns; the lifespan opens no broker connection. `events::stage` replicates this
+exactly. So payment is the simplest event-wise of the P4 trio.
+
+**The tokenizer seam.** The oracle's `TokenizerAdapter` Protocol → a closed `Tokenizer`
+enum (mock | stripe), avoiding an `async-trait` dep. Mock preserves the
+`tok_FAIL_*`/`tok_DECLINE_*` decline affordances. **Stripe via direct reqwest
+(Decision D4** — the Python `stripe` SDK doesn't port): PaymentIntent create
+(`off_session`+`confirm`, `Idempotency-Key` header), customer ensure (cached in
+`payment.customer`), attach/detach (test-card relink under `ALLOW_TEST_CARD_REUSE`),
+retrieve card; every call recorded to `integrations.external_call` with the ported
+`_redact_stripe`. **The live container is stripe-mode**, so this path is load-bearing
+(not a mock-only shortcut). `select_tokenizer`'s four fail-fast startup guards ported
+verbatim (unknown provider; missing creds; prod + `sk_test_*` / mode mismatch;
+`ALLOW_TEST_CARD_REUSE` + `sk_live_*`).
+
+**Webhooks.** The Stripe receiver (`/webhooks/stripe`, exempt from the token perimeter
+by path) ports `bss_webhooks`: `_verify_stripe` (HMAC-SHA256 over `{t}.{body}`,
+timestamp-skew, constant-time hex compare via `subtle`), `WebhookEventStore` dedup on
+`(provider,event_id)`, and the routing — reconcile / **drift-not-overwrite** (webhook is
+secondary truth) / refund + dispute **record-only** (motto #1). 5 signature unit tests.
+
+**Money + datetime seams (P3 lessons, reused).** `amount` read as `amount::text` →
+`Decimal`, rendered as a 2dp **string** on the wire; TMF response datetimes render `Z`
+(micros only when non-zero) via a local `tmf_datetime`. Captured the live wire first.
+
+**Verification.**
+- fmt clean, clippy `-D warnings` clean, **15 payment unit tests** green (workspace 148 → 163).
+- **Live golden diff** (`tests/live_smoke.rs`, `#[ignore]`): every read endpoint
+  byte-identical to the Python oracle (payment single/list/filtered/count, paymentMethod
+  single/list, both 404 envelopes); token perimeter matches (health exempt / 401 / 200).
+- **Full hero suite run directly** against the whole stack with payment=mock (Rust):
+  **15/19 PASS**, incl. all payment-critical ones (signup_and_exhaust 13/13, renews 18/18,
+  roaming VAS, activation-with-retry). The 4 FAIL are portal-login/branding/Jaeger-trace
+  scenarios (`/welcome` custom-branding text, `/auth/check-email` 400, `spanCount` None) —
+  **verified to fail identically on the pure-Python-payment baseline**, so zero regression
+  from the port (Playbook "red baseline = environment, not the port").
+- Deployed container logs clean `INFO` (`service.starting … payment_provider=stripe`),
+  `grep -icE 'password|PLAIN|NOT_ALLOWED|panic'` → 0.
+
+**Deployment note (the P2/P3 gotcha, reconfirmed + worked around).** `portal-self-serve`
+health-`depends_on` payment (+catalog/com/som), and the Rust images have **no HEALTHCHECK
+until P8** — so `make scenarios-hero`'s provider-flip `--force-recreate portal-self-serve`
+leaves the portal stuck in `Created` (its Rust deps never report "healthy"). Fix, as in
+P2/P3: run scenarios **directly** (`bss scenario run[-all]`) with the overlay held, and
+start the portal with `docker compose … up -d --no-deps portal-self-serve` to bypass the
+gate. The `make scenarios-hero` path stays red on the Rust-heavy stack until P8 adds
+binary healthchecks. Overlay "cut over so far" now includes payment.
+
+**Next (4b): subscription** — highest correctness stakes (double-billing + quota math);
+renewal worker, balance decrement under `FOR UPDATE`, price-snapshot renewal, VAS,
+proptest the hypothesis balance suite.
+
+---
+
 ## Phase 3 — catalog + com — ✅ COMPLETE (tag `v2.0.0-phase.3`)
 
 Two services ported and **cut over into the running stack**. The service plane is
