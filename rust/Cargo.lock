@@ -832,6 +832,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853"
 
 [[package]]
+name = "crm"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-admin",
+ "bss-clients",
+ "bss-clock",
+ "bss-context",
+ "bss-db",
+ "bss-events",
+ "bss-middleware",
+ "bss-models",
+ "bss-telemetry",
+ "chrono",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "crossbeam-queue"
 version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"

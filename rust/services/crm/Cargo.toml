@@ -1,0 +1,44 @@
+[package]
+name = "crm"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "CRM + Inventory (Phase 4c, the last service). TMF629 customer / TMF621 ticket / TMF683 interaction + Case/Ticket/PortRequest FSMs + KYC attestation + the MSISDN/eSIM pools (the cross-service inventory contract). HTTP-only, stage-only events (no relay, no consumer). Port of services/crm."
+
+[lints]
+workspace = true
+
+[lib]
+name = "crm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "crm"
+path = "src/main.rs"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+hex = "0.4"
+tracing = { workspace = true }
+
+bss-admin = { workspace = true }
+bss-clock = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-middleware = { workspace = true }
+bss-telemetry = { workspace = true }
+bss-events = { workspace = true }
+bss-clients = { workspace = true }
+bss-models = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }

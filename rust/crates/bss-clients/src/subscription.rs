@@ -57,6 +57,45 @@ impl SubscriptionClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `POST /subscription-api/v1/subscription/{id}/terminate` — terminate a
+    /// subscription. `body` carries `{reason, releaseInventory}`; the MNP port-out
+    /// flow passes `releaseInventory=false` (the donor MSISDN is already terminal).
+    pub async fn terminate(
+        &self,
+        subscription_id: &str,
+        body: &Value,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/subscription-api/v1/subscription/{subscription_id}/terminate");
+        let resp = self
+            .inner
+            .request(Method::POST, &path, Some(body), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /subscription-api/v1/subscription/{id}` — the full subscription
+    /// document (crm's `find_by_msisdn` reads `customerId` off it). A 404 maps to
+    /// [`ClientError::NotFound`].
+    pub async fn get(&self, subscription_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/subscription-api/v1/subscription/{subscription_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /subscription-api/v1/subscription?customerId={id}` — the customer's
+    /// subscriptions (crm's close policy checks for active ones). JSON array.
+    pub async fn list_for_customer(&self, customer_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/subscription-api/v1/subscription?customerId={customer_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `POST /subscription-api/v1/subscription` — create and activate. `body`
     /// carries `customerId`/`offeringId`/`msisdn`/`iccid`/`paymentMethodId` plus
     /// the optional `priceSnapshot` and `commercialOrderId` (the idempotency key —

@@ -140,6 +140,19 @@ impl LoyaltyClient {
 
     // ── offer definitions + promo codes (catalog: create saga) ──────────
 
+    /// `customer.register` — mirror a BSS customer into loyalty's registry so its
+    /// customer-facing views recognise the id. Idempotent on the customer id
+    /// (`cust:{id}`). crm calls this best-effort after create; a failure never
+    /// fails customer creation.
+    pub async fn register_customer(&self, customer_id: &str) -> Result<Value, ClientError> {
+        self.call(
+            "customer.register",
+            json!({ "id": customer_id, "active": true }),
+            Some(&format!("cust:{customer_id}")),
+        )
+        .await
+    }
+
     /// `offer_definition.register` — the OD that promo codes/offers hang off.
     pub async fn register_offer_definition(
         &self,
