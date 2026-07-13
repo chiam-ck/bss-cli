@@ -1,0 +1,10 @@
+Fetch one port request by id (PORT-NNN).
+
+    Args:
+        port_request_id: PORT-NNN identifier.
+
+    Returns:
+        Port request dict.
+
+    Raises:
+        NotFound: unknown id.

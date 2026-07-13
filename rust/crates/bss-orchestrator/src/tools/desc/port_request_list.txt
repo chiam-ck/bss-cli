@@ -1,0 +1,13 @@
+List port requests (port-in + port-out).
+
+    Args:
+        state: Optional FSM filter — requested|validated|completed|rejected.
+        direction: Optional filter — port_in|port_out.
+        limit: Max rows (default 50).
+        offset: Pagination offset.
+
+    Returns:
+        List of port request dicts.
+
+    Raises:
+        (none expected — read tool)

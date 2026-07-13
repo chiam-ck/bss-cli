@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–6 done (~40/110 tools):**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–7 done (~48/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -58,12 +58,18 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   `SomClient`/`InventoryClient`/`CrmClient`. `events.list` is the NOT_IMPLEMENTED stub
   (byte-exact message). One broad live smoke covers the batch. Operator-only.
 
-**Remaining P5c slices (batched — aim ~5):**
-1. **Trace + remaining reads** — `trace.get`/`for_order`/`for_subscription` (need a
-   Jaeger client + an audit-events client + the `_summarize_trace` reducer) plus the
-   **ticket / case / promo / port_request / knowledge** reads. Mostly verbatim client
-   wrappers (extend `CrmClient` for ticket/case/port_request, add a promo/loyalty
-   surface, a knowledge client) — trace is the only real logic.
+- **Slice 7** — the **CRM/catalog read BATCH** (8 tools: ticket / case / promo /
+  port_request, incl. the `case.show_transcript_for` composite). Extended `CrmClient`
+  (get_case/get_chat_transcript/get_ticket/list_tickets/list_port_requests/
+  get_port_request; `list_cases` widened with `agent_id`) + `CatalogClient::
+  get_promotion`. Operator-only. One broad live smoke.
+
+**Remaining P5c slices (batched — aim ~4):**
+1. **Trace + knowledge reads** — `trace.get`/`for_order`/`for_subscription` (need a
+   Jaeger client + an audit-events client + the `_summarize_trace` reducer) and
+   `knowledge.search`/`knowledge.get` (a sqlx pool + the already-ported `bss-knowledge`
+   crate's `search_fts`/`get_chunk` + the `BSS_KNOWLEDGE_ENABLED` gate + the search
+   result-wrapping). Both infra-heavy — the last of the reads.
 2. **Operator writes** (~45 tools) — customer/case/ticket/subscription/payment/order/
    promo/port_request/provisioning/inventory writes + catalog admin. All client calls;
    destructive gating already exists in `safety.rs`. Likely one big slice (or split

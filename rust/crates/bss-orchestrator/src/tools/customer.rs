@@ -60,7 +60,7 @@ pub fn register_customer_tools(
                 let (customer, subs, cases, interactions) = join4(
                     c.get_customer(&cid),
                     s.list_for_customer(&cid),
-                    c.list_cases(Some(&cid), None),
+                    c.list_cases(Some(&cid), None, None),
                     c.list_interactions(&cid, 10),
                 )
                 .await;

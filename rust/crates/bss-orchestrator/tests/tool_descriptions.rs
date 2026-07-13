@@ -47,8 +47,14 @@ fn registry_with_catalog() -> ToolRegistry {
     bss_orchestrator::tools::inventory::register_inventory_tools(&mut reg, inventory);
     let provisioning = ProvisioningClient::new("http://localhost:8010", auth.clone()).unwrap();
     bss_orchestrator::tools::provisioning::register_provisioning_tools(&mut reg, provisioning);
-    let mediation = MediationClient::new("http://localhost:8007", auth).unwrap();
+    let mediation = MediationClient::new("http://localhost:8007", auth.clone()).unwrap();
     bss_orchestrator::tools::usage::register_usage_tools(&mut reg, mediation);
+    // A second CatalogClient handle backs promo.show.
+    let catalog2 = CatalogClient::new("http://localhost:8001", auth).unwrap();
+    bss_orchestrator::tools::promo::register_promo_tools(&mut reg, catalog2);
+    bss_orchestrator::tools::ticket::register_ticket_tools(&mut reg, crm.clone());
+    bss_orchestrator::tools::case::register_case_tools(&mut reg, crm.clone());
+    bss_orchestrator::tools::port_request::register_port_request_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::ops::register_ops_tools(&mut reg, crm);
     reg
 }
@@ -99,6 +105,14 @@ fn tool_descriptions_match_python_oracle() {
         "usage.history",
         "events.list",
         "agents.list",
+        "ticket.get",
+        "ticket.list",
+        "case.get",
+        "case.list",
+        "case.show_transcript_for",
+        "promo.show",
+        "port_request.list",
+        "port_request.get",
     ];
     for name in names {
         let tool = registry
@@ -156,6 +170,31 @@ fn subscription_canonical_reads_are_operator_only() {
         "subscription.list_for_customer",
         "subscription.get_balance",
         "subscription.get_esim_activation",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        assert!(
+            !CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn crm_catalog_read_batch_is_in_operator_profile() {
+    // ticket / case / promo / port_request reads are operator_cockpit tools (the
+    // chat surface sees only `case.list_for_me` / `case.open_for_me`).
+    for name in [
+        "ticket.get",
+        "ticket.list",
+        "case.get",
+        "case.list",
+        "case.show_transcript_for",
+        "promo.show",
+        "port_request.list",
+        "port_request.get",
     ] {
         assert!(
             OPERATOR_COCKPIT.contains(&name),
@@ -260,7 +299,7 @@ fn surface_intersects_profile_with_registry() {
     assert!(surface.contains(&"customer.get".to_string()));
     // clock.freeze/advance/unfreeze are operator_cockpit + registered.
     assert!(surface.contains(&"clock.freeze".to_string()));
-    // A profile tool that isn't registered yet must not appear (ticket.* is a
+    // A profile tool that isn't registered yet must not appear (trace.* is a
     // later slice).
-    assert!(!surface.contains(&"ticket.get".to_string()));
+    assert!(!surface.contains(&"trace.get".to_string()));
 }

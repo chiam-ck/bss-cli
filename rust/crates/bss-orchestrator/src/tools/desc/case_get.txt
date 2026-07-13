@@ -1,0 +1,11 @@
+Get a case with its notes + child-ticket IDs.
+
+    Args:
+        case_id: Case ID with the CASE- prefix (opaque suffix).
+
+    Returns:
+        Case dict. Use ``ticket.list(case_id=...)`` to fetch full ticket
+        objects — this call returns only IDs to keep the payload small.
+
+    Raises:
+        NotFound: no case with this ID.

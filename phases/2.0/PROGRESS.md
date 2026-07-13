@@ -66,7 +66,28 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–6) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–7) — 🚧 (2026-07-13)
+
+**Slice 7 — the CRM/catalog read BATCH (ticket / case / promo / port_request).**
+Eight tools, all verbatim client wrappers except `case.show_transcript_for` (a small
+composite: read the case, follow its `chatTranscriptHash` to the transcript, else
+return the `{transcript: null, reason: "no_transcript_linked"}` sentinel — key order
+via D9). Extended `CrmClient` with `get_case`/`get_chat_transcript`/`get_ticket`/
+`list_tickets`/`list_port_requests`/`get_port_request`, and **widened `list_cases`
+with `agent_id`** (`assignedAgentId` — the `customer.get` composite caller updated to
+pass `None`). Added `CatalogClient::get_promotion`. All operator_cockpit-only (the
+chat surface sees only `case.list_for_me`/`case.open_for_me`). Verification: fmt +
+clippy clean; workspace green; 8 descriptions byte-pinned; one broad live smoke
+(`crm_reads_live.rs`) green against tech-vm — ticket/case/port_request list+get
+verbatim, `case.show_transcript_for` returns a body-or-sentinel, unknown promo/ticket
+→ `CLIENT_ERROR`.
+
+**Tool ledger:** ~48/110. Remaining reads: **trace** (Jaeger + audit client +
+summarizer) and **knowledge** (sqlx pool + the ported `bss-knowledge` crate + the
+enablement gate) — both infra-heavy, next batch. Then all the **writes** and the
+**`customer_self_serve` `*.mine`** wrappers.
+
+---
 
 **Slice 6 — the operator read BATCH (order / SOM / inventory / provisioning /
 usage / agents / events).** Cadence change (per the human): the read families are

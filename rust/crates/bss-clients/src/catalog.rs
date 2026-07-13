@@ -142,6 +142,16 @@ impl CatalogClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `GET /tmf-api/promotionManagement/v4/promotion/{id}` — a single TMF671
+    /// promotion. A 404 maps to [`ClientError::NotFound`]. Backs `promo.show`.
+    pub async fn get_promotion(&self, promotion_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/promotionManagement/v4/promotion/{promotion_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `GET /promo/validate?code&offering[&customerId]` — full order-time discount
     /// terms com stamps onto the order item. `customer_id` gates a targeted code
     /// on eligibility.

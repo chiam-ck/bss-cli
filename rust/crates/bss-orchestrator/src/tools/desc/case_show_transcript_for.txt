@@ -1,0 +1,20 @@
+Retrieve the chat transcript linked to a case (if any).
+
+    v0.12 — used by the CSR console's case-detail page to show the
+    conversation that led to an AI-opened escalation. Not in the
+    customer chat profile (CSRs are the audience).
+
+    Args:
+        case_id: Case ID with the CASE- prefix (opaque suffix).
+
+    Returns:
+        ``{"transcript": <body>, "customerId": ..., "recordedAt": ...}``
+        when the case has a chat_transcript_hash and the transcript
+        row exists. ``{"transcript": null, "reason":
+        "no_transcript_linked"}`` when the case carries no hash
+        (CSR-opened, scenario-opened, or pre-v0.12 case).
+
+    Raises:
+        NotFound: the case has a hash but the transcript row is
+            missing — investigate (transcript archived, hash
+            corrupted, or DB inconsistency).

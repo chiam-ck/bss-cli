@@ -113,13 +113,15 @@ impl CrmClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
-    /// `GET /crm-api/v1/case` filtered by optional `customerId` / `state` (sent
-    /// only when present). Returns a JSON array. Backs the `customer.get` 360
-    /// composite and (later) `case.list_for_me`.
+    /// `GET /crm-api/v1/case` filtered by optional `customerId` / `state` /
+    /// `assignedAgentId` (from `agent_id`; sent only when present). Returns a JSON
+    /// array. Backs the `customer.get` 360 composite, `case.list`, and (later)
+    /// `case.list_for_me`.
     pub async fn list_cases(
         &self,
         customer_id: Option<&str>,
         state: Option<&str>,
+        agent_id: Option<&str>,
     ) -> Result<Value, ClientError> {
         let mut params: Vec<String> = Vec::new();
         if let Some(c) = customer_id.filter(|s| !s.is_empty()) {
@@ -128,11 +130,112 @@ impl CrmClient {
         if let Some(s) = state.filter(|s| !s.is_empty()) {
             params.push(format!("state={}", encode(s)));
         }
+        if let Some(a) = agent_id.filter(|s| !s.is_empty()) {
+            params.push(format!("assignedAgentId={}", encode(a)));
+        }
         let mut path = "/crm-api/v1/case".to_string();
         if !params.is_empty() {
             path.push('?');
             path.push_str(&params.join("&"));
         }
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /crm-api/v1/case/{id}` — a single case. Backs `case.get` +
+    /// `case.show_transcript_for`.
+    pub async fn get_case(&self, case_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/case/{case_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /crm-api/v1/chat-transcript/{hash}` — the stored chat transcript (CSR
+    /// side). Backs `case.show_transcript_for`.
+    pub async fn get_chat_transcript(&self, hash: &str) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/chat-transcript/{hash}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /tmf-api/troubleTicket/v4/troubleTicket/{id}` — a single trouble ticket
+    /// (TMF621). Backs `ticket.get`.
+    pub async fn get_ticket(&self, ticket_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/troubleTicket/v4/troubleTicket/{ticket_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /tmf-api/troubleTicket/v4/troubleTicket` filtered by optional
+    /// `customerId` / `caseId` / `state` / `agentId` (sent only when present).
+    /// Returns a JSON array. Backs `ticket.list`.
+    pub async fn list_tickets(
+        &self,
+        customer_id: Option<&str>,
+        case_id: Option<&str>,
+        state: Option<&str>,
+        agent_id: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut params: Vec<String> = Vec::new();
+        if let Some(c) = customer_id.filter(|s| !s.is_empty()) {
+            params.push(format!("customerId={}", encode(c)));
+        }
+        if let Some(c) = case_id.filter(|s| !s.is_empty()) {
+            params.push(format!("caseId={}", encode(c)));
+        }
+        if let Some(s) = state.filter(|s| !s.is_empty()) {
+            params.push(format!("state={}", encode(s)));
+        }
+        if let Some(a) = agent_id.filter(|s| !s.is_empty()) {
+            params.push(format!("agentId={}", encode(a)));
+        }
+        let mut path = "/tmf-api/troubleTicket/v4/troubleTicket".to_string();
+        if !params.is_empty() {
+            path.push('?');
+            path.push_str(&params.join("&"));
+        }
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /crm-api/v1/port-requests` — MNP port requests. `limit`/`offset` always
+    /// sent first (Python seeds them), then optional `state` / `direction`. Returns
+    /// a JSON array. Backs `port_request.list`.
+    pub async fn list_port_requests(
+        &self,
+        state: Option<&str>,
+        direction: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Value, ClientError> {
+        let mut params = vec![format!("limit={limit}"), format!("offset={offset}")];
+        if let Some(s) = state.filter(|s| !s.is_empty()) {
+            params.push(format!("state={}", encode(s)));
+        }
+        if let Some(d) = direction.filter(|s| !s.is_empty()) {
+            params.push(format!("direction={}", encode(d)));
+        }
+        let path = format!("/crm-api/v1/port-requests?{}", params.join("&"));
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /crm-api/v1/port-requests/{id}` — a single port request. Backs
+    /// `port_request.get`.
+    pub async fn get_port_request(&self, port_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/port-requests/{port_id}");
         let resp = self.inner.request(Method::GET, &path, None, None).await?;
         resp.json()
             .await
