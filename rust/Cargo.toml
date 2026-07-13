@@ -72,6 +72,7 @@ bss-events = { path = "crates/bss-events" }
 bss-telemetry = { path = "crates/bss-telemetry" }
 bss-clients = { path = "crates/bss-clients" }
 bss-models = { path = "crates/bss-models" }
+bss-knowledge = { path = "crates/bss-knowledge" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.

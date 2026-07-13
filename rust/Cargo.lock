@@ -547,6 +547,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "bss-knowledge"
+version = "0.1.0"
+dependencies = [
+ "bss-clock",
+ "bss-db",
+ "chrono",
+ "hex",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "bss-middleware"
 version = "0.1.0"
 dependencies = [
@@ -2610,6 +2628,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5102a6aaa05aa011a238e178e6bca86d2cb56fc9f586d37cb80f5bca6e07759"
 dependencies = [
  "bitflags 2.13.0",
+]
+
+[[package]]
+name = "regex"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a0e75113e14dc5acb068cd0786884f214f1312650a3d36d269f5c4f3cdee8a2"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]

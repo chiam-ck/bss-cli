@@ -9,8 +9,23 @@ for the why.
 **Phase 4 is COMPLETE — the ENTIRE SERVICE PLANE IS NOW RUST. Tagged
 `v2.0.0-phase.4`.** All 8 backend services run Rust images: rating (`.1`), the event
 plane mediation/provisioning-sim/som (`.2`), catalog + com (`.3`), and payment (4a) +
-subscription (4b) + crm (4c) this phase. Only the **portals + orchestrator + CLI**
-remain Python — the bilingual resting point.
+subscription (4b) + crm (4c). The **portals + orchestrator + CLI** remain Python.
+
+**Phase 5 is IN PROGRESS — the Python LLM/lib side.** P5 is the first phase with
+**no container cutover of its own** (D3): `bss-orchestrator`, `bss-knowledge`, and
+`bss-cockpit` core are *library* crates that cut over in P6/P7 when the Rust
+portals/CLI link them. The gate is **transcript parity**, not a hero-suite swap.
+Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core**, **P5c
+`bss-orchestrator`** (the ReAct loop + 109 tools + guard stack + fixture player).
+
+- **P5a `bss-knowledge` ✅ ported (not yet tagged — the tag caps the whole phase).**
+  `rust/crates/bss-knowledge`: chunker + FTS search + indexer. Chunker golden is
+  byte-for-byte vs the oracle across the three split policies (runs in CI); the
+  live `search_fts`/`get_chunk` diff is byte-identical on the wire contract
+  (`to_value` omits `rank`; `rank` came 1 ULP off on the `f32→f64` re-rank multiply
+  — pinned within `1e-12`). See PROGRESS §Phase 5a. **Lesson for P5b/c: when the
+  work is a Postgres builtin, parity is structural — the risk is the pure Rust
+  around it.**
 
 **Each of the big-three cut over with a read-surface golden diff + the hero suite
 (15/19; the 4 failures are pre-existing portal/trace issues — branding text,
@@ -153,16 +168,36 @@ fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: Phase 5+ — the Python side (portals / orchestrator / CLI)
+## What to do next: finish Phase 5 (P5b → P5c), then Phase 6+ portals/CLI
 
-The service plane is done. See [`03-PHASES.md`](03-PHASES.md) §Phase 5+. The
-remaining Python is the **portals** (self-serve 9001 + cockpit 9002, FastAPI + Jinja +
-HTMX), the **orchestrator** (LangGraph + OpenRouter — the chat/agent brain), and the
-**CLI** (`bss`, Typer/Rich REPL). These are a different shape from the services:
-session/cookie auth, SSE streaming, the tool registry + profiles, prompt assembly.
+Phase 5 is underway. **P5a `bss-knowledge` is ported; next is P5b `bss-cockpit`
+core, then P5c `bss-orchestrator`.** See [`03-PHASES.md`](03-PHASES.md) §Phase 5
+and PROGRESS §Phase 5.
+
+- **P5b — `bss-cockpit` core** (`packages/bss-cockpit`, ~3.6k Py LOC): the
+  `Conversation` store (`cockpit` schema — `transcript_text()` format is a frozen
+  contract the orchestrator's `_messages_from_transcript` parses), the
+  `pending_destructive` row (the `/confirm` contract), the chrome filter
+  (`_ASSISTANT_CHROME_PREFIXES` — the inventory-lock test pins the set), prompt
+  composition (`_COCKPIT_INVARIANTS` is code-defined, prepended verbatim), and
+  `settings.toml` hot-reload (mtime cache; `toml_edit` for writes). The ASCII
+  **renderers** can defer to P6/P7 (land with the first browser/CLI consumer).
+  Golden-diff the transcript format + pending_destructive rows.
+- **P5c — `bss-orchestrator`** (~7.2k Py LOC): the biggest. Hand-roll the ReAct
+  loop (no LangGraph — system prompt + messages → OpenRouter → run tool_calls →
+  append ToolMessage → repeat). Port the guard stack 1:1 (`safety.wrap_destructive`
+  + autonomy `LoopState`; the 3-strike failure + `_IdenticalCallTracker` bails;
+  `ownership.assert_owned_output`; `chat_caps`). Keep **tool descriptions/param
+  docstrings byte-identical** (R2 — they drive model behaviour). Reimplement
+  `MockChatModel` (substring-match on latest user text → walk `steps`) so the
+  fixture corpus replays event-identically. Port tools profile-by-profile,
+  `customer_self_serve` first (smaller, ownership-critical). **Don't** add the
+  ITERATIVE FLOW block to customer chat (doctrine guard).
+
+Then Phase 6+ (portals self-serve 9001 + cockpit 9002, then CLI):
 
 - The **4 standing hero failures** are all portal/trace (branding text,
-  `/auth/check-email` 400, Jaeger `spanCount`) — they land in the P5 portal port and
+  `/auth/check-email` 400, Jaeger `spanCount`) — they land in the P6 portal port and
   are the natural first acceptance target (get to 19/19).
 - **Exercise write bodies, not just reads,** when validating a port (the 4c
   interaction-camelCase lesson). A read golden diff is necessary, not sufficient.

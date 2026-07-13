@@ -1,0 +1,32 @@
+[package]
+name = "bss-knowledge"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Doc-corpus chunker + FTS search backing the v0.20 cockpit knowledge tools. Rust port of packages/bss-knowledge — the INDEXED_PATHS allowlist is the doctrine source of truth for what the LLM can cite."
+
+[lints]
+workspace = true
+
+[lib]
+name = "bss_knowledge"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+sha2 = { workspace = true }
+hex = "0.4"
+regex = "1"
+
+bss-clock = { workspace = true }
+bss-db = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }

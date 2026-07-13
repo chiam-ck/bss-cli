@@ -42,6 +42,81 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
+## Phase 5 — orchestrator lib + knowledge + cockpit-core — 🚧 IN PROGRESS
+
+The hard port, and the first phase with **no deployable cutover of its own** (D3):
+these are *library* crates. Their cutover happens in P6/P7 when the Rust
+portals/CLI link them; until then the Python portals keep using the Python
+orchestrator against the same all-Rust service plane. So the gate is **not** a
+container swap + hero suite — it's **transcript parity** (fixture-driven, the
+deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
+
+**Decomposition** (sized to real acceptance gates, like P4a/b/c):
+
+- **P5a — `bss-knowledge`** (636 Py LOC): self-contained FTS crate, reads the
+  `knowledge` schema, no LLM. Golden-diffable. **The P5 pilot — done below.**
+- **P5b — `bss-cockpit` core**: Conversation store + `pending_destructive` +
+  chrome filter + `_COCKPIT_INVARIANTS` prompt composition + `settings.toml`
+  hot-reload. Postgres-backed (`cockpit` schema); golden-diffable on transcript
+  format + rows. Renderers may defer to P6/P7 (land-with-first-consumer).
+- **P5c — `bss-orchestrator`**: the hand-rolled ReAct loop (LangGraph's
+  `create_react_agent` becomes an explicit loop), 109 typed tools (profile by
+  profile, `customer_self_serve` first), the guard stack (`wrap_destructive` +
+  autonomy, 3-strike failure + identical-call bails, ownership trip-wire, chat
+  caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
+  fixture-corpus transcript parity. The big one.
+
+### Phase 5a — bss-knowledge — ✅ PORTED (2026-07-13)
+
+`rust/crates/bss-knowledge` — the doc-corpus chunker + FTS search backing the
+v0.20 cockpit knowledge tools. Four modules mirroring the Python package:
+
+- **`paths`** — `INDEXED_PATHS` allowlist (the doctrine source of truth for what
+  the LLM can cite; guard 16), `kind_for`, `kind_rank_weight`. Pinned by golden.
+- **`chunker`** — markdown → chunks. The delicate part: GitHub-flavoured anchor
+  algorithm (`[^\w\- ]+` Unicode strip → spaces-to-hyphens → trim), per-file
+  split policy (`##` default; `##`+`###` for handbook/ARCHITECTURE; dated `##`
+  for DECISIONS), frontmatter strip, and the heading-path trail with its exact
+  **stack-updated-before-flush** ordering quirk reproduced verbatim (R5:
+  behaviour-frozen, quirks included).
+- **`search`** — `search_fts` + `get_chunk`. Issues the **identical SQL** so
+  `ts_headline`/`ts_rank`/`plainto_tsquery` ranking + snippets are computed in
+  Postgres exactly as for the oracle; the only Rust-side logic is the
+  kind-weight re-rank multiply + stable re-sort. `indexed_at` renders via
+  `bss_clock::isoformat` (`+00:00`, micros-when-nonzero) to match Python
+  `datetime.isoformat()`.
+- **`indexer`** — the operator-run reindex (3 idempotency layers, deterministic
+  `sha256(path|anchor)[:32]` id, delete-stale). Ported for completeness;
+  consumed by the P7 CLI. Not run against the live shared table in tests (it
+  mutates); the chunker (which produces every upserted row) is golden-pinned.
+
+**The `@type`/datetime/money seams don't recur here** — knowledge is plain text
++ Postgres FTS. The one seam that mattered: `ts_rank` is `REAL` (float4); reading
+it as `f32` then widening to `f64` before the weight multiply matches asyncpg's
+float4-decode → Python-float path.
+
+**Verification.**
+- `cargo fmt` + `clippy -D warnings` clean; workspace tests green (no regression).
+- **Chunker golden** (`tests/chunker_golden.rs`, runs in CI, no DB): byte-for-byte
+  vs `bss_knowledge.chunker` across the three distinct split policies —
+  CLAUDE.md (14), DECISIONS.md (89), HANDBOOK.md (89), ARCHITECTURE.md (37), a
+  runbook (6) — plus `INDEXED_PATHS`/kind/weight parity. Anchors, heading-path
+  trails (quirk included), and per-file levels all match.
+- **Live golden diff** (`tests/live_smoke.rs`, `#[ignore]`): `search_fts` over 6
+  queries (incl. an empty-result miss, a `kinds`-filtered scope, and the handbook
+  re-rank) + `get_chunk` (hit + miss) against the same live `knowledge.doc_chunk`
+  the oracle reads. The exported **wire contract** (`to_value`, which omits
+  `rank`) is byte-identical; ordering identical. `rank` itself came back **1 ULP**
+  off on one handbook hit (`f32→f64` widen-then-multiply rounding) — it's an
+  internal ordering score, not part of the contract, so the test pins the wire
+  shape exactly and `rank` within `1e-12`.
+
+**Lesson:** where the heavy lifting is a Postgres builtin (FTS ranking, snippet
+generation), byte-parity is structural — the risk concentrates in the pure Rust
+around it (the chunker's anchor/trail algorithm, and float widening at the
+sqlx boundary). The chunker golden is the high-value test; the live diff is
+confirmation.
+
 ## Phase 4 — payment → subscription → crm — ✅ COMPLETE (tag `v2.0.0-phase.4`)
 
 The big three, each its own cutover (03-PHASES §Phase 4). Ordered by blast radius.
