@@ -1,0 +1,13 @@
+Update primary email/phone on a customer. Only non-None fields are
+    patched — None fields are left untouched.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        email: New primary email (optional).
+        phone: New primary phone (optional).
+
+    Returns:
+        The updated customer dict.
+
+    Raises:
+        PolicyViolationFromServer: ``customer.update.email_unique``.

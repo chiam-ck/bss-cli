@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–8 done — READS COMPLETE (~53/110 tools):**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–9 done — READS COMPLETE + first write family (~60/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -71,12 +71,21 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   `BSS_KNOWLEDGE_ENABLED`); NOT_FOUND message byte-pinned by a unit test. Both
   operator-only. Live smoke green.
 
+- **Slice 9** — **customer + interaction WRITES** (7 tools; writes begin). Six new
+  `CrmClient` write methods (+ `chrono`); `attest_kyc` ports the full stub-default
+  body. **⚠️ Found an owed oracle fix:** `customer.add_contact_medium` 422s on both
+  Python and Rust (client sends `characteristic`, service wants top-level `value`) —
+  a pre-existing Python bug; the port reproduces it faithfully (R5). Mutating live
+  smoke green (create→attest→verified→update→log→close).
+
 **Remaining P5c slices (batched — aim ~3):**
-1. **Operator writes** (~45 tools) — customer/case/ticket/subscription/payment/order/
-   promo/port_request/provisioning/inventory writes + catalog admin. All client calls;
-   destructive gating already exists in `safety.rs`. Likely one big slice (or split
-   money-movers out if it gets unwieldy). Many need new `bss-clients` write methods
-   (add as consumers, as the read batches did).
+1. **The rest of the operator writes** (~38 tools) — case/ticket, subscription/order/
+   payment, inventory/port_request/provisioning/promo + catalog admin. All client
+   calls; destructive gating already exists in `safety.rs`. Watch for more pre-existing
+   write-body mismatches like `add_contact_medium` (exercise the bodies live; a 422 may
+   be *faithful*, not a bug — check the Python client vs service before "fixing").
+   `order.create`/`payment.add_card` are composites (create+submit; tokenize+attach —
+   `local_tokenize_card` is a pure sandbox function). Likely 1–2 slices.
 2. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
    auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
    `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +

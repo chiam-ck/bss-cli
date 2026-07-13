@@ -37,6 +37,7 @@ fn registry_with_catalog() -> ToolRegistry {
         crm.clone(),
         subscription.clone(),
     );
+    bss_orchestrator::tools::customer::register_customer_write_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::subscription::register_subscription_tools(&mut reg, subscription);
     let payment = PaymentClient::new("http://localhost:8003", auth.clone()).unwrap();
     bss_orchestrator::tools::payment::register_payment_tools(&mut reg, payment);
@@ -130,6 +131,13 @@ async fn tool_descriptions_match_python_oracle() {
         "trace.for_subscription",
         "knowledge.search",
         "knowledge.get",
+        "customer.create",
+        "customer.update_contact",
+        "customer.add_contact_medium",
+        "customer.remove_contact_medium",
+        "customer.attest_kyc",
+        "customer.close",
+        "interaction.log",
     ];
     for name in names {
         let tool = registry
@@ -195,6 +203,43 @@ fn subscription_canonical_reads_are_operator_only() {
         assert!(
             !CUSTOMER_SELF_SERVE.contains(&name),
             "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn customer_writes_are_operator_and_destructive_gated() {
+    use bss_orchestrator::DESTRUCTIVE_TOOLS;
+    for name in [
+        "customer.create",
+        "customer.update_contact",
+        "customer.add_contact_medium",
+        "customer.remove_contact_medium",
+        "customer.attest_kyc",
+        "customer.close",
+        "interaction.log",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+    }
+    // The two account-mutating writes are destructive (safety-gated).
+    for name in ["customer.remove_contact_medium", "customer.close"] {
+        assert!(
+            DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must be in DESTRUCTIVE_TOOLS"
+        );
+    }
+    // ...the others are not.
+    for name in [
+        "customer.create",
+        "customer.update_contact",
+        "interaction.log",
+    ] {
+        assert!(
+            !DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must NOT be destructive"
         );
     }
 }
@@ -338,7 +383,7 @@ async fn surface_intersects_profile_with_registry() {
     assert!(surface.contains(&"customer.get".to_string()));
     // clock.freeze/advance/unfreeze are operator_cockpit + registered.
     assert!(surface.contains(&"clock.freeze".to_string()));
-    // A profile tool that isn't registered yet must not appear (the write tools
-    // are a later slice).
-    assert!(!surface.contains(&"customer.create".to_string()));
+    // A profile tool that isn't registered yet must not appear (order/subscription
+    // writes are a later slice).
+    assert!(!surface.contains(&"order.create".to_string()));
 }

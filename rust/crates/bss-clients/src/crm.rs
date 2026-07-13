@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::auth::AuthProvider;
 use crate::base::{BssClient, DEFAULT_TIMEOUT};
@@ -272,6 +272,209 @@ impl CrmClient {
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
+
+    // ── writes ───────────────────────────────────────────────────────────
+
+    /// `POST /tmf-api/customerManagement/v4/customer`. `name` is split on the first
+    /// whitespace into `givenName` + `familyName` (CRM requires both); at least one
+    /// contact medium is required, defaulting to a `{given}@local` placeholder email
+    /// when neither email nor phone is given. Backs `customer.create`.
+    pub async fn create_customer(
+        &self,
+        name: &str,
+        email: Option<&str>,
+        phone: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let trimmed = name.trim();
+        let (given_name, family_name) = match trimmed.split_once(char::is_whitespace) {
+            Some((g, rest)) => (g.to_string(), rest.trim_start().to_string()),
+            None if !trimmed.is_empty() => (trimmed.to_string(), trimmed.to_string()),
+            None => (name.to_string(), name.to_string()),
+        };
+        let email = email.filter(|s| !s.is_empty());
+        let phone = phone.filter(|s| !s.is_empty());
+        let mut mediums: Vec<Value> = Vec::new();
+        if let Some(e) = email {
+            mediums.push(json!({"mediumType": "email", "value": e, "isPrimary": true}));
+        }
+        if let Some(p) = phone {
+            mediums.push(json!({"mediumType": "mobile", "value": p, "isPrimary": email.is_none()}));
+        }
+        if mediums.is_empty() {
+            let placeholder = format!("{}@local", given_name.to_lowercase());
+            mediums.push(json!({"mediumType": "email", "value": placeholder, "isPrimary": true}));
+        }
+        let body = json!({
+            "givenName": given_name,
+            "familyName": family_name,
+            "contactMedium": mediums,
+        });
+        self.post("/tmf-api/customerManagement/v4/customer", &body)
+            .await
+    }
+
+    /// `PATCH /tmf-api/customerManagement/v4/customer/{id}` with a raw patch body.
+    /// Backs `customer.update_contact` (patch of `email`/`phone`) and
+    /// `customer.close` (`{"status": "closed"}`).
+    pub async fn update_customer(
+        &self,
+        customer_id: &str,
+        patch: &Value,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/customerManagement/v4/customer/{customer_id}");
+        let resp = self
+            .inner
+            .request(Method::PATCH, &path, Some(patch), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `PATCH …/customer/{id}` with `{"status": "closed"}`. Backs `customer.close`.
+    pub async fn close_customer(&self, customer_id: &str) -> Result<Value, ClientError> {
+        self.update_customer(customer_id, &json!({"status": "closed"}))
+            .await
+    }
+
+    /// `POST …/customer/{id}/contactMedium` — shape the `characteristic` per medium
+    /// type (`email`→`emailAddress`, `mobile`→`phoneNumber`, else `value`). Backs
+    /// `customer.add_contact_medium`.
+    ///
+    /// **Known pre-existing mismatch (reproduced faithfully):** the CRM service route
+    /// binds `AddContactMediumRequest` which requires a **top-level `value`**, but this
+    /// (matching the Python client) sends only `characteristic` — so the call 422s on
+    /// both the Python and Rust services. The fix belongs in the Python oracle first
+    /// (R5 / behaviour-frozen); the port does not silently "correct" it. See the
+    /// P5c-writes note in PROGRESS.
+    pub async fn add_contact_medium(
+        &self,
+        customer_id: &str,
+        medium_type: &str,
+        value: &str,
+    ) -> Result<Value, ClientError> {
+        let characteristic = match medium_type {
+            "email" => json!({"emailAddress": value}),
+            "mobile" => json!({"phoneNumber": value}),
+            _ => json!({"value": value}),
+        };
+        let body = json!({"mediumType": medium_type, "characteristic": characteristic});
+        let path = format!("/tmf-api/customerManagement/v4/customer/{customer_id}/contactMedium");
+        self.post(&path, &body).await
+    }
+
+    /// `DELETE …/customer/{id}/contactMedium/{cm}` — returns the server body when
+    /// present, else `{"id": <cm>, "removed": true}` (empty-body case). Backs
+    /// `customer.remove_contact_medium`. DESTRUCTIVE (safety-gated at the tool).
+    pub async fn remove_contact_medium(
+        &self,
+        customer_id: &str,
+        medium_id: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!(
+            "/tmf-api/customerManagement/v4/customer/{customer_id}/contactMedium/{medium_id}"
+        );
+        let resp = self
+            .inner
+            .request(Method::DELETE, &path, None, None)
+            .await?;
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))?;
+        if bytes.is_empty() {
+            return Ok(json!({"id": medium_id, "removed": true}));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /crm-api/v1/customer/{id}/kyc-attestation` — record a signed KYC
+    /// attestation. Ports the stub defaults the tool relies on (it passes only
+    /// `provider` + `attestation_token`): a per-customer `document_number` derived
+    /// from the id's digits (so portal signups don't collide on the hash-unique
+    /// policy), a `provider_reference`, a stub `attestation_payload`, and a
+    /// `verified_at` of now (non-deterministic — services that need freezable time
+    /// pass their own). Backs `customer.attest_kyc`.
+    pub async fn attest_kyc(
+        &self,
+        customer_id: &str,
+        provider: &str,
+        attestation_token: &str,
+    ) -> Result<Value, ClientError> {
+        // Stub document_number: 7 digits from the id's digit tail, zero-padded.
+        let tail: String = customer_id.chars().filter(char::is_ascii_digit).collect();
+        let digits: String = if tail.is_empty() {
+            // Unreachable for prefixed (CUST-…) ids, which always carry digits; a
+            // deterministic placeholder replaces Python's randomized hash fallback.
+            "0000001".to_string()
+        } else {
+            format!("{tail}0000000").chars().take(7).collect()
+        };
+        let document_number = format!("S{digits}D");
+        let ref_tail = last_chars(attestation_token, 8);
+        let sig_tail = last_chars(attestation_token, 16);
+        let verified_at = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.6f+00:00")
+            .to_string();
+        let body = json!({
+            "provider": provider,
+            "provider_reference": format!("{provider}-{ref_tail}"),
+            "document_type": "nric",
+            "document_country": "SG",
+            "date_of_birth": "1990-01-01",
+            "nationality": "SG",
+            "verified_at": verified_at,
+            "attestation_payload": {
+                "token": attestation_token,
+                "signature": format!("stub-sig-{sig_tail}"),
+            },
+            "document_number": document_number,
+        });
+        let path = format!("/crm-api/v1/customer/{customer_id}/kyc-attestation");
+        self.post(&path, &body).await
+    }
+
+    /// `POST /tmf-api/customerInteractionManagement/v1/interaction` — log a TMF683
+    /// interaction. `direction` defaults to `inbound`; `channel` is filled from the
+    /// request context server-side (never sent here); `body_text` maps to the
+    /// optional `body` field. Backs `interaction.log`.
+    pub async fn log_interaction(
+        &self,
+        customer_id: &str,
+        summary: &str,
+        body_text: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut map = serde_json::Map::new();
+        map.insert("customerId".to_string(), json!(customer_id));
+        map.insert("summary".to_string(), json!(summary));
+        map.insert("direction".to_string(), json!("inbound"));
+        if let Some(b) = body_text {
+            map.insert("body".to_string(), json!(b));
+        }
+        self.post(
+            "/tmf-api/customerInteractionManagement/v1/interaction",
+            &Value::Object(map),
+        )
+        .await
+    }
+
+    async fn post(&self, path: &str, body: &Value) -> Result<Value, ClientError> {
+        let resp = self
+            .inner
+            .request(Method::POST, path, Some(body), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+}
+
+/// Last `n` characters of `s` (Python's `s[-n:]`, char-wise; whole string when
+/// shorter than `n`).
+fn last_chars(s: &str, n: usize) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let start = chars.len().saturating_sub(n);
+    chars[start..].iter().collect()
 }
 
 /// Minimal query-value encoding for the characters that appear in ids/emails

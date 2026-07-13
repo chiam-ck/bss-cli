@@ -1,0 +1,13 @@
+Add an additional contact medium (email/mobile/address) to a customer.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        medium_type: One of ``email``, ``mobile``, ``address``.
+        value: The contact value itself — email string, E.164 phone, or
+            address text, matching ``medium_type``.
+
+    Returns:
+        The updated customer dict with the new contact medium appended.
+
+    Raises:
+        PolicyViolationFromServer: ``customer.contact_medium.format_invalid``.

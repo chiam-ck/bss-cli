@@ -66,7 +66,49 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–8) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–9) — 🚧 (2026-07-13)
+
+**Slice 9 — customer + interaction WRITES (writes begin).** Seven tools
+(`customer.create/update_contact/add_contact_medium/remove_contact_medium/
+attest_kyc/close`, `interaction.log`) in `register_customer_write_tools`. Writes
+carry real body-construction logic (not thin wrappers), so this exercises the
+**request bodies live** (the 4c lesson). Added six `CrmClient` write methods (+
+`chrono` dep for the `attest_kyc` `verified_at` timestamp): `create_customer`
+(name split into given/family + contact-medium defaults), `update_customer`,
+`close_customer`, `add_contact_medium`, `remove_contact_medium` (204-empty →
+`{id, removed}`), `attest_kyc` (ports the full stub-default body — per-customer
+`document_number` from the id's digit tail, `provider_reference`, stub
+`attestation_payload`), `log_interaction`. Two tools (`remove_contact_medium`,
+`customer.close`) are destructive — pinned by
+`customer_writes_are_operator_and_destructive_gated`.
+
+> **⚠️ Owed oracle fix discovered (do NOT fix in the port).** The live smoke
+> found a **pre-existing Python client/service mismatch**:
+> `customer.add_contact_medium` — the Python **client** wraps the value in
+> `characteristic` (`{emailAddress}`/`{phoneNumber}`), but the CRM service route
+> binds `AddContactMediumRequest`, which requires a **top-level `value`** (reads
+> `body.value`). So the tool **422s in the all-Python world too** — it is a latent
+> Python bug, not a port regression. Per R5/behaviour-frozen, the Rust client
+> reproduces the `characteristic` body faithfully (and thus the 422); the fix
+> belongs in the **Python oracle first** (align the client to send `value`, or the
+> service to accept `characteristic`), then re-port. Flagged in the client doc
+> comment + the write smoke asserts the reproduced 422. **Owed, like the SOM
+> lost-update backport.**
+
+**Verification:** fmt + clippy clean; workspace green (incl. the destructive-gating
++ profile unit test); 7 descriptions byte-pinned. **Mutating live smoke**
+(`customer_writes_live.rs`, `#[ignore]`) green against tech-vm: create (body
+accepted, real id) → `attest_kyc` (**customer verified** — the ported stub body
+works) → `update_contact` → `log_interaction` (the camelCase `customerId` body the
+4c bug tripped on — accepted) → `add_contact_medium` reproduces the Python 422 →
+`close` (status→closed). Creates then closes one customer.
+
+**Tool ledger:** ~60/110 (reads complete + the first write family). Remaining
+writes: case/ticket, subscription/order/payment, inventory/port_request/
+provisioning/promo/catalog-admin. Then the `*.mine` wrappers + model client +
+ownership/caps/prompts.
+
+---
 
 **Slice 8 — trace + knowledge (the last, infra-heavy reads).** Five tools; the two
 read families that need new infra rather than a plain HTTP client:
