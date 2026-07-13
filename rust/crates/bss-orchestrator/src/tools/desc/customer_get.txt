@@ -1,0 +1,36 @@
+Read a single customer with contact mediums, KYC status, and the
+    adjacent context the cockpit's 360 renderer expects (active
+    subscriptions, open cases, recent interactions).
+
+    The CRM API only returns the customer record itself; the cockpit's
+    deterministic ASCII renderer needs subscriptions / cases /
+    interactions to fill the "Subscriptions (N)", "Open Cases (N)",
+    "Recent Interactions (N)" sections. Without them the card showed
+    zeros even when the customer had real subs and cases — see
+    cockpit transcript May 2026. We compose the joins here so the
+    rendered card is honest, and so any caller of ``customer.get``
+    (cockpit, REPL, scenarios) gets the same shape.
+
+    The four upstream calls run in parallel — they are independent
+    reads against three services (CRM for customer + cases +
+    interactions, Subscription for the line list). Total latency is
+    bounded by the slowest read, not their sum.
+
+    The composite extras are surfaced under the synthetic ``_extras``
+    key so the customer dict's TMF629 shape is unchanged for callers
+    that only want the core record. ``_extras`` is the renderer's
+    plumbing channel; consumers that care only about the customer
+    fields should ignore it.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix). Obtain from
+            ``customer.list`` or ``customer.create``.
+
+    Returns:
+        Customer dict including ``status`` (pending/active/suspended/closed),
+        ``contactMedium`` list, ``kycVerified`` boolean, timestamps, plus an
+        ``_extras`` key containing ``{"subscriptions": [...], "cases": [...],
+        "interactions": [...]}``.
+
+    Raises:
+        NotFound: no customer with this ID.

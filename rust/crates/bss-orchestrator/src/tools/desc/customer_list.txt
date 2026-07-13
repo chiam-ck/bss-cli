@@ -1,0 +1,18 @@
+List customers, optionally filtered. Use this when the user refers to
+    a customer by name (e.g. "Ck") — filter by ``name_contains`` to resolve
+    the CUST-NNN ID before calling other tools. For an email address use
+    ``customer.find_by_email``; for a phone number use
+    ``customer.find_by_msisdn`` — ``name_contains`` matches neither.
+
+    Args:
+        state: Optional customer state filter.
+        name_contains: Optional case-insensitive substring match on the
+            customer's display NAME only — emails and phone numbers
+            never match.
+
+    Returns:
+        List of customer dicts (may be empty). Each has ``id``, ``name``,
+        ``status``. If multiple match, ask the user which one — do not guess.
+
+    Raises:
+        (none expected — read tool)

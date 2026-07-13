@@ -66,7 +66,61 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–2) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–3) — 🚧 (2026-07-13)
+
+**Slice 3 — the CRM read family + shared tool helpers.** Second application of the
+slice-2 template, plus the first **composite** tool. Ported six read tools:
+`customer.get`, `customer.list`, `customer.find_by_msisdn`, `customer.find_by_email`,
+`customer.get_kyc_status`, `interaction.list`.
+
+- **`customer.get` is a 360 composite** — four independent reads fanned out with
+  `futures_util::future::join4` (CRM customer + cases + interactions, Subscription
+  line list), mirroring the Python `asyncio.gather(..., return_exceptions=True)`
+  exactly: the customer read is the **hard error** (a real NotFound the caller must
+  see); the three sub-reads degrade to `[]` on any failure (`ok_array` = the Rust
+  shape of `x if isinstance(x, list) else []`) and stitch under the synthetic
+  `_extras` key the cockpit's 360 renderer expects. The other five return the client
+  response **verbatim**.
+- Extended `CrmClient` with `find_customer_by_msisdn`, `find_customer_by_email`,
+  `list_customers(state, name_contains)`, `get_kyc_status`, `list_cases(customer_id,
+  state)`, `list_interactions(customer_id, limit)` — each a consumer-driven addition
+  mirroring the catalog extension. Python's param mapping preserved (`state`→`status`,
+  `name_contains`→`name`; each sent only when present). Added a private `encode` (a
+  copy of `catalog::encode`) so email `+` addressing survives the query string.
+  `SubscriptionClient::list_for_customer` (already ported P1) backs the composite.
+- **Refactor:** promoted `map_client_err` / `req_str` / `opt_str` from `catalog.rs`
+  to `tools/mod.rs` as `pub(crate)` — the shared client-backed-tool helper kit;
+  `catalog.rs` now imports them (no behaviour change, tests re-verify).
+- **Profile placement:** the canonical CRM reads are **operator_cockpit-only** — the
+  chat surface sees only the ownership-bound `*.mine` wrappers (a later slice), never
+  these unscoped reads. Pinned by a new `crm_reads_are_operator_only` test (present in
+  operator_cockpit, absent from customer_self_serve, both directions).
+
+**R2 open item flagged this slice — tool-observation key ordering.** The agent
+serializes a tool result via `Value::to_string()`, and the workspace's `serde_json`
+has **no `preserve_order` feature**, so object keys serialize **alphabetically
+sorted**, whereas Python (`httpx.json()` → dict → `json.dumps`) preserves server /
+insertion order. For **verbatim** tools this only affects the *observation string*,
+not `Value ==` (tests stay order-independent, as accepted since slice 2). It first
+becomes *observable* in **projected-dict** tools (e.g. `subscription.get_esim_
+activation` builds a fixed-key dict) — so those are **deferred to their own slice**,
+and the resolution (most likely enabling `preserve_order` workspace-wide and
+re-validating the service goldens, or confirming the R2 gate compares the event
+sequence rather than byte-exact observation strings) is settled when the
+transcript-parity gate is built. Noted here so the decision isn't silently made by a
+`json!` key order.
+
+**Verification (slice 3).** fmt + clippy clean (`-D warnings`); **workspace green,
+no regression** (the `catalog.rs` helper move + `CrmClient` additions left every
+service test untouched). Description golden extended to the six CRM reads (byte-exact
+`include_str!` desc files pinned against `tool_descriptions.json`). **Live smoke**
+(`tests/customer_tools_live.rs`, `#[ignore]`, ran green against the tech-vm stack):
+`customer.list` verbatim + non-empty seed data; `customer.get` returns the requested
+doc with an `_extras` object carrying array subscriptions/cases/interactions;
+`get_kyc_status` + `interaction.list` + name-filtered `customer.list` each equal a
+direct client call; unknown customer → `CLIENT_ERROR`, not a panic.
+
+---
 
 **Slice 2 — the client-backed tool pattern (catalog read family).** The template
 for the remaining ~100 tools: a tool is a closure capturing its typed `bss-clients`

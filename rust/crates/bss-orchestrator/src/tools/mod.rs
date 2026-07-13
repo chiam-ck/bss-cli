@@ -9,10 +9,12 @@
 
 pub mod catalog;
 pub mod clock;
+pub mod customer;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use bss_clients::ClientError;
 use futures_util::future::BoxFuture;
 use serde_json::{json, Value};
 
@@ -63,6 +65,42 @@ impl ToolError {
             .to_string(),
         }
     }
+}
+
+/// Map a `ClientError` to the structured observation the LLM reads, matching
+/// `graph._tool_error_to_observation`: policy violations surface `rule` + detail;
+/// everything else surfaces `CLIENT_ERROR` + the HTTP status. Shared by every
+/// client-backed tool family.
+pub(crate) fn map_client_err(e: ClientError) -> ToolError {
+    match e {
+        ClientError::Policy(pv) => ToolError::Policy {
+            rule: pv.rule.clone(),
+            detail: pv.to_wire(),
+        },
+        other => ToolError::Client {
+            status: other.status_code() as i64,
+            detail: Value::String(other.to_string()),
+        },
+    }
+}
+
+/// A required string arg, or a structured `BadArgs` observation when absent.
+pub(crate) fn req_str(args: &Value, key: &str) -> Result<String, ToolError> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| ToolError::Other {
+            kind: "BadArgs".to_string(),
+            detail: format!("missing required argument {key:?}"),
+        })
+}
+
+/// An optional non-empty string arg.
+pub(crate) fn opt_str(args: &Value, key: &str) -> Option<String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }
 
 /// A registered tool: dotted name, LLM-facing description (the semantic contract),

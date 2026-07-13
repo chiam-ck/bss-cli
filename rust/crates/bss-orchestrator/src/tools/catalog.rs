@@ -12,11 +12,10 @@
 
 use std::sync::Arc;
 
-use bss_clients::{CatalogClient, ClientError};
+use bss_clients::CatalogClient;
 use futures_util::future::FutureExt;
-use serde_json::Value;
 
-use super::{RegisteredTool, ToolError, ToolRegistry};
+use super::{map_client_err as map_err, opt_str, req_str, RegisteredTool, ToolRegistry};
 
 const DESC_LIST_OFFERINGS: &str = include_str!("desc/catalog_list_offerings.txt");
 const DESC_GET_OFFERING: &str = include_str!("desc/catalog_get_offering.txt");
@@ -24,40 +23,6 @@ const DESC_LIST_VAS: &str = include_str!("desc/catalog_list_vas.txt");
 const DESC_GET_VAS: &str = include_str!("desc/catalog_get_vas.txt");
 const DESC_LIST_ACTIVE_OFFERINGS: &str = include_str!("desc/catalog_list_active_offerings.txt");
 const DESC_GET_ACTIVE_PRICE: &str = include_str!("desc/catalog_get_active_price.txt");
-
-/// Map a `ClientError` to the structured observation the LLM reads, matching
-/// `graph._tool_error_to_observation`: policy violations surface `rule` + detail;
-/// everything else surfaces `CLIENT_ERROR` + the HTTP status.
-fn map_err(e: ClientError) -> ToolError {
-    match e {
-        ClientError::Policy(pv) => ToolError::Policy {
-            rule: pv.rule.clone(),
-            detail: pv.to_wire(),
-        },
-        other => ToolError::Client {
-            status: other.status_code() as i64,
-            detail: Value::String(other.to_string()),
-        },
-    }
-}
-
-/// A required string arg, or a structured `BadArgs` observation when absent.
-fn req_str(args: &Value, key: &str) -> Result<String, ToolError> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| ToolError::Other {
-            kind: "BadArgs".to_string(),
-            detail: format!("missing required argument {key:?}"),
-        })
-}
-
-fn opt_str(args: &Value, key: &str) -> Option<String> {
-    args.get(key)
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-}
 
 /// Register the six catalog **read** tools, each capturing a clone of `client`.
 pub fn register_catalog_tools(registry: &mut ToolRegistry, client: CatalogClient) {

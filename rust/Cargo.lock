@@ -603,6 +603,7 @@ version = "0.1.0"
 name = "bss-orchestrator"
 version = "0.1.0"
 dependencies = [
+ "bss-clients",
  "bss-clock",
  "chrono",
  "futures-util",
