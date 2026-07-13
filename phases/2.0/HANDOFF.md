@@ -4,22 +4,29 @@ This is the cold-start guide for resuming the Rust migration. Read this first,
 then [`PROGRESS.md`](PROGRESS.md) for the detailed log and [`00-STRATEGY.md`](00-STRATEGY.md)
 for the why.
 
-## Where we are (2026-07-13)
+## Where we are (2026-07-14)
 
-**Phase 4 is COMPLETE — the ENTIRE SERVICE PLANE IS NOW RUST. Tagged
-`v2.0.0-phase.4`.** All 8 backend services run Rust images: rating (`.1`), the event
-plane mediation/provisioning-sim/som (`.2`), catalog + com (`.3`), and payment (4a) +
-subscription (4b) + crm (4c). The **portals + orchestrator + CLI** remain Python.
+**Phase 4 is COMPLETE — the ENTIRE SERVICE PLANE IS RUST. Tagged `v2.0.0-phase.4`.**
+All 8 backend services run Rust images. The **portals + CLI** remain Python.
 
-**Phase 5 is IN PROGRESS — the Python LLM/lib side.** P5 is the first phase with
-**no container cutover of its own** (D3): `bss-orchestrator`, `bss-knowledge`, and
-`bss-cockpit` core are *library* crates that cut over in P6/P7 when the Rust
-portals/CLI link them. The gate is **transcript parity**, not a hero-suite swap.
-Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **P5c
-`bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
-`v2.0.0-phase.5` tag caps the whole phase after P5c completes.
+**Phase 5 is COMPLETE — the LLM/lib side is Rust. Tagged `v2.0.0-phase.5`.** P5 had
+**no container cutover of its own** (D3): `bss-knowledge` (P5a), `bss-cockpit` core
+(P5b), and `bss-orchestrator` (P5c) are *library* crates that cut over in P6/P7 when
+the Rust portals/CLI link them. **P5c is DONE** — all 110 tools + the hand-rolled
+ReAct loop + guard stack + `MockChatModel` fixture player + the v0.12 ownership trip-
+wire + verbatim prompts + the `OpenRouterChatModel` production client. Validated
+end-to-end (a live OpenRouter turn drove the loop against the running Rust services).
+Deferred to P6 (route-coupled): `chat_caps` + `ownership::record_violation`.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–14 done — ENTIRE OPERATOR SURFACE (reads + writes) ported (~96/110 tools):**
+**➡️ NEXT: Phase 6 — the portals** (self-serve 9001 + cockpit 9002). They link the
+P5 library crates, add the CRM screens + chat routes (wiring `chat_caps` + the
+ownership `record_violation` + `build_customer_chat_prompt`), and are the first
+acceptance target for the 4 standing hero failures (branding text,
+`/auth/check-email` 400, Jaeger `spanCount` → get to 19/19). See `03-PHASES.md` §Phase 6.
+
+<details><summary>P5c slice history (1–16) — all ✅</summary>
+
+**Slices 1–14 done — ENTIRE OPERATOR SURFACE (reads + writes) ported:**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -105,27 +112,21 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   submit_usage. catalog admin + usage.simulate are LLM-hidden. Operator surface
   complete. Live smoke green (error paths only).
 
-**Remaining P5c slices (aim ~2):**
-1. **`customer_self_serve` `*.mine` wrappers** (~14) — the genuinely distinct one:
-   auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
-   `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +
-   `discount_label`). **Reuses the now-ported client methods** (Crm/Subscription/
-   Payment/Mediation) — the underlying calls all exist. Tools:
-   subscription.{list_mine,get_mine,get_balance_mine,get_lpa_mine},
-   usage.history_mine, customer.get_mine, payment.{method_list_mine,charge_history_mine},
-   vas.purchase_for_me, subscription.{schedule_plan_change_mine,cancel_pending_plan_
-   change_mine,terminate_mine}, case.{open_for_me,list_for_me}. `case.open_for_me`
-   hashes the transcript (SHA-256) + `store_chat_transcript` (already ported).
-2. **OpenRouter `ChatModel` client** (reqwest direct) + the **ownership trip-wire**
-   (`OWNERSHIP_PATHS`/`assert_owned_output`) + **chat caps** (hourly + monthly-cost,
-   fail-closed) + `validate_profiles()`, and the **prompts** (`SYSTEM_PROMPT` +
-   customer-chat; do NOT add the ITERATIVE FLOW block to customer chat — doctrine
-   guard `test_iterative_flow_scope`). Closes the R2 fixture-corpus transcript-parity
-   gate → tag `v2.0.0-phase.5`.
+- **Slice 15** — the **`customer_self_serve` `*.mine` wrappers** (14). `tools/mine.rs`
+  — auth binding (`require_actor` → `_NoActorBound`), `assert_subscription_owned` →
+  `_NotOwnedByActor`, `annotate_pricing` (rust_decimal), transcript SHA-256 for
+  `case.open_for_me`. Capstone `validate_profiles`-equivalent test.
+- **Slice 16** — the **finale**: `ownership.rs` (trip-wire), `prompts.rs`
+  (`SYSTEM_PROMPT` + customer-chat verbatim + the ITERATIVE FLOW guard), `llm.rs`
+  (`OpenRouterChatModel`, reqwest direct). End-to-end live turn validated.
 
-Keep descriptions/param docs byte-identical (R2); **schemars** arg schemas (D5) land
-with the model client. The R2 fixture-corpus transcript-parity gate closes when the
-tools + model client are in; then tag `v2.0.0-phase.5`.
+**D5 (schemars) status:** the `OpenRouterChatModel` sends a permissive
+`{"type":"object"}` parameter schema per tool + the byte-identical description; strict
+per-tool JSON Schemas remain a documented refinement (the R2 gate runs on
+`MockChatModel`, and the live turn confirms real tool-calls work with the permissive
+schema).
+
+</details>
 
 - **P5a `bss-knowledge` ✅ ported.** `rust/crates/bss-knowledge`: chunker + FTS
   search + indexer. Chunker golden byte-for-byte vs the oracle across the three

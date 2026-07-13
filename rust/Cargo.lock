@@ -606,10 +606,12 @@ version = "0.1.0"
 dependencies = [
  "bss-clients",
  "bss-clock",
+ "bss-cockpit",
  "bss-db",
  "bss-knowledge",
  "chrono",
  "futures-util",
+ "reqwest",
  "rust_decimal",
  "serde",
  "serde_json",

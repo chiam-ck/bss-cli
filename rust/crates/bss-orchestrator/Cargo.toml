@@ -24,7 +24,9 @@ sqlx = { workspace = true }
 uuid = { workspace = true }
 rust_decimal = { workspace = true }
 sha2 = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
 bss-db = { workspace = true }
+bss-cockpit = { workspace = true }

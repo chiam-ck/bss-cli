@@ -66,7 +66,48 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–15) — 🚧 (2026-07-14)
+### Phase 5c — bss-orchestrator (slices 1–16) — ✅ COMPLETE (2026-07-14)
+
+**Slice 16 — the finale: ownership trip-wire + prompts + OpenRouter model client.**
+The non-tool infra that closes P5c.
+- **`ownership.rs`** — the v0.12 output trip-wire (`assert_owned_output` +
+  `OWNERSHIP_PATHS` + the tiny `[*]`/`a.b` path walker + `validate_ownership_paths_
+  cover_profile`). Third defence layer: every `*.mine` result whose `customerId`
+  doesn't match the bound actor errors (`AgentOwnershipViolation`, boxed). The
+  route-side CRM `record_violation` lands with the P6 chat route. Unit-tested
+  (owned/foreign/unconfigured/empty/non-JSON/missing-key).
+- **`prompts.rs`** — `SYSTEM_PROMPT` (operator ops copilot) + the two customer-chat
+  templates embedded **byte-for-byte** (`include_str!`), plus `build_customer_chat_
+  prompt` (placeholder fill + prior-message block) and `build_balance_summary`.
+  **Doctrine guard** ported: `ITERATIVE FLOW` is present in the P5b-ported
+  `COCKPIT_INVARIANTS` and **absent** from every customer-chat prompt (test-pinned).
+- **`llm.rs` — `OpenRouterChatModel`** — the production `ChatModel`, a direct
+  `reqwest` call to OpenRouter's OpenAI-compatible endpoint (no LangChain/LiteLLM
+  hop). Temperature 0.0, `max_tokens` cap, `frequency_penalty` only when non-zero;
+  messages/tools → OpenAI shape, response → `AiTurn` (content + tool_calls + usage).
+  Tools carry the byte-identical description with a permissive `{"type":"object"}`
+  parameter schema (strict per-tool schemars is a documented refinement — the R2 gate
+  runs on `MockChatModel`, and the live soak validates real tool-calls). Unit-tested
+  (request shaping + response parsing).
+
+**🎉 End-to-end validated** (`openrouter_agent_live.rs`, `#[ignore]`): a **real
+OpenRouter turn** drove the full loop against the running stack —
+`OpenRouterChatModel` → `astream_once` → the model called `catalog.list_active_
+offerings` → the Rust catalog service returned live plan data → the loop rendered
+`• PLAN_S (Lite): 10.0 SGD/month • PLAN_M (Standard): 25.0 SGD/month …`. The entire
+ported orchestrator works end to end with a live model + the live Rust services.
+
+**Deferred to P6 (route-coupled, per the P5b precedent):** `chat_caps` (hourly +
+monthly-cost, DB-backed, enforced at the chat route with per-turn cost from the model
+response) and `ownership::record_violation` (CRM interaction log on trip). These land
+with the portal that owns the request context.
+
+**✅ Phase 5c COMPLETE — 110/110 tools + the ReAct loop + guards + fixture player +
+ownership trip-wire + prompts + OpenRouter client. Tagged `v2.0.0-phase.5`.** The R2
+gate holds: the fixture-corpus transcript parity runs green on `MockChatModel`, and
+the live end-to-end turn confirms the production path.
+
+---
 
 **Slice 15 — the `customer_self_serve` `*.mine` wrappers (ALL 110 TOOLS PORTED).**
 14 chat-surface wrappers (`tools/mine.rs`) — the v0.12 prompt-injection containment

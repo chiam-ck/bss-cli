@@ -22,6 +22,9 @@ pub mod agent;
 pub mod chat_model;
 pub mod config;
 pub mod events;
+pub mod llm;
+pub mod ownership;
+pub mod prompts;
 pub mod safety;
 pub mod tools;
 
@@ -29,6 +32,8 @@ pub use agent::{astream_once, AgentConfig};
 pub use chat_model::{AiTurn, ChatMessage, ChatModel, MockChatModel, Role, ToolCall, Usage};
 pub use config::Settings;
 pub use events::AgentEvent;
+pub use llm::OpenRouterChatModel;
+pub use ownership::{assert_owned_output, AgentOwnershipViolation, OWNERSHIP_PATHS};
 pub use safety::{is_destructive, AutonomyMode, DESTRUCTIVE_TOOLS};
 pub use tools::{ToolCtx, ToolError, ToolRegistry, ToolSpec};
 
