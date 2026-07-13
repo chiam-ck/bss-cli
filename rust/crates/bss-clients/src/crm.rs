@@ -139,6 +139,19 @@ impl CrmClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `GET /crm-api/v1/agent` — CSR/support agents, optional `state` filter (sent
+    /// only when present). Returns a JSON array. Backs `agents.list`.
+    pub async fn list_agents(&self, state: Option<&str>) -> Result<Value, ClientError> {
+        let mut path = "/crm-api/v1/agent".to_string();
+        if let Some(s) = state.filter(|s| !s.is_empty()) {
+            path.push_str(&format!("?state={}", encode(s)));
+        }
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `GET /tmf-api/customerInteractionManagement/v1/interaction?customerId&limit`
     /// — a customer's interaction log, newest first. Backs `interaction.list` and
     /// the `customer.get` 360 composite.

@@ -10,8 +10,14 @@
 pub mod catalog;
 pub mod clock;
 pub mod customer;
+pub mod inventory;
+pub mod ops;
+pub mod order;
 pub mod payment;
+pub mod provisioning;
+pub mod som;
 pub mod subscription;
+pub mod usage;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

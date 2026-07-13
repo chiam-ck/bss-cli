@@ -114,10 +114,82 @@ impl InventoryClient {
         self.post(&path, None).await
     }
 
+    /// `GET /inventory-api/v1/msisdn` — pool listing. `limit` always sent (Python
+    /// seeds `params={"limit": limit}` first), then optional `status` (from `state`)
+    /// / `prefix`. Backs `inventory.msisdn.list_available`.
+    pub async fn list_msisdns(
+        &self,
+        state: Option<&str>,
+        prefix: Option<&str>,
+        limit: i64,
+    ) -> Result<Value, ClientError> {
+        let mut params: Vec<String> = vec![format!("limit={limit}")];
+        if let Some(s) = state.filter(|s| !s.is_empty()) {
+            params.push(format!("status={}", encode(s)));
+        }
+        if let Some(p) = prefix.filter(|s| !s.is_empty()) {
+            params.push(format!("prefix={}", encode(p)));
+        }
+        self.get(&format!("/inventory-api/v1/msisdn?{}", params.join("&")))
+            .await
+    }
+
+    /// `GET /inventory-api/v1/msisdn/count` — group-by-status pool count, optional
+    /// `prefix`. Backs `inventory.msisdn.count`.
+    pub async fn count_msisdns(&self, prefix: Option<&str>) -> Result<Value, ClientError> {
+        let mut path = "/inventory-api/v1/msisdn/count".to_string();
+        if let Some(p) = prefix.filter(|s| !s.is_empty()) {
+            path.push_str(&format!("?prefix={}", encode(p)));
+        }
+        self.get(&path).await
+    }
+
+    /// `GET /inventory-api/v1/esim` — eSIM pool listing. `limit` always sent, then
+    /// optional `status` (from `state`). Backs `inventory.esim.list_available`.
+    pub async fn list_esims(&self, state: Option<&str>, limit: i64) -> Result<Value, ClientError> {
+        let mut params: Vec<String> = vec![format!("limit={limit}")];
+        if let Some(s) = state.filter(|s| !s.is_empty()) {
+            params.push(format!("status={}", encode(s)));
+        }
+        self.get(&format!("/inventory-api/v1/esim?{}", params.join("&")))
+            .await
+    }
+
+    /// `GET /inventory-api/v1/esim/{iccid}/activation` — the LPA activation record.
+    /// Backs `inventory.esim.get_activation`.
+    pub async fn get_activation_code(&self, iccid: &str) -> Result<Value, ClientError> {
+        self.get(&format!("/inventory-api/v1/esim/{iccid}/activation"))
+            .await
+    }
+
+    async fn get(&self, path: &str) -> Result<Value, ClientError> {
+        let resp = self.inner.request(Method::GET, path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     async fn post(&self, path: &str, body: Option<&Value>) -> Result<Value, ClientError> {
         let resp = self.inner.request(Method::POST, path, body, None).await?;
         resp.json()
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
+}
+
+/// Minimal query-value encoding (mirrors `catalog::encode`).
+fn encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'%' => out.push_str("%25"),
+            b'&' => out.push_str("%26"),
+            b'+' => out.push_str("%2B"),
+            b'=' => out.push_str("%3D"),
+            b'#' => out.push_str("%23"),
+            b' ' => out.push_str("%20"),
+            _ => out.push(b as char),
+        }
+    }
+    out
 }

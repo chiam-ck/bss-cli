@@ -66,7 +66,48 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–5) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–6) — 🚧 (2026-07-13)
+
+**Slice 6 — the operator read BATCH (order / SOM / inventory / provisioning /
+usage / agents / events).** Cadence change (per the human): the read families are
+retired-risk boilerplate now, so this is one batch of **17 tools** rather than seven
+per-family slices. All verbatim client wrappers except two:
+- **`order.wait_until`** — a **polling composite** on `ComClient`: loops `get_order`
+  until the target (or terminal `failed`/`cancelled`) state or the deadline, then
+  returns `ClientError::Timeout` (→504 observation, matching Python's `Timeout`).
+  Wall-clock polling (`Instant` + `tokio::time::sleep`), deliberately not the virtual
+  clock — mirrors Python's `time.monotonic` + `asyncio.sleep`. Needed `tokio` as a
+  normal `bss-clients` dep.
+- **`events.list`** — the v0.1 `NOT_IMPLEMENTED` stub; echoes the filter args after
+  the base `error`/`message` (key order via D9). The stub message is embedded
+  byte-for-byte (verified equal to Python's `_EVENTS_NOT_IMPLEMENTED`).
+- **`inventory.msisdn.list_available`** — the one arg subtlety: `status` defaults to
+  `"available"` when the key is **absent**, but an explicit `null` means "any state"
+  (Python's `status: str | None = "available"`); `opt_str` collapses both, so the
+  three cases are decoded by hand.
+
+New clients (consumer-driven, mirroring the catalog/CRM pattern): **`ComClient`**
+(get_order/list_orders/wait_until), **`ProvisioningClient`** (get_task/list_tasks),
+**`MediationClient`** (list_usage); extended **`SomClient`** (get_service_order/
+get_service/list_services_for_subscription), **`InventoryClient`** (list_msisdns/
+count_msisdns/list_esims/get_activation_code), **`CrmClient`** (list_agents). The
+whole batch is operator_cockpit-only (pinned by `operator_read_batch_is_in_operator_
+profile`).
+
+**Verification:** fmt + clippy clean; workspace green, no regression. Descriptions
+byte-pinned against the golden (17 new). **One broad live smoke**
+(`operator_reads_live.rs`, `#[ignore]`) ran green against the tech-vm stack: inventory
+counts/lists/get, esim list, provisioning tasks, usage, agents, the events stub, and a
+resolved order→service-order and subscription→service chain — each verbatim tool equal
+to a direct client call; `order.wait_until` returns immediately on an already-reached
+state; unknown order/task → `CLIENT_ERROR`.
+
+**Tool ledger:** ~40 of 110 tools ported (clock 4, catalog 6, CRM 6, subscription 4,
+payment 3, + this batch's 17). Remaining: the **trace** reads (Jaeger + audit client),
+**ticket/case/promo/port_request/knowledge** reads, all the **writes**, and the
+**`customer_self_serve` `*.mine`** wrappers.
+
+---
 
 **Slice 5 — the payment read family.** Ported three operator_cockpit read tools:
 `payment.list_methods` (already had the client method), `payment.get_attempt`,

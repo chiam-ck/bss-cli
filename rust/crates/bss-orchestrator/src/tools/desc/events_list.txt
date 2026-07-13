@@ -1,0 +1,13 @@
+List recent domain events. NOT IMPLEMENTED in v0.1.
+
+    Args:
+        aggregate_type: Optional filter by aggregate kind.
+        aggregate_id: Optional filter by aggregate ID.
+        since: Optional ISO-8601 lower bound.
+        limit: Max rows (default 50).
+
+    Returns:
+        v0.1: structured ``NOT_IMPLEMENTED`` payload.
+
+    Raises:
+        (none in v0.1)

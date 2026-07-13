@@ -1,0 +1,30 @@
+List MSISDNs from the inventory pool.
+
+    Default behaviour is the order-creation use case: status filter
+    pinned to ``"available"``, no prefix, first ``limit`` rows. The
+    operator cockpit also uses this tool for general pool inspection,
+    so the parameters are widened:
+
+    - ``prefix`` is OPTIONAL. Omit it to return the first ``limit``
+      MSISDNs regardless of leading digits. Pass a 1-12 digit string
+      to filter via SQL ``startswith`` — ``prefix="8888"`` matches
+      ``88880000``..``88889999``; ``prefix="8"`` matches every number
+      whose MSISDN begins with 8.
+    - ``status`` accepts ``"available"`` (default), ``"reserved"``,
+      ``"assigned"``, ``"ported_out"``, or ``None`` for any state.
+      Use ``status=None`` when the operator says "show me all
+      numbers" — they want the full pool, not just the sellable
+      slice.
+
+    Args:
+        prefix: Optional digit prefix, e.g. ``"9000"`` or ``"8"``.
+        limit: Maximum rows (default 20).
+        status: One of ``available``, ``reserved``, ``assigned``,
+            ``ported_out``, or ``None`` to disable the status filter.
+
+    Returns:
+        List of MSISDN dicts
+        ``{msisdn, status, reserved_at?, assigned_to_subscription_id?}``.
+
+    Raises:
+        (none expected — read tool)

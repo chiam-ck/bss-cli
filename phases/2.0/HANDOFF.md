@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–5 done:**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–6 done (~40/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -51,21 +51,35 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   `PaymentClient` with `get_payment`/`list_payments`. The live smoke surfaced that the
   list route requires `customerId` on both Python and Rust (faithful parity — the tool
   omits `None`, service 400s). Operator-only (chat sees the `payment.*_mine` wrappers).
+- **Slice 6** — the **operator read BATCH** (17 tools: order, SOM, inventory,
+  provisioning, usage, agents, events). Cadence switched to big batches. New clients:
+  `ComClient` (+ the `order.wait_until` **polling composite**, which brought `tokio`
+  into `bss-clients` deps), `ProvisioningClient`, `MediationClient`; extended
+  `SomClient`/`InventoryClient`/`CrmClient`. `events.list` is the NOT_IMPLEMENTED stub
+  (byte-exact message). One broad live smoke covers the batch. Operator-only.
 
-**Remaining P5c slices:**
-1. **The ~87 remaining tools**, profile by profile, each following the
-   slice-2..5 pattern (capture client, return verbatim, map errors) with descriptions
-   pinned against `tests/golden/tool_descriptions.json`. Natural next: **order reads**
-   (needs a new **ComClient** — `get_order`/`list_orders` + the `order.wait_until`
-   polling composite), **service/SOM + inventory + provisioning + ticket/case + events/
-   agents/trace reads** (operator_cockpit), then the **`customer_self_serve` `*.mine`
-   wrappers** — which need the auth-context actor binding (`ToolCtx.actor` + a
-   `CHAT_NO_ACTOR_BOUND` error), an `assert_subscription_owned` ownership pre-check,
-   `_annotate_pricing` (rust_decimal + `discount_label`), and a new **MediationClient**
-   (usage reads) + `CrmClient` case-write methods. Then the operator writes. Many need
-   new `bss-clients` methods (add as consumers, mirroring the catalog/CRM/subscription/
-   payment extensions). **schemars** arg schemas (D5) when the model client lands. Keep
-   descriptions/param docs byte-identical (R2).
+**Remaining P5c slices (batched — aim ~5):**
+1. **Trace + remaining reads** — `trace.get`/`for_order`/`for_subscription` (need a
+   Jaeger client + an audit-events client + the `_summarize_trace` reducer) plus the
+   **ticket / case / promo / port_request / knowledge** reads. Mostly verbatim client
+   wrappers (extend `CrmClient` for ticket/case/port_request, add a promo/loyalty
+   surface, a knowledge client) — trace is the only real logic.
+2. **Operator writes** (~45 tools) — customer/case/ticket/subscription/payment/order/
+   promo/port_request/provisioning/inventory writes + catalog admin. All client calls;
+   destructive gating already exists in `safety.rs`. Likely one big slice (or split
+   money-movers out if it gets unwieldy).
+3. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
+   auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
+   `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +
+   `discount_label`). Reuses the now-ported Crm/Subscription/Payment/Mediation methods.
+4. **OpenRouter `ChatModel` client** (reqwest direct) — a real model drives the loop.
+5. **Ownership trip-wire** (`OWNERSHIP_PATHS`/`assert_owned_output`) + **chat caps** +
+   `validate_profiles()`, and the **prompts** (`SYSTEM_PROMPT` + customer-chat; do NOT
+   add ITERATIVE FLOW to customer chat — doctrine guard).
+
+Keep descriptions/param docs byte-identical (R2); **schemars** arg schemas (D5) land
+with the model client. The R2 fixture-corpus transcript-parity gate closes when the
+tools + model client are in; then tag `v2.0.0-phase.5`.
 2. **OpenRouter `ChatModel` client** (reqwest direct) — a real model drives the loop.
 3. **Ownership trip-wire** (`OWNERSHIP_PATHS` / `assert_owned_output`) + **chat
    caps** (hourly + monthly-cost, fail-closed) + `validate_profiles()`.

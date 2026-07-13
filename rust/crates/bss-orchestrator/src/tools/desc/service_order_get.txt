@@ -1,0 +1,10 @@
+Read a service order by ID.
+
+    Args:
+        service_order_id: Service Order ID with the SO- prefix (opaque suffix).
+
+    Returns:
+        Service order dict with items + state.
+
+    Raises:
+        NotFound: unknown service order.

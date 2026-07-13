@@ -1,0 +1,10 @@
+Get status of a specific MSISDN.
+
+    Args:
+        msisdn: 8-digit mobile number.
+
+    Returns:
+        MSISDN dict ``{msisdn, state, assignedTo?, reservedUntil?}``.
+
+    Raises:
+        NotFound: MSISDN is not in the pool.

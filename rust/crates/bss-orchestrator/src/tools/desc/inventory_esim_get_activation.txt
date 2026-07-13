@@ -1,0 +1,13 @@
+Return the LPA activation-code record for an eSIM. Callers typically
+    want this as ``{iccid, imsi, activationCode, msisdn}`` for QR rendering.
+    For a subscription, prefer ``subscription.get_esim_activation`` which
+    handles ICCID lookup.
+
+    Args:
+        iccid: eSIM ICCID (19-20 digits starting with ``8910101``).
+
+    Returns:
+        Activation dict.
+
+    Raises:
+        NotFound: unknown ICCID.

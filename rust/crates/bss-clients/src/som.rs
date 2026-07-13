@@ -48,4 +48,40 @@ impl SomClient {
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
+
+    /// `GET /tmf-api/serviceOrderingManagement/v4/serviceOrder/{id}` — a single
+    /// ServiceOrder. Backs `service_order.get`.
+    pub async fn get_service_order(&self, service_order_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/serviceOrderingManagement/v4/serviceOrder/{service_order_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /tmf-api/serviceInventoryManagement/v4/service/{id}` — a single CFS/RFS
+    /// service. Backs `service.get`.
+    pub async fn get_service(&self, service_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/serviceInventoryManagement/v4/service/{service_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /tmf-api/serviceInventoryManagement/v4/service?subscriptionId={id}` →
+    /// JSON array of services for the subscription. Backs
+    /// `service.list_for_subscription`.
+    pub async fn list_services_for_subscription(
+        &self,
+        subscription_id: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!(
+            "/tmf-api/serviceInventoryManagement/v4/service?subscriptionId={subscription_id}"
+        );
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
 }

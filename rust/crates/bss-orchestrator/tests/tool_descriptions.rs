@@ -9,7 +9,10 @@
 
 use std::sync::Arc;
 
-use bss_clients::{CatalogClient, CrmClient, PaymentClient, SubscriptionClient, TokenAuthProvider};
+use bss_clients::{
+    CatalogClient, ComClient, CrmClient, InventoryClient, MediationClient, PaymentClient,
+    ProvisioningClient, SomClient, SubscriptionClient, TokenAuthProvider,
+};
 use bss_orchestrator::tools::{CUSTOMER_SELF_SERVE, OPERATOR_COCKPIT};
 use bss_orchestrator::{default_registry, ToolRegistry};
 use serde_json::Value;
@@ -19,7 +22,7 @@ fn golden() -> Value {
         .expect("parse tool-description golden")
 }
 
-/// A registry with clock + catalog + CRM-read tools (the clients point nowhere —
+/// A registry with every ported read family registered (the clients point nowhere —
 /// registration makes no network call).
 fn registry_with_catalog() -> ToolRegistry {
     let mut reg = default_registry();
@@ -28,10 +31,25 @@ fn registry_with_catalog() -> ToolRegistry {
     bss_orchestrator::tools::catalog::register_catalog_tools(&mut reg, catalog);
     let crm = CrmClient::new("http://localhost:8002", auth.clone()).unwrap();
     let subscription = SubscriptionClient::new("http://localhost:8006", auth.clone()).unwrap();
-    bss_orchestrator::tools::customer::register_customer_tools(&mut reg, crm, subscription.clone());
+    bss_orchestrator::tools::customer::register_customer_tools(
+        &mut reg,
+        crm.clone(),
+        subscription.clone(),
+    );
     bss_orchestrator::tools::subscription::register_subscription_tools(&mut reg, subscription);
-    let payment = PaymentClient::new("http://localhost:8003", auth).unwrap();
+    let payment = PaymentClient::new("http://localhost:8003", auth.clone()).unwrap();
     bss_orchestrator::tools::payment::register_payment_tools(&mut reg, payment);
+    let com = ComClient::new("http://localhost:8004", auth.clone()).unwrap();
+    bss_orchestrator::tools::order::register_order_tools(&mut reg, com);
+    let som = SomClient::new("http://localhost:8005", auth.clone()).unwrap();
+    bss_orchestrator::tools::som::register_som_tools(&mut reg, som);
+    let inventory = InventoryClient::new("http://localhost:8002", auth.clone()).unwrap();
+    bss_orchestrator::tools::inventory::register_inventory_tools(&mut reg, inventory);
+    let provisioning = ProvisioningClient::new("http://localhost:8010", auth.clone()).unwrap();
+    bss_orchestrator::tools::provisioning::register_provisioning_tools(&mut reg, provisioning);
+    let mediation = MediationClient::new("http://localhost:8007", auth).unwrap();
+    bss_orchestrator::tools::usage::register_usage_tools(&mut reg, mediation);
+    bss_orchestrator::tools::ops::register_ops_tools(&mut reg, crm);
     reg
 }
 
@@ -64,6 +82,23 @@ fn tool_descriptions_match_python_oracle() {
         "payment.list_methods",
         "payment.get_attempt",
         "payment.list_attempts",
+        "order.get",
+        "order.list",
+        "order.wait_until",
+        "service_order.get",
+        "service_order.list_for_order",
+        "service.get",
+        "service.list_for_subscription",
+        "inventory.msisdn.list_available",
+        "inventory.msisdn.get",
+        "inventory.msisdn.count",
+        "inventory.esim.list_available",
+        "inventory.esim.get_activation",
+        "provisioning.get_task",
+        "provisioning.list_tasks",
+        "usage.history",
+        "events.list",
+        "agents.list",
     ];
     for name in names {
         let tool = registry
@@ -134,6 +169,40 @@ fn subscription_canonical_reads_are_operator_only() {
 }
 
 #[test]
+fn operator_read_batch_is_in_operator_profile() {
+    // order / SOM / inventory / provisioning / usage / events / agents reads are all
+    // operator_cockpit-surface tools (never customer_self_serve).
+    for name in [
+        "order.get",
+        "order.list",
+        "order.wait_until",
+        "service_order.get",
+        "service_order.list_for_order",
+        "service.get",
+        "service.list_for_subscription",
+        "inventory.msisdn.list_available",
+        "inventory.msisdn.get",
+        "inventory.msisdn.count",
+        "inventory.esim.list_available",
+        "inventory.esim.get_activation",
+        "provisioning.get_task",
+        "provisioning.list_tasks",
+        "usage.history",
+        "events.list",
+        "agents.list",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        assert!(
+            !CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
 fn payment_canonical_reads_are_operator_only() {
     // Canonical payment reads are operator_cockpit — the chat surface sees the
     // ownership-bound `payment.*_mine` wrappers (a later slice) instead.
@@ -191,7 +260,7 @@ fn surface_intersects_profile_with_registry() {
     assert!(surface.contains(&"customer.get".to_string()));
     // clock.freeze/advance/unfreeze are operator_cockpit + registered.
     assert!(surface.contains(&"clock.freeze".to_string()));
-    // A profile tool that isn't registered yet must not appear (order.* is a
+    // A profile tool that isn't registered yet must not appear (ticket.* is a
     // later slice).
-    assert!(!surface.contains(&"order.get".to_string()));
+    assert!(!surface.contains(&"ticket.get".to_string()));
 }

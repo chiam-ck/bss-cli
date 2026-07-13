@@ -1,0 +1,10 @@
+Get a service with its state history and characteristics (MSISDN, ICCID).
+
+    Args:
+        service_id: Service ID with the SVC- prefix (opaque suffix).
+
+    Returns:
+        Service dict ``{id, serviceType, name, state, characteristics, parentServiceId?}``.
+
+    Raises:
+        NotFound: unknown service.

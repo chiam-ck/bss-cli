@@ -1,0 +1,10 @@
+List orders for a customer, newest first.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+
+    Returns:
+        List of order dicts.
+
+    Raises:
+        (none expected — read tool)

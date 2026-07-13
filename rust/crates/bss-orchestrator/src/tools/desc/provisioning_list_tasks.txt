@@ -1,0 +1,12 @@
+List provisioning tasks. Use ``state="stuck"`` to find tasks that need
+    manual intervention; use ``service_id`` when diagnosing a specific service.
+
+    Args:
+        service_id: Optional filter by owning service.
+        state: Optional filter by task state.
+
+    Returns:
+        List of task dicts ``{id, serviceId, taskType, state, attempts, maxAttempts}``.
+
+    Raises:
+        (none expected — read tool)

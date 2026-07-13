@@ -1,0 +1,21 @@
+Group-by-status pool count. Source of truth for "how many
+    numbers do we have?" / "is that all?" follow-ups.
+
+    The list tool truncates at ``limit`` (default 20) and does not
+    expose a total. Call this whenever the operator asks about pool
+    size, depth, or whether a list result is partial — never guess
+    or infer from prior list output.
+
+    ``prefix`` narrows the count to MSISDNs whose digits start with
+    the given string (same ``startswith`` semantics as
+    ``inventory.msisdn.list_available``); omit it for the whole pool.
+
+    Args:
+        prefix: Optional 1-12 digit prefix.
+
+    Returns:
+        ``{available, reserved, assigned, ported_out, total, prefix}``.
+        Canonical state keys are always present (0 if no rows).
+
+    Raises:
+        (none expected — read tool)
