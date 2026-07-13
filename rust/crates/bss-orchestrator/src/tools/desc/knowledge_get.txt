@@ -1,0 +1,16 @@
+Pull the full content of one indexed doc chunk by its anchor +
+    source_path. Use this when ``knowledge.search`` returned a relevant
+    hit but the snippet doesn't carry enough detail.
+
+    Args:
+        anchor: The chunk's anchor, e.g. ``84-rotate-api-tokens``.
+        source_path: The chunk's source path, e.g. ``docs/HANDBOOK.md``.
+
+    Returns:
+        ``{"anchor", "source_path", "heading_path", "kind", "content",
+        "indexed_at"}`` or ``{"error": "NOT_FOUND"}`` if the chunk
+        doesn't exist (re-anchored / removed since last index).
+
+    Raises:
+        RuntimeError: BSS_DB_URL not set on the orchestrator process.
+            Configuration error, not a runtime miss.

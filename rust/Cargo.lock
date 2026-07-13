@@ -605,10 +605,13 @@ version = "0.1.0"
 dependencies = [
  "bss-clients",
  "bss-clock",
+ "bss-db",
+ "bss-knowledge",
  "chrono",
  "futures-util",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "tracing",
 ]

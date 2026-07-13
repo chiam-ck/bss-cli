@@ -1,0 +1,11 @@
+Resolve the most-recent trace for a subscription via audit.domain_event,
+    then fetch + summarize from Jaeger.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        Summary dict per ``trace.get``, plus ``subscriptionId``.
+
+    Raises:
+        ToolException: audit-events endpoint unreachable.

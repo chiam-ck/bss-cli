@@ -9,6 +9,7 @@
 //! task-local the server middleware installs. §2.1 of 02-TECH-MAPPING.md.
 #![forbid(unsafe_code)]
 
+mod audit;
 mod auth;
 mod base;
 mod catalog;
@@ -16,6 +17,7 @@ mod com;
 mod crm;
 mod errors;
 mod inventory;
+mod jaeger;
 mod loyalty;
 mod mediation;
 mod payment;
@@ -23,6 +25,7 @@ mod provisioning;
 mod som;
 mod subscription;
 
+pub use audit::AuditClient;
 pub use auth::{
     AuthError, AuthProvider, BearerAuthProvider, NamedTokenAuthProvider, NoAuthProvider,
     TokenAuthProvider,
@@ -33,6 +36,7 @@ pub use com::ComClient;
 pub use crm::CrmClient;
 pub use errors::ClientError;
 pub use inventory::InventoryClient;
+pub use jaeger::{JaegerClient, JaegerError, DEFAULT_JAEGER_URL};
 pub use loyalty::{
     LoyaltyClient, OFFER_DEF_KIND_REGULAR, PROMO_KIND_MULTI_USE, PROMO_KIND_SINGLE_USE_SHARED,
     PROMO_KIND_SINGLE_USE_UNIQUE, REVOKE_CUSTOMER_CHANGED_MIND, REVOKE_OPERATOR_ACTION,

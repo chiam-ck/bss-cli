@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–7 done (~48/110 tools):**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–8 done — READS COMPLETE (~53/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -63,35 +63,33 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   (get_case/get_chat_transcript/get_ticket/list_tickets/list_port_requests/
   get_port_request; `list_cases` widened with `agent_id`) + `CatalogClient::
   get_promotion`. Operator-only. One broad live smoke.
+- **Slice 8** — **trace + knowledge** (5 tools; the reads complete here). New
+  `JaegerClient` (plain reqwest, outside the token perimeter) + `AuditClient`
+  (BssClient-based, envelope-unwrapping `list_events`); ported `_summarize_trace` +
+  `_latest_trace_id`; JAEGER_ERROR / NO_TRACE_RECORDED sentinels. knowledge.search/get
+  back onto the ported `bss-knowledge` crate via a `sqlx::PgPool` (caller-gated on
+  `BSS_KNOWLEDGE_ENABLED`); NOT_FOUND message byte-pinned by a unit test. Both
+  operator-only. Live smoke green.
 
-**Remaining P5c slices (batched — aim ~4):**
-1. **Trace + knowledge reads** — `trace.get`/`for_order`/`for_subscription` (need a
-   Jaeger client + an audit-events client + the `_summarize_trace` reducer) and
-   `knowledge.search`/`knowledge.get` (a sqlx pool + the already-ported `bss-knowledge`
-   crate's `search_fts`/`get_chunk` + the `BSS_KNOWLEDGE_ENABLED` gate + the search
-   result-wrapping). Both infra-heavy — the last of the reads.
-2. **Operator writes** (~45 tools) — customer/case/ticket/subscription/payment/order/
+**Remaining P5c slices (batched — aim ~3):**
+1. **Operator writes** (~45 tools) — customer/case/ticket/subscription/payment/order/
    promo/port_request/provisioning/inventory writes + catalog admin. All client calls;
    destructive gating already exists in `safety.rs`. Likely one big slice (or split
-   money-movers out if it gets unwieldy).
-3. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
+   money-movers out if it gets unwieldy). Many need new `bss-clients` write methods
+   (add as consumers, as the read batches did).
+2. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
    auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
    `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +
    `discount_label`). Reuses the now-ported Crm/Subscription/Payment/Mediation methods.
-4. **OpenRouter `ChatModel` client** (reqwest direct) — a real model drives the loop.
-5. **Ownership trip-wire** (`OWNERSHIP_PATHS`/`assert_owned_output`) + **chat caps** +
-   `validate_profiles()`, and the **prompts** (`SYSTEM_PROMPT` + customer-chat; do NOT
-   add ITERATIVE FLOW to customer chat — doctrine guard).
+3. **OpenRouter `ChatModel` client** (reqwest direct) + the **ownership trip-wire**
+   (`OWNERSHIP_PATHS`/`assert_owned_output`) + **chat caps** (hourly + monthly-cost,
+   fail-closed) + `validate_profiles()`, and the **prompts** (`SYSTEM_PROMPT` +
+   customer-chat; do NOT add the ITERATIVE FLOW block to customer chat — doctrine
+   guard `test_iterative_flow_scope`).
 
 Keep descriptions/param docs byte-identical (R2); **schemars** arg schemas (D5) land
 with the model client. The R2 fixture-corpus transcript-parity gate closes when the
 tools + model client are in; then tag `v2.0.0-phase.5`.
-2. **OpenRouter `ChatModel` client** (reqwest direct) — a real model drives the loop.
-3. **Ownership trip-wire** (`OWNERSHIP_PATHS` / `assert_owned_output`) + **chat
-   caps** (hourly + monthly-cost, fail-closed) + `validate_profiles()`.
-4. **Prompts**: `SYSTEM_PROMPT` + the customer-chat prompt (verbatim; do NOT add
-   the ITERATIVE FLOW block to customer chat — doctrine guard).
-   The R2 fixture-corpus transcript-parity gate closes when the tools land.
 
 - **P5a `bss-knowledge` ✅ ported.** `rust/crates/bss-knowledge`: chunker + FTS
   search + indexer. Chunker golden byte-for-byte vs the oracle across the three

@@ -19,6 +19,9 @@ futures-util = { workspace = true }
 
 bss-clock = { workspace = true }
 bss-clients = { workspace = true }
+bss-knowledge = { workspace = true }
+sqlx = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+bss-db = { workspace = true }

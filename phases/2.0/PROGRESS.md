@@ -66,7 +66,47 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–7) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–8) — 🚧 (2026-07-13)
+
+**Slice 8 — trace + knowledge (the last, infra-heavy reads).** Five tools; the two
+read families that need new infra rather than a plain HTTP client:
+- **trace** (`trace.get` / `trace.for_order` / `trace.for_subscription`). New
+  clients: **`JaegerClient`** (plain reqwest — Jaeger's query API is *outside* the
+  BSS token perimeter — `get_trace` + `JaegerError`, `BSS_JAEGER_UI_URL` default) and
+  **`AuditClient`** (BssClient-based, `list_events` unwrapping the `{"events": …}`
+  envelope). Ported `_summarize_trace` (sorted unique services, **error-TAG** count —
+  a tag count despite the `errorSpanCount` name — and `totalMs` from min-start/
+  max-end spans) and `_latest_trace_id` (`reversed`, first truthy `traceId`/
+  `trace_id`). A Jaeger miss → the `JAEGER_ERROR` dict (returned Ok, not a turn
+  failure); no recorded trace → `NO_TRACE_RECORDED` sentinel. `totalMs` uses
+  half-away rounding (live-timing derived, never fixture-pinned — noted at the seam).
+- **knowledge** (`knowledge.search` / `knowledge.get`) — backed by the **already-
+  ported `bss-knowledge` crate** (`search_fts`/`get_chunk`), so the tools take a
+  `sqlx::PgPool` (added `bss-knowledge` + `sqlx` to orchestrator deps). Registration
+  is caller-gated on `BSS_KNOWLEDGE_ENABLED` (the Python `_maybe_register` contract).
+  The `knowledge.get` NOT_FOUND message replicates Python's `{anchor!r}` **single-
+  quote** repr byte-for-byte — extracted to `not_found_message()` and **unit-tested**
+  against an independent single-line oracle (the `\`-continuation could otherwise
+  drift silently). Both operator_cockpit-only (doctrine guard 15).
+
+The description test's two registry-building cases became `#[tokio::test]` (the lazy
+`PgPool` needs a runtime to construct; no connection is made).
+
+**Verification:** fmt + clippy clean; workspace green (incl. the new NOT_FOUND unit
+test); 5 descriptions byte-pinned. **Live smoke** (`trace_knowledge_live.rs`,
+`#[ignore]`) green against tech-vm: `trace.get` bogus → JAEGER_ERROR, `trace.for_*`
+bogus → NO_TRACE_RECORDED via the audit path; `knowledge.search` returns `{hits,
+query}` against the live FTS index, round-trips the first hit through `knowledge.get`,
+and a bogus chunk → the NOT_FOUND sentinel.
+
+**Reads are DONE — ~53/110 tools ported. The entire read surface is now Rust.**
+Remaining: all the **writes** (~45, one big slice; destructive gating exists in
+`safety.rs`), the **`customer_self_serve` `*.mine`** wrappers (auth binding +
+ownership + `_annotate_pricing`), the **OpenRouter `ChatModel`** client, and the
+**ownership trip-wire + chat caps + validate_profiles + prompts** slice → then the
+`v2.0.0-phase.5` tag.
+
+---
 
 **Slice 7 — the CRM/catalog read BATCH (ticket / case / promo / port_request).**
 Eight tools, all verbatim client wrappers except `case.show_transcript_for` (a small

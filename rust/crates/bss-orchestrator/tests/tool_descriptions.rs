@@ -10,8 +10,9 @@
 use std::sync::Arc;
 
 use bss_clients::{
-    CatalogClient, ComClient, CrmClient, InventoryClient, MediationClient, PaymentClient,
-    ProvisioningClient, SomClient, SubscriptionClient, TokenAuthProvider,
+    AuditClient, CatalogClient, ComClient, CrmClient, InventoryClient, JaegerClient,
+    MediationClient, PaymentClient, ProvisioningClient, SomClient, SubscriptionClient,
+    TokenAuthProvider,
 };
 use bss_orchestrator::tools::{CUSTOMER_SELF_SERVE, OPERATOR_COCKPIT};
 use bss_orchestrator::{default_registry, ToolRegistry};
@@ -56,11 +57,22 @@ fn registry_with_catalog() -> ToolRegistry {
     bss_orchestrator::tools::case::register_case_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::port_request::register_port_request_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::ops::register_ops_tools(&mut reg, crm);
+    // trace — Jaeger (no auth) + two audit clients (com/subscription base URLs).
+    let jaeger = JaegerClient::new("http://localhost:16686").unwrap();
+    let audit_auth = Arc::new(TokenAuthProvider::new("x").unwrap());
+    let audit_com = AuditClient::new("http://localhost:8004", audit_auth.clone()).unwrap();
+    let audit_sub = AuditClient::new("http://localhost:8006", audit_auth).unwrap();
+    bss_orchestrator::tools::trace::register_trace_tools(&mut reg, jaeger, audit_com, audit_sub);
+    // knowledge — a lazy pool (no connection is made at registration).
+    let pool = sqlx::PgPool::connect_lazy("postgres://x:x@localhost/x").unwrap();
+    bss_orchestrator::tools::knowledge::register_knowledge_tools(&mut reg, pool);
     reg
 }
 
-#[test]
-fn tool_descriptions_match_python_oracle() {
+// Uses `registry_with_catalog`, which builds a lazy `PgPool` for the knowledge
+// tools — pool construction needs a tokio runtime (no connection is made).
+#[tokio::test]
+async fn tool_descriptions_match_python_oracle() {
     let golden = golden();
     let registry = registry_with_catalog();
 
@@ -113,6 +125,11 @@ fn tool_descriptions_match_python_oracle() {
         "promo.show",
         "port_request.list",
         "port_request.get",
+        "trace.get",
+        "trace.for_order",
+        "trace.for_subscription",
+        "knowledge.search",
+        "knowledge.get",
     ];
     for name in names {
         let tool = registry
@@ -170,6 +187,28 @@ fn subscription_canonical_reads_are_operator_only() {
         "subscription.list_for_customer",
         "subscription.get_balance",
         "subscription.get_esim_activation",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        assert!(
+            !CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn trace_and_knowledge_are_operator_only() {
+    // trace.* is observability; knowledge.* is operator_cockpit-only by doctrine
+    // guard 15 — never customer_self_serve.
+    for name in [
+        "trace.get",
+        "trace.for_order",
+        "trace.for_subscription",
+        "knowledge.search",
+        "knowledge.get",
     ] {
         assert!(
             OPERATOR_COCKPIT.contains(&name),
@@ -284,10 +323,10 @@ fn crm_reads_are_operator_only() {
     }
 }
 
-#[test]
-fn surface_intersects_profile_with_registry() {
-    // With only clock + catalog registered, the operator_cockpit surface is the
-    // intersection — never the full 90-tool profile.
+#[tokio::test]
+async fn surface_intersects_profile_with_registry() {
+    // The operator_cockpit surface is the intersection of the profile with what's
+    // registered — never the full 90-tool profile.
     let registry = registry_with_catalog();
     let surface: Vec<String> = registry
         .surface(Some("operator_cockpit"))
@@ -299,7 +338,7 @@ fn surface_intersects_profile_with_registry() {
     assert!(surface.contains(&"customer.get".to_string()));
     // clock.freeze/advance/unfreeze are operator_cockpit + registered.
     assert!(surface.contains(&"clock.freeze".to_string()));
-    // A profile tool that isn't registered yet must not appear (trace.* is a
-    // later slice).
-    assert!(!surface.contains(&"trace.get".to_string()));
+    // A profile tool that isn't registered yet must not appear (the write tools
+    // are a later slice).
+    assert!(!surface.contains(&"customer.create".to_string()));
 }

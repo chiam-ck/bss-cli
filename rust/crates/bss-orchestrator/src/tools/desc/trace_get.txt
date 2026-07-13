@@ -1,0 +1,14 @@
+Fetch a Jaeger trace by ID and return a summary suitable for LLM /
+    scenario assertions. The full Jaeger payload is large; this returns
+    only the structural fields most useful for "did the trace look right?"
+    questions. Use the ``bss trace get <id>`` CLI for the human-readable
+    swimlane.
+
+    Args:
+        trace_id: 32-char hex trace ID.
+
+    Returns:
+        ``{traceId, spanCount, serviceCount, services, errorSpanCount, totalMs}``.
+
+    Raises:
+        ToolException: trace not found in Jaeger or the backend is unreachable.
