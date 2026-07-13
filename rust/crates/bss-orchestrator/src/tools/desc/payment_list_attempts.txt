@@ -1,0 +1,12 @@
+List payment attempts, optionally filtered.
+
+    Args:
+        customer_id: Filter by customer.
+        payment_method_id: Filter by method.
+        limit: Maximum rows (default 20).
+
+    Returns:
+        List of payment attempt dicts.
+
+    Raises:
+        (none expected — read tool)

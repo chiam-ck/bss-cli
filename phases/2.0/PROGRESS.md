@@ -66,7 +66,36 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–4) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–5) — 🚧 (2026-07-13)
+
+**Slice 5 — the payment read family.** Ported three operator_cockpit read tools:
+`payment.list_methods` (already had the client method), `payment.get_attempt`,
+`payment.list_attempts` — all verbatim. Extended `PaymentClient` with `get_payment`
+and `list_payments` (`limit` always sent first, then optional `customerId`/
+`paymentMethodId` — preserving Python's `params` seed order; `encode` copied for the
+query filters).
+
+- **Live smoke caught a real service contract:** the payment list route requires
+  `customerId` (Python `customerId: str`, **no default** — `services/payment/app/api/
+  tmf/payment.py`), so an unfiltered `list_attempts()` 400s on *both* Python and Rust
+  (the tool signature allows `customer_id=None`, but httpx omits the param and the
+  service rejects it — a pre-existing Python quirk the port reproduces faithfully).
+  The smoke was corrected to always pass a customer; the parity itself is intact. A
+  small reinforcement of the HANDOFF "exercise real service behaviour, not just the
+  happy path" lesson.
+- Payment reads are operator_cockpit-only (chat sees `payment.method_list_mine` /
+  `payment.charge_history_mine`). Pinned by `payment_canonical_reads_are_operator_only`.
+- **Verification:** fmt + clippy clean; workspace green, no regression;
+  `payment_tools_live.rs` (`#[ignore]`) green against tech-vm — verbatim reads equal
+  direct client calls, unknown attempt → `CLIENT_ERROR`. Payment writes (`add_card`
+  with its sandbox tokenizer, `remove_method`, `charge`) land with the write slice.
+
+Running client-port ledger (P5c): now covers catalog, CRM, subscription, and payment
+reads. Still unported and needed by later families: a **ComClient** (order reads +
+the `order.wait_until` polling composite), a **MediationClient** (usage reads), SOM
+service reads, inventory/provisioning/knowledge, and the write surfaces.
+
+---
 
 **Slice 4 — the subscription read family + the key-ordering resolution (D9).**
 Ported four operator_cockpit read tools: `subscription.get`,

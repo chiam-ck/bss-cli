@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–4 done:**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–5 done:**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -46,19 +46,25 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   closed; zero test breakage since the service goldens are `Value ==`). Extended
   `SubscriptionClient` with `get_balance`/`get_esim_activation`. D9 is pinned by the
   live smoke's serialized-key-order assertion.
+- **Slice 5** — the **payment read family** (`payment.list_methods`,
+  `payment.get_attempt`, `payment.list_attempts`), all verbatim. Extended
+  `PaymentClient` with `get_payment`/`list_payments`. The live smoke surfaced that the
+  list route requires `customerId` on both Python and Rust (faithful parity — the tool
+  omits `None`, service 400s). Operator-only (chat sees the `payment.*_mine` wrappers).
 
 **Remaining P5c slices:**
-1. **The ~90 remaining tools**, profile by profile, each following the slice-2/3/4
-   pattern (capture client, return verbatim, map errors) with descriptions pinned
-   against `tests/golden/tool_descriptions.json`. Natural next: the **payment + order
-   + service/SOM + inventory + provisioning + ticket/case reads** (operator_cockpit),
-   then the **`customer_self_serve` `*.mine` wrappers** — which need the auth-context
-   actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
-   `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal
-   + `discount_label`), and a new **MediationClient** + `PaymentClient.list_payments`
-   / `CrmClient` case-write methods. Then the operator writes. Many need new
-   `bss-clients` methods (add as consumers, mirroring the catalog/CRM/subscription
-   extensions). **schemars** arg schemas (D5) when the model client lands. Keep
+1. **The ~87 remaining tools**, profile by profile, each following the
+   slice-2..5 pattern (capture client, return verbatim, map errors) with descriptions
+   pinned against `tests/golden/tool_descriptions.json`. Natural next: **order reads**
+   (needs a new **ComClient** — `get_order`/`list_orders` + the `order.wait_until`
+   polling composite), **service/SOM + inventory + provisioning + ticket/case + events/
+   agents/trace reads** (operator_cockpit), then the **`customer_self_serve` `*.mine`
+   wrappers** — which need the auth-context actor binding (`ToolCtx.actor` + a
+   `CHAT_NO_ACTOR_BOUND` error), an `assert_subscription_owned` ownership pre-check,
+   `_annotate_pricing` (rust_decimal + `discount_label`), and a new **MediationClient**
+   (usage reads) + `CrmClient` case-write methods. Then the operator writes. Many need
+   new `bss-clients` methods (add as consumers, mirroring the catalog/CRM/subscription/
+   payment extensions). **schemars** arg schemas (D5) when the model client lands. Keep
    descriptions/param docs byte-identical (R2).
 2. **OpenRouter `ChatModel` client** (reqwest direct) — a real model drives the loop.
 3. **Ownership trip-wire** (`OWNERSHIP_PATHS` / `assert_owned_output`) + **chat

@@ -1,0 +1,10 @@
+Read a single payment attempt by ID.
+
+    Args:
+        attempt_id: Payment Attempt ID with the PAY- prefix (opaque suffix).
+
+    Returns:
+        Payment attempt dict.
+
+    Raises:
+        NotFound: no attempt with this ID.

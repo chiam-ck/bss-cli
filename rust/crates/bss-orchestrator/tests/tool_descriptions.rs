@@ -9,7 +9,7 @@
 
 use std::sync::Arc;
 
-use bss_clients::{CatalogClient, CrmClient, SubscriptionClient, TokenAuthProvider};
+use bss_clients::{CatalogClient, CrmClient, PaymentClient, SubscriptionClient, TokenAuthProvider};
 use bss_orchestrator::tools::{CUSTOMER_SELF_SERVE, OPERATOR_COCKPIT};
 use bss_orchestrator::{default_registry, ToolRegistry};
 use serde_json::Value;
@@ -27,9 +27,11 @@ fn registry_with_catalog() -> ToolRegistry {
     let catalog = CatalogClient::new("http://localhost:8001", auth.clone()).unwrap();
     bss_orchestrator::tools::catalog::register_catalog_tools(&mut reg, catalog);
     let crm = CrmClient::new("http://localhost:8002", auth.clone()).unwrap();
-    let subscription = SubscriptionClient::new("http://localhost:8006", auth).unwrap();
+    let subscription = SubscriptionClient::new("http://localhost:8006", auth.clone()).unwrap();
     bss_orchestrator::tools::customer::register_customer_tools(&mut reg, crm, subscription.clone());
     bss_orchestrator::tools::subscription::register_subscription_tools(&mut reg, subscription);
+    let payment = PaymentClient::new("http://localhost:8003", auth).unwrap();
+    bss_orchestrator::tools::payment::register_payment_tools(&mut reg, payment);
     reg
 }
 
@@ -59,6 +61,9 @@ fn tool_descriptions_match_python_oracle() {
         "subscription.list_for_customer",
         "subscription.get_balance",
         "subscription.get_esim_activation",
+        "payment.list_methods",
+        "payment.get_attempt",
+        "payment.list_attempts",
     ];
     for name in names {
         let tool = registry
@@ -116,6 +121,26 @@ fn subscription_canonical_reads_are_operator_only() {
         "subscription.list_for_customer",
         "subscription.get_balance",
         "subscription.get_esim_activation",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        assert!(
+            !CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn payment_canonical_reads_are_operator_only() {
+    // Canonical payment reads are operator_cockpit — the chat surface sees the
+    // ownership-bound `payment.*_mine` wrappers (a later slice) instead.
+    for name in [
+        "payment.list_methods",
+        "payment.get_attempt",
+        "payment.list_attempts",
     ] {
         assert!(
             OPERATOR_COCKPIT.contains(&name),

@@ -49,6 +49,41 @@ impl PaymentClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `GET /tmf-api/paymentManagement/v4/payment/{attempt_id}` — a single payment
+    /// attempt (TMF676). A 404 maps to [`ClientError::NotFound`]. Backs
+    /// `payment.get_attempt`.
+    pub async fn get_payment(&self, attempt_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/paymentManagement/v4/payment/{attempt_id}");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /tmf-api/paymentManagement/v4/payment` — payment attempts, optionally
+    /// filtered by `customerId` / `paymentMethodId`. `limit` is always sent (Python
+    /// seeds `params={"limit": limit}` first, then the optional filters — query
+    /// order preserved). Backs `payment.list_attempts`.
+    pub async fn list_payments(
+        &self,
+        customer_id: Option<&str>,
+        payment_method_id: Option<&str>,
+        limit: i64,
+    ) -> Result<Value, ClientError> {
+        let mut params: Vec<String> = vec![format!("limit={limit}")];
+        if let Some(c) = customer_id.filter(|s| !s.is_empty()) {
+            params.push(format!("customerId={}", encode(c)));
+        }
+        if let Some(m) = payment_method_id.filter(|s| !s.is_empty()) {
+            params.push(format!("paymentMethodId={}", encode(m)));
+        }
+        let path = format!("/tmf-api/paymentManagement/v4/payment?{}", params.join("&"));
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `POST /tmf-api/paymentManagement/v4/payment` — charge the card-on-file.
     /// `amount` is the already-stringified effective charge (`str(Decimal)` on the
     /// Python side — the caller does the discount math and passes `"22.50"`).
@@ -81,4 +116,22 @@ impl PaymentClient {
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
+}
+
+/// Minimal query-value encoding for the id characters that need it (mirrors
+/// `catalog::encode`). Ids are `CUST-001`/`PM-NNNN`-shaped, so this is a safety net.
+fn encode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'%' => out.push_str("%25"),
+            b'&' => out.push_str("%26"),
+            b'+' => out.push_str("%2B"),
+            b'=' => out.push_str("%3D"),
+            b'#' => out.push_str("%23"),
+            b' ' => out.push_str("%20"),
+            _ => out.push(b as char),
+        }
+    }
+    out
 }
