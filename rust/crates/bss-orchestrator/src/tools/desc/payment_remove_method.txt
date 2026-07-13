@@ -1,0 +1,14 @@
+Remove a payment method. DESTRUCTIVE — gated by ``safety.py``.
+    Cannot remove the last active method if the customer has an active
+    subscription (COF is mandatory policy).
+
+    Args:
+        method_id: Payment Method ID with the PM- prefix (opaque suffix).
+
+    Returns:
+        ``{"id": "PM-NNNN", "removed": true}``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``payment.remove_method.last_active_with_subscription``: add a
+              replacement card first, or terminate the subscription.

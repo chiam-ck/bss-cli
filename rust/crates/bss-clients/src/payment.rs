@@ -118,6 +118,66 @@ impl PaymentClient {
     }
 }
 
+// ── writes ────────────────────────────────────────────────────────────────
+impl PaymentClient {
+    /// `POST /tmf-api/paymentMethodManagement/v4/paymentMethod` — attach a
+    /// pre-tokenized card (the sandbox path the `payment.add_card` tool uses:
+    /// `tokenizationProvider="sandbox"`, `expMonth=12`/`expYear=2030`/`country="SG"`
+    /// defaults). No PAN on the wire. Backs `payment.add_card`.
+    pub async fn create_payment_method(
+        &self,
+        customer_id: &str,
+        card_token: &str,
+        last4: &str,
+        brand: &str,
+    ) -> Result<Value, ClientError> {
+        let body = json!({
+            "customerId": customer_id,
+            "type": "card",
+            "tokenizationProvider": "sandbox",
+            "providerToken": card_token,
+            "cardSummary": {
+                "brand": brand,
+                "last4": last4,
+                "expMonth": 12,
+                "expYear": 2030,
+                "country": "SG",
+            },
+        });
+        let resp = self
+            .inner
+            .request(
+                Method::POST,
+                "/tmf-api/paymentMethodManagement/v4/paymentMethod",
+                Some(&body),
+                None,
+            )
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `DELETE /tmf-api/paymentMethodManagement/v4/paymentMethod/{id}` — returns the
+    /// server body when present, else `{id, removed:true}` (empty-body case). Backs
+    /// `payment.remove_method` (DESTRUCTIVE — safety-gated at the tool).
+    pub async fn remove_method(&self, method_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/paymentMethodManagement/v4/paymentMethod/{method_id}");
+        let resp = self
+            .inner
+            .request(Method::DELETE, &path, None, None)
+            .await?;
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))?;
+        if bytes.is_empty() {
+            return Ok(json!({"id": method_id, "removed": true}));
+        }
+        serde_json::from_slice(&bytes).map_err(|e| ClientError::Transport(e.to_string()))
+    }
+}
+
 /// Minimal query-value encoding for the id characters that need it (mirrors
 /// `catalog::encode`). Ids are `CUST-001`/`PM-NNNN`-shaped, so this is a safety net.
 fn encode(s: &str) -> String {

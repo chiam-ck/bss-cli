@@ -615,6 +615,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

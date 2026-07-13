@@ -1,0 +1,12 @@
+Cancel an order before SOM starts it. DESTRUCTIVE — gated by ``safety.py``.
+
+    Args:
+        order_id: Order ID with the ORD- prefix (opaque suffix).
+
+    Returns:
+        Updated order dict with ``state="cancelled"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``order.cancel.som_already_started``: too late — orchestrate
+              termination via ``subscription.terminate`` after completion.

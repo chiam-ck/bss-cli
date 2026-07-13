@@ -21,6 +21,7 @@ bss-clock = { workspace = true }
 bss-clients = { workspace = true }
 bss-knowledge = { workspace = true }
 sqlx = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

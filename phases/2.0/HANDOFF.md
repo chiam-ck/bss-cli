@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–11 done — READS COMPLETE + CRM/subscription writes (~78/110 tools):**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–12 done — READS COMPLETE + CRM/subscription/order/payment writes (~83/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -89,14 +89,18 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   `migrate_to_new_price` LLM-hidden. Conservative live smoke green (reversible
   schedule→cancel round-trip + bogus-id error paths for the charging/destructive ones).
 
+- **Slice 12** — **order + payment writes** (5 tools). `order.create` create+submit
+  composite; `payment.add_card` runs the pure `local_tokenize_card` (unit-tested).
+  New `ComClient` create/submit/cancel + `PaymentClient` create_payment_method/
+  remove_method. Conservative live smoke green (real add_card + remove cleanup; bogus-
+  offering sync error for create so no line is provisioned).
+
 **Remaining P5c slices (batched — aim ~3):**
-1. **order + payment writes** (~5 tools) — `order.create` (com.create_order +
-   submit_order composite), `order.cancel`; `payment.add_card` (the pure
-   `local_tokenize_card` sandbox tokenizer — brand detection + FAIL/DECLINE embedding
-   + a uuid token → create_payment_method), `payment.remove_method`, `payment.charge`.
-   Then the remaining **inventory/port_request/provisioning/promo + catalog admin**
-   writes (~10). Watch for more pre-existing write-body mismatches like
-   `add_contact_medium` (a 422 may be *faithful*).
+1. **The last operator writes** (~13 tools) — inventory.msisdn.add_range,
+   port_request create/approve/reject, provisioning resolve_stuck/retry_failed/
+   set_fault_injection, promo create/assign, catalog admin add_offering/add_price/
+   window_offering (LLM-hidden), usage.simulate (LLM-hidden). Mostly thin; several are
+   LLM_HIDDEN. Watch for pre-existing write-body mismatches (a 422 may be *faithful*).
 2. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
    auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
    `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +

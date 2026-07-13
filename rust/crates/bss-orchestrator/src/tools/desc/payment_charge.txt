@@ -1,0 +1,17 @@
+Charge a customer's card-on-file. RARELY called by the LLM — order
+    creation and VAS purchase charge COF internally. Only call this for
+    exceptional manual charges.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        payment_method_id: Payment Method ID with the PM- prefix (opaque suffix).
+        amount: Decimal amount as a string, e.g. ``"25.00"``. Avoid floats.
+        purpose: Short reason, e.g. ``"manual_adjustment"``.
+        currency: ISO-4217 currency code. v0.1 uses ``"SGD"`` only.
+
+    Returns:
+        Payment attempt dict ``{id, state, amount, currency, capturedAt}``.
+        ``state`` is ``approved`` or ``declined``.
+
+    Raises:
+        PolicyViolationFromServer: various — read ``rule`` and retry or ask.

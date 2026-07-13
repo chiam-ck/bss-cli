@@ -47,9 +47,11 @@ fn registry_with_catalog() -> ToolRegistry {
         subscription,
     );
     let payment = PaymentClient::new("http://localhost:8003", auth.clone()).unwrap();
-    bss_orchestrator::tools::payment::register_payment_tools(&mut reg, payment);
+    bss_orchestrator::tools::payment::register_payment_tools(&mut reg, payment.clone());
+    bss_orchestrator::tools::payment::register_payment_write_tools(&mut reg, payment);
     let com = ComClient::new("http://localhost:8004", auth.clone()).unwrap();
-    bss_orchestrator::tools::order::register_order_tools(&mut reg, com);
+    bss_orchestrator::tools::order::register_order_tools(&mut reg, com.clone());
+    bss_orchestrator::tools::order::register_order_write_tools(&mut reg, com);
     let som = SomClient::new("http://localhost:8005", auth.clone()).unwrap();
     bss_orchestrator::tools::som::register_som_tools(&mut reg, som);
     let inventory = InventoryClient::new("http://localhost:8002", auth.clone()).unwrap();
@@ -165,6 +167,11 @@ async fn tool_descriptions_match_python_oracle() {
         "subscription.schedule_plan_change",
         "subscription.cancel_pending_plan_change",
         "subscription.migrate_to_new_price",
+        "order.create",
+        "order.cancel",
+        "payment.add_card",
+        "payment.remove_method",
+        "payment.charge",
     ];
     for name in names {
         let tool = registry
@@ -230,6 +237,36 @@ fn subscription_canonical_reads_are_operator_only() {
         assert!(
             !CUSTOMER_SELF_SERVE.contains(&name),
             "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn order_payment_writes_profile_and_destructive() {
+    use bss_orchestrator::DESTRUCTIVE_TOOLS;
+    for name in [
+        "order.create",
+        "order.cancel",
+        "payment.add_card",
+        "payment.remove_method",
+        "payment.charge",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+    }
+    // order.cancel + payment.remove_method are destructive; create/add_card/charge not.
+    for name in ["order.cancel", "payment.remove_method"] {
+        assert!(
+            DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must be destructive"
+        );
+    }
+    for name in ["order.create", "payment.add_card", "payment.charge"] {
+        assert!(
+            !DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must NOT be destructive"
         );
     }
 }
@@ -476,7 +513,7 @@ async fn surface_intersects_profile_with_registry() {
     assert!(surface.contains(&"customer.get".to_string()));
     // clock.freeze/advance/unfreeze are operator_cockpit + registered.
     assert!(surface.contains(&"clock.freeze".to_string()));
-    // A profile tool that isn't registered yet must not appear (order/subscription
-    // writes are a later slice).
-    assert!(!surface.contains(&"order.create".to_string()));
+    // A profile tool that isn't registered yet must not appear (promo/inventory/
+    // provisioning writes are a later slice).
+    assert!(!surface.contains(&"promo.create".to_string()));
 }

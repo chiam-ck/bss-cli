@@ -66,7 +66,35 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–11) — 🚧 (2026-07-14)
+### Phase 5c — bss-orchestrator (slices 1–12) — 🚧 (2026-07-14)
+
+**Slice 12 — order + payment WRITES.** Five tools. `ComClient` gained
+`create_order`/`submit_order`/`cancel_order`; `PaymentClient` gained
+`create_payment_method` (sandbox path) + `remove_method` (204-empty → `{id, removed}`).
+- **`order.create` is the create+submit composite** — create, read the returned `id`,
+  then submit; both halves must succeed (a missing id → a `KeyError` observation).
+- **`payment.add_card` runs the pure `local_tokenize_card`** — a port of the sandbox
+  tokenizer (brand from the BIN, FAIL/DECLINE embedded in the token from the raw PAN,
+  uuid body; invalid PAN → the single-quoted `ValueError`). **Unit-tested** for brand
+  detection + the error message (uuid non-determinism kept out of the client body).
+- `order.cancel` + `payment.remove_method` destructive; create/add_card/charge not —
+  pinned. `payment.charge` passes the caller's decimal string verbatim (Python's
+  `Decimal(amount)`→`str` is a no-op for a canonical value).
+
+**Verification:** fmt + clippy clean; workspace green (incl. the tokenizer unit test);
+5 descriptions byte-pinned. **Conservative live smoke** (`order_payment_writes_live.rs`,
+`#[ignore]`) green against tech-vm — a **real** `payment.add_card` (tokenizer +
+create body accepted, method created) then `remove_method` cleanup; `order.create`
+with a **bogus offering** → sync structured error (no line provisioned — COF/KYC are
+async, so a valid offering would reserve inventory); charge/cancel bogus-id error paths.
+
+**Tool ledger:** ~83/110 (reads complete + CRM/subscription/order/payment writes).
+Remaining writes: inventory.msisdn.add_range, port_request create/approve/reject,
+provisioning resolve/retry/set_fault_injection, promo create/assign, catalog admin
+add_offering/add_price/window_offering, usage.simulate (~13). Then the `*.mine`
+wrappers + model client + ownership/caps/prompts.
+
+---
 
 **Slice 11 — subscription WRITES.** Seven tools (terminate, purchase_vas, renew_now,
 tick_renewals_now, schedule_plan_change, cancel_pending_plan_change,

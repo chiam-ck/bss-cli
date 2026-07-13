@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::auth::AuthProvider;
 use crate::base::{BssClient, DEFAULT_TIMEOUT};
@@ -59,6 +59,57 @@ impl ComClient {
             path.push_str(&format!("?customerId={c}"));
         }
         let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /tmf-api/productOrderingManagement/v4/productOrder` — create (not yet
+    /// submit) an order. Optional `msisdnPreference` / `notes` / `discountCode` are
+    /// sent only when present. Backs the create half of the `order.create` composite.
+    pub async fn create_order(
+        &self,
+        customer_id: &str,
+        offering_id: &str,
+        msisdn_preference: Option<&str>,
+        notes: Option<&str>,
+        discount_code: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut map = serde_json::Map::new();
+        map.insert("customerId".to_string(), json!(customer_id));
+        map.insert("offeringId".to_string(), json!(offering_id));
+        if let Some(m) = msisdn_preference.filter(|s| !s.is_empty()) {
+            map.insert("msisdnPreference".to_string(), json!(m));
+        }
+        if let Some(n) = notes.filter(|s| !s.is_empty()) {
+            map.insert("notes".to_string(), json!(n));
+        }
+        if let Some(d) = discount_code.filter(|s| !s.is_empty()) {
+            map.insert("discountCode".to_string(), json!(d));
+        }
+        self.post(
+            "/tmf-api/productOrderingManagement/v4/productOrder",
+            Some(&Value::Object(map)),
+        )
+        .await
+    }
+
+    /// `POST …/productOrder/{id}/submit` (no body). Backs the submit half of the
+    /// `order.create` composite.
+    pub async fn submit_order(&self, order_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/productOrderingManagement/v4/productOrder/{order_id}/submit");
+        self.post(&path, None).await
+    }
+
+    /// `POST …/productOrder/{id}/cancel` (no body). Backs `order.cancel`
+    /// (DESTRUCTIVE — safety-gated at the tool).
+    pub async fn cancel_order(&self, order_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/productOrderingManagement/v4/productOrder/{order_id}/cancel");
+        self.post(&path, None).await
+    }
+
+    async fn post(&self, path: &str, body: Option<&Value>) -> Result<Value, ClientError> {
+        let resp = self.inner.request(Method::POST, path, body, None).await?;
         resp.json()
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
