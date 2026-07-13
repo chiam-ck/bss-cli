@@ -22,6 +22,8 @@ bss-clients = { workspace = true }
 bss-knowledge = { workspace = true }
 sqlx = { workspace = true }
 uuid = { workspace = true }
+rust_decimal = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

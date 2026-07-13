@@ -13,6 +13,7 @@ pub mod clock;
 pub mod customer;
 pub mod inventory;
 pub mod knowledge;
+pub mod mine;
 pub mod ops;
 pub mod order;
 pub mod payment;
@@ -39,6 +40,10 @@ pub struct ToolCtx {
     pub actor: String,
     pub channel: String,
     pub tenant: String,
+    /// The chat transcript up to and including this turn (cockpit
+    /// `transcript_text()` format), or empty. Read by `case.open_for_me` to hash +
+    /// store the conversation; mirrors Python's `auth_context.current().transcript`.
+    pub transcript: String,
 }
 
 impl Default for ToolCtx {
@@ -47,6 +52,7 @@ impl Default for ToolCtx {
             actor: "system".to_string(),
             channel: "system".to_string(),
             tenant: "DEFAULT".to_string(),
+            transcript: String::new(),
         }
     }
 }

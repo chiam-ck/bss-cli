@@ -66,7 +66,41 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–14) — 🚧 (2026-07-14)
+### Phase 5c — bss-orchestrator (slices 1–15) — 🚧 (2026-07-14)
+
+**Slice 15 — the `customer_self_serve` `*.mine` wrappers (ALL 110 TOOLS PORTED).**
+14 chat-surface wrappers (`tools/mine.rs`) — the v0.12 prompt-injection containment
+layer. Each binds `customer_id` from `ctx.actor` (never a param) and reuses the
+already-ported client methods. Machinery:
+- **`ToolCtx` gained `transcript`** (threaded from `AgentConfig.transcript` in the
+  loop) so `case.open_for_me` can SHA-256 + `store_chat_transcript` before opening the
+  case with the escalation category/priority maps + `[category] …` description.
+- **`require_actor`** → `_NoActorBound` observation when unbound (`"system"`/empty is
+  the Rust analogue of Python's `actor=None` default); **`assert_subscription_owned`**
+  → `_NotOwnedByActor` for cross-customer attempts (uniform shape, never leaks a
+  foreign dict).
+- **`annotate_pricing`** (rust_decimal) ports `_discount_label`/`_annotate_pricing`:
+  `currentMonthlyCharge` = effective-or-list price, `activeDiscount` label
+  (`normalize()` for percent, `{:.2}` for absolute) — unit-tested for the
+  ongoing/N-renewals/singular forms.
+- `usage.history_mine` fans out across the actor's lines + newest-first merge when no
+  subscription is given.
+
+**Capstone test — `both_profiles_are_fully_covered_by_the_registry`** (the
+`validate_profiles` equivalent): every `OPERATOR_COCKPIT` **and** `CUSTOMER_SELF_SERVE`
+tool is registered, and the chat surface equals the 17-entry customer profile exactly.
+
+**Verification:** fmt + clippy clean; workspace green (incl. 4 mine unit tests); 14
+descriptions byte-pinned. **Live smoke** (`mine_wrappers_live.rs`, `#[ignore]`) green
+against tech-vm — unbound ctx → `_NoActorBound`; a bound actor reads only its own
+(pricing-annotated) data; a subscription owned by a **different** customer →
+`_NotOwnedByActor`.
+
+**🎉 TOOL SURFACE COMPLETE — 110/110 tools ported.** The last slice is the
+non-tool infra: OpenRouter `ChatModel` client + ownership trip-wire + chat caps +
+prompts → then the R2 gate closes and `v2.0.0-phase.5` tags.
+
+---
 
 **Slice 14 — the last writes: promo + catalog admin + usage.simulate (OPERATOR
 SURFACE COMPLETE).** Six tools. `CatalogClient` gained `create_promotion` (the

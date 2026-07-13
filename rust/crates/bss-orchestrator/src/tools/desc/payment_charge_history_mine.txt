@@ -1,0 +1,11 @@
+List recent payment attempts for the logged-in customer.
+
+    Args:
+        limit: Max rows (default 20, server cap applies).
+
+    Returns:
+        List of payment attempt dicts, newest first. Only the
+        actor's attempts.
+
+    Raises:
+        chat.no_actor_bound: invoked outside a chat-scoped session.

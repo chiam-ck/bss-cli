@@ -1,0 +1,15 @@
+Read bundle balances for one of the logged-in customer's
+    subscriptions. Use before offering a VAS top-up — the user wants
+    to see ``used / total`` for each resource.
+
+    Args:
+        subscription_id: the actor-owned subscription id (opaque suffix).
+
+    Returns:
+        Balance dict ``{subscriptionId, balances: [{type, used, total,
+        unit}]}``.
+
+    Raises:
+        policy.subscription.not_owned_by_actor: subscription belongs
+            to another customer.
+        chat.no_actor_bound: invoked outside a chat-scoped session.

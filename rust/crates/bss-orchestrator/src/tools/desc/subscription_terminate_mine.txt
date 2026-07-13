@@ -1,0 +1,25 @@
+**DESTRUCTIVE — releases the MSISDN + eSIM, no undo.** Gated
+    by ``safety.py``. Terminate one of the logged-in customer's
+    own subscriptions. Used only when the customer explicitly asks
+    to cancel a specific line by name.
+
+    Never call as a "fix" for a blocked / exhausted subscription;
+    for that, use ``vas.purchase_for_me`` (non-destructive, adds
+    allowance).
+
+    The ``reason`` carried into the audit trail is
+    ``"customer_chat"`` so subsequent investigation distinguishes
+    chat-driven terminations from CSR / scenario / API ones.
+
+    Args:
+        subscription_id: the actor-owned subscription id (opaque suffix).
+
+    Returns:
+        Updated subscription dict with ``state="terminated"``.
+
+    Raises:
+        policy.subscription.not_owned_by_actor: subscription belongs
+            to another customer.
+        chat.no_actor_bound: invoked outside a chat-scoped session.
+        PolicyViolationFromServer:
+            ``subscription.terminate.already_terminated``.

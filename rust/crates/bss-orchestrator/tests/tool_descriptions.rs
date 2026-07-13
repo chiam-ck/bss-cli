@@ -80,7 +80,19 @@ fn registry_with_catalog() -> ToolRegistry {
     bss_orchestrator::tools::case::register_case_write_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::port_request::register_port_request_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::port_request::register_port_request_write_tools(&mut reg, crm.clone());
-    bss_orchestrator::tools::ops::register_ops_tools(&mut reg, crm);
+    bss_orchestrator::tools::ops::register_ops_tools(&mut reg, crm.clone());
+    // customer_self_serve `*.mine` wrappers (auth-bound; reuse the ported clients).
+    let a = || Arc::new(TokenAuthProvider::new("x").unwrap());
+    let payment2 = PaymentClient::new("http://localhost:8003", a()).unwrap();
+    let subscription2 = SubscriptionClient::new("http://localhost:8006", a()).unwrap();
+    let mediation2 = MediationClient::new("http://localhost:8007", a()).unwrap();
+    bss_orchestrator::tools::mine::register_customer_self_serve_tools(
+        &mut reg,
+        subscription2,
+        crm,
+        payment2,
+        mediation2,
+    );
     // trace — Jaeger (no auth) + two audit clients (com/subscription base URLs).
     let jaeger = JaegerClient::new("http://localhost:16686").unwrap();
     let audit_auth = Arc::new(TokenAuthProvider::new("x").unwrap());
@@ -197,6 +209,20 @@ async fn tool_descriptions_match_python_oracle() {
         "catalog.add_price",
         "catalog.window_offering",
         "usage.simulate",
+        "subscription.list_mine",
+        "subscription.get_mine",
+        "subscription.get_balance_mine",
+        "subscription.get_lpa_mine",
+        "usage.history_mine",
+        "customer.get_mine",
+        "payment.method_list_mine",
+        "payment.charge_history_mine",
+        "vas.purchase_for_me",
+        "subscription.schedule_plan_change_mine",
+        "subscription.cancel_pending_plan_change_mine",
+        "subscription.terminate_mine",
+        "case.open_for_me",
+        "case.list_for_me",
     ];
     for name in names {
         let tool = registry
@@ -262,6 +288,58 @@ fn subscription_canonical_reads_are_operator_only() {
         assert!(
             !CUSTOMER_SELF_SERVE.contains(&name),
             "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+// The `*.mine` wrappers use a lazy pool → `registry_with_catalog` builds one.
+#[tokio::test]
+async fn both_profiles_are_fully_covered_by_the_registry() {
+    // Capstone (validate_profiles-equivalent): every tool named in each profile is
+    // registered, so `surface(profile)` equals the profile set.
+    let reg = registry_with_catalog();
+    for name in OPERATOR_COCKPIT {
+        assert!(
+            reg.get(name).is_some(),
+            "operator_cockpit tool {name} not registered"
+        );
+    }
+    for name in CUSTOMER_SELF_SERVE {
+        assert!(
+            reg.get(name).is_some(),
+            "customer_self_serve tool {name} not registered"
+        );
+    }
+    // The chat surface is exactly the customer_self_serve set (all 17 present).
+    let chat: std::collections::BTreeSet<String> = reg
+        .surface(Some("customer_self_serve"))
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    let expected: std::collections::BTreeSet<String> =
+        CUSTOMER_SELF_SERVE.iter().map(|s| s.to_string()).collect();
+    assert_eq!(chat, expected, "customer_self_serve surface drift");
+}
+
+#[test]
+fn mine_wrappers_are_customer_self_serve_only() {
+    for name in [
+        "subscription.list_mine",
+        "subscription.get_mine",
+        "usage.history_mine",
+        "customer.get_mine",
+        "vas.purchase_for_me",
+        "subscription.terminate_mine",
+        "case.open_for_me",
+        "case.list_for_me",
+    ] {
+        assert!(
+            CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} missing from customer_self_serve"
+        );
+        assert!(
+            !OPERATOR_COCKPIT.contains(&name),
+            "{name} must not be in operator_cockpit (it's a chat-scoped wrapper)"
         );
     }
 }

@@ -208,7 +208,11 @@ async fn execute_tool(
         };
         return (err.to_observation(), true);
     };
-    match (tool.func)(tc.args.clone(), config.ctx.clone()).await {
+    // Thread the current transcript onto the ctx so `case.open_for_me` can hash +
+    // store the conversation (Python reads `auth_context.current().transcript`).
+    let mut ctx = config.ctx.clone();
+    ctx.transcript = config.transcript.clone();
+    match (tool.func)(tc.args.clone(), ctx).await {
         Ok(value) => (value.to_string(), false),
         Err(err) => (err.to_observation(), true),
     }

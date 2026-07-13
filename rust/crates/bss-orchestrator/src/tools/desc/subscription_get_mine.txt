@@ -1,0 +1,14 @@
+Read one of the logged-in customer's subscriptions in full.
+
+    Args:
+        subscription_id: the actor-owned subscription id (opaque suffix). Cross-customer
+            attempts return ``policy.subscription.not_owned_by_actor``.
+
+    Returns:
+        Subscription dict ``{id, customerId, offeringId, msisdn,
+        iccid, state, balances, nextRenewalAt}``.
+
+    Raises:
+        policy.subscription.not_owned_by_actor: subscription belongs
+            to another customer.
+        chat.no_actor_bound: invoked outside a chat-scoped session.

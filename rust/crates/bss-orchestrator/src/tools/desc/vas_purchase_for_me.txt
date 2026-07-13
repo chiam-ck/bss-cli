@@ -1,0 +1,24 @@
+Purchase a VAS top-up for one of the logged-in customer's
+    subscriptions. Charges the customer's default card on file.
+
+    Use this when the customer asks to top up data / minutes / SMS,
+    or to recover from a blocked-on-exhaust line. Pick the VAS id
+    from ``catalog.list_vas`` — never invent one.
+
+    Args:
+        subscription_id: the actor-owned subscription id (opaque suffix).
+        vas_offering_id: VAS offering id (e.g. ``VAS_DATA_5GB``)
+            from ``catalog.list_vas``.
+
+    Returns:
+        Updated subscription dict with the refreshed balances. If the
+        line was ``blocked``, expect ``state="active"`` now.
+
+    Raises:
+        policy.subscription.not_owned_by_actor: subscription belongs
+            to another customer.
+        chat.no_actor_bound: invoked outside a chat-scoped session.
+        PolicyViolationFromServer: e.g.
+            ``subscription.vas_purchase.requires_active_cof`` (no
+            valid card on file — the customer must add one in the
+            payment-methods page first).
