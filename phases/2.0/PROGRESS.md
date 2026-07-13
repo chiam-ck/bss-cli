@@ -66,6 +66,57 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
+### Phase 5b — bss-cockpit core — ✅ PORTED (2026-07-13)
+
+`rust/crates/bss-cockpit` — the operator-cockpit **core** the orchestrator + both
+P6/P7 consumers need. Four modules:
+
+- **`conversation`** — the Postgres-backed `ConversationStore` + `Conversation`
+  handle (`cockpit.session`/`message`/`pending_destructive`, alembic 0014). Open/
+  resume/list/append(user|assistant|tool)/list_messages/reset/close/set_focus +
+  the pending-destructive set/peek/consume (the `/confirm` contract). SES ids are
+  `SES-YYYYMMDD-<8hex>`. `transcript_text()` is the **frozen contract** the P5c
+  orchestrator will parse — `role:\ncontent` blocks joined by a blank line, tool
+  rows carry a `tool[NAME]:` prefix, and assistant **chrome rows are dropped**
+  (via `is_cockpit_chrome`, so rehydrated history never feeds the LLM its own
+  placeholder output → the v1.5 mimicry/state-confusion/citation-thrash guard).
+- **`config`** — `OPERATOR.md` + `settings.toml` loader with **mtime hot-reload**,
+  autobootstrap from embedded defaults, and the **last-good fallback** (an editor
+  typo serves the prior good view instead of bricking the cockpit). `CockpitSettings`
+  covers `[llm]`/`[cockpit]`/`[ports]`/`[dev_service_urls]`.
+- **`prompts`** — `build_cockpit_prompt` + `COCKPIT_INVARIANTS`, the code-defined
+  safety contract embedded **byte-for-byte** (`include_str!` of the 15.8 KB block
+  extracted from the oracle — an R2 behavioural contract with the model).
+- **`chrome_filter`** — `is_cockpit_chrome` + the `ASSISTANT_CHROME_PREFIXES`
+  inventory (the transcript filter).
+
+**Byte-parity seams.** Two: (1) the verbatim `COCKPIT_INVARIANTS` — extracted to
+a file and `include_str!`d rather than retyped, so the prompt golden validates it
+exactly; (2) **pending-destructive arg key order** — the prompt renders
+`f"{k}={v!r}"` in stored-JSON order, so the store reads `tool_args_json::text`
+(the `json` column preserves text order — not `jsonb`) and parses into an
+`IndexMap`, and a `py_repr` reproduces Python's string-repr quoting.
+
+**Deferred to P6/P7** (land with their browser/CLI consumers, per land-with-first-
+consumer): the ASCII **renderers** (~1.6 KB LOC), `chrome_filter::strip_fake_propose`
++ `postprocess::*` (all use lookbehind/lookahead regexes the `regex` crate can't do
+→ `fancy-regex` there), and the `settings.toml`/branding **writers** (land with the
+`bss-branding` crate). The `[branding]` table in `settings.toml` is ignored on load
+until then (serde skips unknown fields), so an operator's file loads unchanged.
+
+**Verification.**
+- fmt + clippy `-D warnings` clean; workspace tests green (no regression).
+- **Prompt golden** (`tests/prompt_golden.rs`, CI, no DB): `build_cockpit_prompt`
+  byte-for-byte vs the oracle across 5 cases (empty / md+focus / pending-destructive
+  / extra-context / all) — which validates the 15.8 KB invariants block — plus the
+  `is_cockpit_chrome` behaviour + prefix-inventory lock.
+- **Config behaviour** (`tests/config_test.rs`, CI): parse all sections,
+  cache-hit, last-good-on-bad-TOML, valid mtime reload, empty-dir autobootstrap.
+- **Live store smoke** (`tests/live_smoke.rs`, `#[ignore]`): open→append(mix incl.
+  a chrome row)→`transcript_text` contract → structured view → pending-destructive
+  round trip with **key-order preservation** → resume → close, against the real
+  `cockpit` schema. Self-cleaning (deletes its session + rows).
+
 ### Phase 5a — bss-knowledge — ✅ PORTED (2026-07-13)
 
 `rust/crates/bss-knowledge` — the doc-corpus chunker + FTS search backing the

@@ -15,17 +15,29 @@ subscription (4b) + crm (4c). The **portals + orchestrator + CLI** remain Python
 **no container cutover of its own** (D3): `bss-orchestrator`, `bss-knowledge`, and
 `bss-cockpit` core are *library* crates that cut over in P6/P7 when the Rust
 portals/CLI link them. The gate is **transcript parity**, not a hero-suite swap.
-Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core**, **P5c
-`bss-orchestrator`** (the ReAct loop + 109 tools + guard stack + fixture player).
+Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **P5c
+`bss-orchestrator`** (next — the ReAct loop + 109 tools + guard stack + fixture
+player). Neither P5a nor P5b is tagged — the `v2.0.0-phase.5` tag caps the whole
+phase after P5c.
 
-- **P5a `bss-knowledge` ✅ ported (not yet tagged — the tag caps the whole phase).**
-  `rust/crates/bss-knowledge`: chunker + FTS search + indexer. Chunker golden is
-  byte-for-byte vs the oracle across the three split policies (runs in CI); the
-  live `search_fts`/`get_chunk` diff is byte-identical on the wire contract
-  (`to_value` omits `rank`; `rank` came 1 ULP off on the `f32→f64` re-rank multiply
-  — pinned within `1e-12`). See PROGRESS §Phase 5a. **Lesson for P5b/c: when the
-  work is a Postgres builtin, parity is structural — the risk is the pure Rust
-  around it.**
+- **P5a `bss-knowledge` ✅ ported.** `rust/crates/bss-knowledge`: chunker + FTS
+  search + indexer. Chunker golden byte-for-byte vs the oracle across the three
+  split policies (CI); the live `search_fts`/`get_chunk` diff byte-identical on the
+  wire contract (`to_value` omits `rank`; `rank` came 1 ULP off on the `f32→f64`
+  re-rank multiply — pinned within `1e-12`). See PROGRESS §Phase 5a.
+- **P5b `bss-cockpit` core ✅ ported.** `rust/crates/bss-cockpit`: the Conversation
+  store (`transcript_text` is the frozen contract P5c parses; chrome rows dropped),
+  config mtime hot-reload + last-good fallback, and `build_cockpit_prompt` with the
+  15.8 KB `COCKPIT_INVARIANTS` embedded byte-for-byte (`include_str!`, golden-pinned).
+  Two seams handled: the verbatim invariants and pending-destructive **arg key-order**
+  (stored `json`-column text order → `IndexMap` + `py_repr`). Deferred to P6/P7:
+  the ASCII renderers, `strip_fake_propose` + `postprocess::*` (lookbehind/lookahead
+  → `fancy-regex`), and the settings/branding writers (land with `bss-branding`).
+  See PROGRESS §Phase 5b.
+
+**Lesson carried from P5a/b: when the heavy lifting is a Postgres builtin (FTS, the
+`json` column's text-order preservation), parity is structural — the risk is the
+pure Rust around it (chunker algorithm, float widening, arg-order, `py_repr`).**
 
 **Each of the big-three cut over with a read-surface golden diff + the hero suite
 (15/19; the 4 failures are pre-existing portal/trace issues — branding text,

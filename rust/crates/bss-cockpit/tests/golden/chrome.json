@@ -1,0 +1,46 @@
+{
+ "is_chrome": [
+  {
+   "input": "",
+   "is_chrome": true
+  },
+  {
+   "input": "   ",
+   "is_chrome": true
+  },
+  {
+   "input": "\n\n",
+   "is_chrome": true
+  },
+  {
+   "input": "Sorry — something went wrong, please retry.",
+   "is_chrome": true
+  },
+  {
+   "input": "(The model called subscription.get but did not synthesise a final answer.)",
+   "is_chrome": true
+  },
+  {
+   "input": "(no reply)",
+   "is_chrome": true
+  },
+  {
+   "input": "I don't have a citation for that in the handbook.",
+   "is_chrome": true
+  },
+  {
+   "input": "Here are the three customers matching Demo.",
+   "is_chrome": false
+  },
+  {
+   "input": "The subscription SUB-0001 is active with 4GB remaining.",
+   "is_chrome": false
+  }
+ ],
+ "prefixes": [
+  "Sorry — something went wrong",
+  "(The model called ",
+  "(no reply)",
+  "I don't have a citation for that"
+ ]
+}

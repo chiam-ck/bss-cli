@@ -73,10 +73,15 @@ network seam the doctrine forbids, and SSE-over-SSE relaying is fiddly.
 keeping the SAQ-A surface small and auditable. Alternative: async-stripe crate — revisit if
 the payment phase finds the surface bigger than inventoried.
 
-**D5 — Tool arg schema fidelity.** Option A (recommended): typed structs + schemars, accept
-cosmetic schema drift, validate against the fixture corpus. Option B: replay langchain's
-exact JSON schemas as embedded constants for bit-parity, migrate to schemars later. Pick
-during P5 planning after diffing one real tool's schema both ways.
+**D5 — Tool arg schema fidelity. (resolved 2026-07-13.)** Option A (recommended): typed
+structs + schemars, accept cosmetic schema drift, validate against the fixture corpus.
+Option B: replay langchain's exact JSON schemas as embedded constants for bit-parity,
+migrate to schemars later. **Resolution: Option A — schemars.** Derive each tool's JSON
+Schema from a typed Rust arg struct; the tool *description* + *param docstrings* stay
+byte-identical string constants (they drive model behaviour — R2), but the schema envelope
+is generated. Behaviour is validated against the fixture corpus + human-reviewed live soak,
+not by bit-diffing the schema. Revisit only if a fixture/soak run shows the model's
+tool-call behaviour shifting on the schema shape.
 
 **D6 — Team shape.** Solo (12–18 mo) vs pair from Phase 2 (7–10 mo wall-clock). The plan is
 written to make the pair split clean (playbook after P1, per-service independence).

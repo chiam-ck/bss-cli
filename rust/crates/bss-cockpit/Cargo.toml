@@ -1,0 +1,31 @@
+[package]
+name = "bss-cockpit"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Operator-cockpit Conversation store + config hot-reload + system-prompt builder. Rust port of packages/bss-cockpit core (renderers land with the P6/P7 browser/CLI consumers)."
+
+[lints]
+workspace = true
+
+[lib]
+name = "bss_cockpit"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+indexmap = { version = "2", features = ["serde"] }
+toml = "0.8"
+rand = { workspace = true }
+
+bss-clock = { workspace = true }
+bss-db = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
