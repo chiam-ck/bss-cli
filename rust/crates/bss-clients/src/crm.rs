@@ -633,6 +633,51 @@ impl CrmClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    // ── port-request writes (v0.17 MNP) ──────────────────────────────────
+
+    /// `POST /crm-api/v1/port-requests` — open a port request. `targetSubscriptionId`
+    /// is sent only when present (required for port_out). Backs `port_request.create`.
+    pub async fn create_port_request(
+        &self,
+        direction: &str,
+        donor_carrier: &str,
+        donor_msisdn: &str,
+        requested_port_date: &str,
+        target_subscription_id: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut map = serde_json::Map::new();
+        map.insert("direction".to_string(), json!(direction));
+        map.insert("donorCarrier".to_string(), json!(donor_carrier));
+        map.insert("donorMsisdn".to_string(), json!(donor_msisdn));
+        map.insert("requestedPortDate".to_string(), json!(requested_port_date));
+        if let Some(t) = target_subscription_id.filter(|s| !s.is_empty()) {
+            map.insert("targetSubscriptionId".to_string(), json!(t));
+        }
+        self.post("/crm-api/v1/port-requests", &Value::Object(map))
+            .await
+    }
+
+    /// `POST /crm-api/v1/port-requests/{id}/approve` (no body). Backs
+    /// `port_request.approve`.
+    pub async fn approve_port_request(&self, port_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/port-requests/{port_id}/approve");
+        let resp = self.inner.request(Method::POST, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /crm-api/v1/port-requests/{id}/reject` with `{reason}`. Backs
+    /// `port_request.reject`.
+    pub async fn reject_port_request(
+        &self,
+        port_id: &str,
+        reason: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/port-requests/{port_id}/reject");
+        self.post(&path, &json!({"reason": reason})).await
+    }
+
     async fn post(&self, path: &str, body: &Value) -> Result<Value, ClientError> {
         let resp = self
             .inner

@@ -162,6 +162,16 @@ impl InventoryClient {
             .await
     }
 
+    /// `POST /inventory-api/v1/msisdn/add-range` with `{prefix, count}` — v0.17
+    /// operator bulk pool extension. Backs `inventory.msisdn.add_range`.
+    pub async fn add_msisdn_range(&self, prefix: &str, count: i64) -> Result<Value, ClientError> {
+        self.post(
+            "/inventory-api/v1/msisdn/add-range",
+            Some(&json!({"prefix": prefix, "count": count})),
+        )
+        .await
+    }
+
     async fn get(&self, path: &str) -> Result<Value, ClientError> {
         let resp = self.inner.request(Method::GET, path, None, None).await?;
         resp.json()

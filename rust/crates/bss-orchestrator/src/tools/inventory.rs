@@ -16,6 +16,7 @@ const DESC_MSISDN_GET: &str = include_str!("desc/inventory_msisdn_get.txt");
 const DESC_MSISDN_COUNT: &str = include_str!("desc/inventory_msisdn_count.txt");
 const DESC_ESIM_LIST: &str = include_str!("desc/inventory_esim_list_available.txt");
 const DESC_ESIM_ACTIVATION: &str = include_str!("desc/inventory_esim_get_activation.txt");
+const DESC_ADD_RANGE: &str = include_str!("desc/inventory_msisdn_add_range.txt");
 
 /// Register the five inventory **read** tools, each capturing a clone of `client`.
 pub fn register_inventory_tools(registry: &mut ToolRegistry, client: InventoryClient) {
@@ -101,6 +102,25 @@ pub fn register_inventory_tools(registry: &mut ToolRegistry, client: InventoryCl
             async move {
                 let iccid = req_str(&args, "iccid")?;
                 c.get_activation_code(&iccid).await.map_err(map_err)
+            }
+            .boxed()
+        }),
+    });
+}
+
+/// Register the one inventory **write** tool (`inventory.msisdn.add_range`),
+/// capturing a clone of `client`.
+pub fn register_inventory_write_tools(registry: &mut ToolRegistry, client: InventoryClient) {
+    let c = client;
+    registry.register(RegisteredTool {
+        name: "inventory.msisdn.add_range".to_string(),
+        description: DESC_ADD_RANGE.to_string(),
+        func: Arc::new(move |args, _ctx| {
+            let c = c.clone();
+            async move {
+                let prefix = req_str(&args, "prefix")?;
+                let count = args.get("count").and_then(Value::as_i64).unwrap_or(0);
+                c.add_msisdn_range(&prefix, count).await.map_err(map_err)
             }
             .boxed()
         }),

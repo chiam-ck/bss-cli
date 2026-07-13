@@ -1,0 +1,15 @@
+Manually resolve a STUCK provisioning task (e.g. HLR op completed
+    out-of-band by network ops). Only valid when the task is in ``stuck`` state.
+
+    Args:
+        task_id: Provisioning Task ID with the PTK- prefix (opaque suffix).
+        note: Required free-text note describing what was done.
+
+    Returns:
+        Updated task dict with ``state="completed"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``provisioning.resolve_stuck.task_not_stuck``: the task is in
+              a different state; use ``provisioning.retry_failed`` for
+              ``failed`` tasks.

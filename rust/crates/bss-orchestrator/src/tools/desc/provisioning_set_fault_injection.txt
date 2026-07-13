@@ -1,0 +1,15 @@
+Toggle / adjust fault injection for a provisioning task type. Admin /
+    scenario use — DESTRUCTIVE by policy. First reads the configured
+    injector for ``(task_type, fault_type)``, then patches it.
+
+    Args:
+        task_type: Task type, e.g. ``HLR_PROVISION``.
+        fault_type: One of ``fail_first_attempt``, ``fail_always``, ``stuck``, ``slow``.
+        enabled: Whether the injector fires.
+        probability: Optional probability in [0.0, 1.0].
+
+    Returns:
+        Updated fault-injection dict.
+
+    Raises:
+        NotFound: no injector configured for this (task_type, fault_type) pair.

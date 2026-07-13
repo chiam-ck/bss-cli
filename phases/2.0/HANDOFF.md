@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–12 done — READS COMPLETE + CRM/subscription/order/payment writes (~83/110 tools):**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–13 done — READS COMPLETE + most writes (~90/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -95,12 +95,17 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   remove_method. Conservative live smoke green (real add_card + remove cleanup; bogus-
   offering sync error for create so no line is provisioned).
 
-**Remaining P5c slices (batched — aim ~3):**
-1. **The last operator writes** (~13 tools) — inventory.msisdn.add_range,
-   port_request create/approve/reject, provisioning resolve_stuck/retry_failed/
-   set_fault_injection, promo create/assign, catalog admin add_offering/add_price/
-   window_offering (LLM-hidden), usage.simulate (LLM-hidden). Mostly thin; several are
-   LLM_HIDDEN. Watch for pre-existing write-body mismatches (a 422 may be *faithful*).
+- **Slice 13** — **operational writes** (inventory/port_request/provisioning, 7
+  tools). `provisioning.set_fault_injection` is a list→find→patch composite (NOT_FOUND
+  sentinel). Operator-only. Live smoke green (all error/sentinel paths, no seed
+  mutation).
+
+**Remaining P5c slices (aim ~3):**
+1. **The last writes** (~6 tools) — promo.create/assign, catalog admin
+   add_offering/add_price/window_offering (LLM-hidden), usage.simulate (LLM-hidden).
+   `promo.create` is the biggest (many params → the create-promotion saga on
+   `CatalogClient`). Watch for pre-existing write-body mismatches (a 422 may be
+   *faithful*).
 2. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
    auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
    `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +

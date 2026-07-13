@@ -1,0 +1,11 @@
+Reject a port request with a reason.
+
+    Args:
+        port_request_id: PORT-NNN identifier.
+        reason: Required free-text reason (e.g. "donor carrier denied").
+
+    Returns:
+        Updated port request dict (state=rejected).
+
+    Raises:
+        PolicyViolation: missing reason or invalid state.

@@ -66,7 +66,31 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–12) — 🚧 (2026-07-14)
+### Phase 5c — bss-orchestrator (slices 1–13) — 🚧 (2026-07-14)
+
+**Slice 13 — operational WRITES (inventory / port_request / provisioning).** Seven
+tools. New client methods: `InventoryClient::add_msisdn_range`; `CrmClient::
+create_port_request`/`approve_port_request`/`reject_port_request`;
+`ProvisioningClient::resolve_task`/`retry_task`/`list_fault_injection`/
+`update_fault_injection`.
+- **`provisioning.set_fault_injection` is a list→find→patch composite** — reads the
+  injectors, finds the `(taskType, faultType)` match, and either patches it or returns
+  the `NOT_FOUND` sentinel (matching Python). Destructive (pinned).
+- Port-request + provisioning writes are **operator-only** (never customer_self_serve
+  — v0.17 doctrine); pinned by `operational_writes_profile_and_destructive`.
+
+**Verification:** fmt + clippy clean; workspace green; 7 descriptions byte-pinned.
+**Live smoke** (`operational_writes_live.rs`, `#[ignore]`) green against tech-vm — all
+error/sentinel paths (no seed mutation): an 8-digit `add_range` prefix → `sane_prefix`
+policy stop, invalid port direction → rejected before any row, bogus port/task ids →
+structured errors, and `set_fault_injection` with a bogus pair → the NOT_FOUND
+sentinel (exercising the list→find composite against the live injector config).
+
+**Tool ledger:** ~90/110. Remaining: promo.create/assign, catalog admin
+add_offering/add_price/window_offering (LLM-hidden), usage.simulate (LLM-hidden) —
+~6 writes. Then the `*.mine` wrappers + model client + ownership/caps/prompts.
+
+---
 
 **Slice 12 — order + payment WRITES.** Five tools. `ComClient` gained
 `create_order`/`submit_order`/`cancel_order`; `PaymentClient` gained

@@ -55,9 +55,17 @@ fn registry_with_catalog() -> ToolRegistry {
     let som = SomClient::new("http://localhost:8005", auth.clone()).unwrap();
     bss_orchestrator::tools::som::register_som_tools(&mut reg, som);
     let inventory = InventoryClient::new("http://localhost:8002", auth.clone()).unwrap();
-    bss_orchestrator::tools::inventory::register_inventory_tools(&mut reg, inventory);
+    bss_orchestrator::tools::inventory::register_inventory_tools(&mut reg, inventory.clone());
+    bss_orchestrator::tools::inventory::register_inventory_write_tools(&mut reg, inventory);
     let provisioning = ProvisioningClient::new("http://localhost:8010", auth.clone()).unwrap();
-    bss_orchestrator::tools::provisioning::register_provisioning_tools(&mut reg, provisioning);
+    bss_orchestrator::tools::provisioning::register_provisioning_tools(
+        &mut reg,
+        provisioning.clone(),
+    );
+    bss_orchestrator::tools::provisioning::register_provisioning_write_tools(
+        &mut reg,
+        provisioning,
+    );
     let mediation = MediationClient::new("http://localhost:8007", auth.clone()).unwrap();
     bss_orchestrator::tools::usage::register_usage_tools(&mut reg, mediation);
     // A second CatalogClient handle backs promo.show.
@@ -68,6 +76,7 @@ fn registry_with_catalog() -> ToolRegistry {
     bss_orchestrator::tools::case::register_case_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::case::register_case_write_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::port_request::register_port_request_tools(&mut reg, crm.clone());
+    bss_orchestrator::tools::port_request::register_port_request_write_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::ops::register_ops_tools(&mut reg, crm);
     // trace — Jaeger (no auth) + two audit clients (com/subscription base URLs).
     let jaeger = JaegerClient::new("http://localhost:16686").unwrap();
@@ -172,6 +181,13 @@ async fn tool_descriptions_match_python_oracle() {
         "payment.add_card",
         "payment.remove_method",
         "payment.charge",
+        "inventory.msisdn.add_range",
+        "port_request.create",
+        "port_request.approve",
+        "port_request.reject",
+        "provisioning.resolve_stuck",
+        "provisioning.retry_failed",
+        "provisioning.set_fault_injection",
     ];
     for name in names {
         let tool = registry
@@ -237,6 +253,42 @@ fn subscription_canonical_reads_are_operator_only() {
         assert!(
             !CUSTOMER_SELF_SERVE.contains(&name),
             "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn operational_writes_profile_and_destructive() {
+    use bss_orchestrator::DESTRUCTIVE_TOOLS;
+    for name in [
+        "inventory.msisdn.add_range",
+        "port_request.create",
+        "port_request.approve",
+        "port_request.reject",
+        "provisioning.resolve_stuck",
+        "provisioning.retry_failed",
+        "provisioning.set_fault_injection",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        // Port-request + provisioning writes are operator-only (never chat).
+        assert!(
+            !CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} must not be exposed to customer_self_serve"
+        );
+    }
+    // Only set_fault_injection is destructive in this batch.
+    assert!(DESTRUCTIVE_TOOLS.contains(&"provisioning.set_fault_injection"));
+    for name in [
+        "port_request.approve",
+        "provisioning.retry_failed",
+        "inventory.msisdn.add_range",
+    ] {
+        assert!(
+            !DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must NOT be destructive"
         );
     }
 }
