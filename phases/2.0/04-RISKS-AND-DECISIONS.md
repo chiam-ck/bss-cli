@@ -106,6 +106,26 @@ cutover** — Alembic freeze, image hardening, archiving the Python repo, the 14
 when the *last* Python service is retired and the tree is decommissioned, not the first time
 Rust runs. The overlay's "cut over so far" list is the running ledger.
 
+**D9 — JSON object key ordering: `serde_json` `preserve_order`. (resolved 2026-07-13, P5c slice 4.)**
+Python preserves insertion order for dicts everywhere (Pydantic/FastAPI response bodies,
+`json.dumps`, `httpx.json()` round-trips). Rust's default `serde_json::Value` is backed by a
+`BTreeMap`, so re-serialization **sorts keys alphabetically**. This was invisible through P1–P4
+because every service golden diff compares parsed `Value`s (order-independent — see
+`services/*/tests/live_smoke.rs::get_json`). It first *bites* in the orchestrator (P5c): the
+ReAct loop feeds each tool result to the model as `Value::to_string()`, so a sorted-key
+observation would diverge from the Python transcript the R2 fixture-corpus parity gate replays,
+and **projected-dict** tools (`subscription.get_esim_activation` builds a fixed-key dict) would
+emit visibly-reordered JSON. **Resolution: enable `preserve_order` workspace-wide** (root
+`Cargo.toml`, `serde_json = { features = ["preserve_order"] }`; the feature unifies across the
+graph). `Value`'s map becomes an `IndexMap`, so parse→reserialize and `json!` both preserve
+insertion order — matching Python everywhere at once (services *and* tool observations). Verified
+**zero test breakage**: the whole workspace stays green (the golden diffs are `Value ==`, so
+unaffected; nothing string-compares serialized JSON with a sorted-key expectation). This
+supersedes the ad-hoc P5b workaround rationale (pending-destructive arg order was preserved via a
+manual `IndexMap` + `py_repr` read of the `json` text column — still correct, just no longer the
+*only* order-preserving path). Behaviour-frozen holds: JSON key order is not external behaviour
+(consumers parse), and the running Rust containers only change wire ordering on their next build.
+
 ## 3. Estimate & error bars
 
 **55–77 person-weeks** across phases (doc 03). Basis: ~87k LOC of non-test Python that

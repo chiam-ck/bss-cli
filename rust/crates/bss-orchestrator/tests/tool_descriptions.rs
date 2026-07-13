@@ -26,9 +26,10 @@ fn registry_with_catalog() -> ToolRegistry {
     let auth = Arc::new(TokenAuthProvider::new("x").unwrap());
     let catalog = CatalogClient::new("http://localhost:8001", auth.clone()).unwrap();
     bss_orchestrator::tools::catalog::register_catalog_tools(&mut reg, catalog);
-    let crm = CrmClient::new("http://localhost:8006", auth.clone()).unwrap();
-    let subscription = SubscriptionClient::new("http://localhost:8007", auth).unwrap();
-    bss_orchestrator::tools::customer::register_customer_tools(&mut reg, crm, subscription);
+    let crm = CrmClient::new("http://localhost:8002", auth.clone()).unwrap();
+    let subscription = SubscriptionClient::new("http://localhost:8006", auth).unwrap();
+    bss_orchestrator::tools::customer::register_customer_tools(&mut reg, crm, subscription.clone());
+    bss_orchestrator::tools::subscription::register_subscription_tools(&mut reg, subscription);
     reg
 }
 
@@ -54,6 +55,10 @@ fn tool_descriptions_match_python_oracle() {
         "customer.find_by_email",
         "customer.get_kyc_status",
         "interaction.list",
+        "subscription.get",
+        "subscription.list_for_customer",
+        "subscription.get_balance",
+        "subscription.get_esim_activation",
     ];
     for name in names {
         let tool = registry
@@ -98,6 +103,27 @@ fn catalog_reads_are_in_the_expected_profiles() {
         assert!(
             !CUSTOMER_SELF_SERVE.contains(&name),
             "{name} must not be in customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn subscription_canonical_reads_are_operator_only() {
+    // The canonical subscription reads are operator_cockpit — the chat surface
+    // sees `subscription.*_mine` ownership wrappers instead (a later slice).
+    for name in [
+        "subscription.get",
+        "subscription.list_for_customer",
+        "subscription.get_balance",
+        "subscription.get_esim_activation",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        assert!(
+            !CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} must not be exposed to customer_self_serve"
         );
     }
 }

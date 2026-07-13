@@ -10,6 +10,7 @@
 pub mod catalog;
 pub mod clock;
 pub mod customer;
+pub mod subscription;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;

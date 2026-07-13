@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::auth::AuthProvider;
 use crate::base::{BssClient, DEFAULT_TIMEOUT};
@@ -94,6 +94,35 @@ impl SubscriptionClient {
         resp.json()
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /subscription-api/v1/subscription/{id}/balance` — bundle balances. A
+    /// 404 maps to [`ClientError::NotFound`]. Backs `subscription.get_balance`.
+    pub async fn get_balance(&self, subscription_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/subscription-api/v1/subscription/{subscription_id}/balance");
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// Resolve the eSIM activation payload for a subscription. Convenience
+    /// composite (no dedicated endpoint): reads the subscription, then projects
+    /// `{subscriptionId, iccid, msisdn, activationCode, imsi}` — the shape the
+    /// first-time-QR / re-download flow wants. Key order matches the Python
+    /// client's dict-literal insertion order (preserved on the wire via D9's
+    /// `serde_json` `preserve_order`). Missing fields project to `null`, mirroring
+    /// Python's `sub.get(...)`. Backs `subscription.get_esim_activation`.
+    pub async fn get_esim_activation(&self, subscription_id: &str) -> Result<Value, ClientError> {
+        let sub = self.get(subscription_id).await?;
+        let field = |k: &str| sub.get(k).cloned().unwrap_or(Value::Null);
+        Ok(json!({
+            "subscriptionId": subscription_id,
+            "iccid": field("iccid"),
+            "msisdn": field("msisdn"),
+            "activationCode": field("activationCode"),
+            "imsi": field("imsi"),
+        }))
     }
 
     /// `POST /subscription-api/v1/subscription` — create and activate. `body`

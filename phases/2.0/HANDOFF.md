@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–3 done:**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–4 done:**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -37,24 +37,29 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   reads via `join4`, `return_exceptions`-style degrade to `[]`, `_extras` stitched on.
   Extended `CrmClient` with the six read methods; promoted `map_client_err`/`req_str`/
   `opt_str` to `tools/mod.rs` (shared helper kit). CRM reads are **operator_cockpit-
-  only** (chat sees the `*.mine` wrappers, not these). **R2 seam flagged:** tool
-  observations serialize with **sorted keys** (no serde_json `preserve_order`) vs
-  Python insertion order — invisible for verbatim tools under `Value ==`, but the
-  **projected-dict** subscription reads (`get_esim_activation`) are deferred to their
-  own slice where that ordering is decided (see PROGRESS §Phase 5c slice 3).
+  only** (chat sees the `*.mine` wrappers, not these).
+- **Slice 4** — the **subscription read family** (`subscription.get`,
+  `list_for_customer`, `get_balance`, `get_esim_activation`). `get_esim_activation`
+  is the first **projected-dict** tool, which forced **D9: `serde_json`
+  `preserve_order` workspace-wide** so Rust matches Python's insertion order for both
+  verbatim reserialization and `json!` literals (the R2 seam flagged in slice 3 — now
+  closed; zero test breakage since the service goldens are `Value ==`). Extended
+  `SubscriptionClient` with `get_balance`/`get_esim_activation`. D9 is pinned by the
+  live smoke's serialized-key-order assertion.
 
 **Remaining P5c slices:**
-1. **The ~100 remaining tools**, profile by profile, each following the slice-2/3
+1. **The ~90 remaining tools**, profile by profile, each following the slice-2/3/4
    pattern (capture client, return verbatim, map errors) with descriptions pinned
-   against `tests/golden/tool_descriptions.json`. Natural next: the **subscription +
-   payment + order reads** (operator_cockpit), then the **`customer_self_serve`
-   `*.mine` wrappers** — which need the auth-context actor binding
-   (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an `assert_subscription_owned`
-   ownership pre-check, `_annotate_pricing` (rust_decimal + `discount_label`), and a
-   new **MediationClient** + `PaymentClient.list_payments` / `CrmClient` case-write
-   methods. Then the operator writes. Many need new `bss-clients` methods (add as
-   consumers, mirroring the catalog/CRM extensions). **schemars** arg schemas (D5)
-   when the model client lands. Keep descriptions/param docs byte-identical (R2).
+   against `tests/golden/tool_descriptions.json`. Natural next: the **payment + order
+   + service/SOM + inventory + provisioning + ticket/case reads** (operator_cockpit),
+   then the **`customer_self_serve` `*.mine` wrappers** — which need the auth-context
+   actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
+   `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal
+   + `discount_label`), and a new **MediationClient** + `PaymentClient.list_payments`
+   / `CrmClient` case-write methods. Then the operator writes. Many need new
+   `bss-clients` methods (add as consumers, mirroring the catalog/CRM/subscription
+   extensions). **schemars** arg schemas (D5) when the model client lands. Keep
+   descriptions/param docs byte-identical (R2).
 2. **OpenRouter `ChatModel` client** (reqwest direct) — a real model drives the loop.
 3. **Ownership trip-wire** (`OWNERSHIP_PATHS` / `assert_owned_output`) + **chat
    caps** (hourly + monthly-cost, fail-closed) + `validate_profiles()`.

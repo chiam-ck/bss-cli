@@ -1,0 +1,11 @@
+Read bundle balances for a subscription. Use this before offering a
+    VAS top-up — the user wants to know ``used / total`` for each resource.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        Balance dict ``{subscriptionId, balances: [{type, used, total, unit}]}``.
+
+    Raises:
+        NotFound: unknown subscription.

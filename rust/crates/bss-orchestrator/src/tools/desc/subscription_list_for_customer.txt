@@ -1,0 +1,10 @@
+List a customer's subscriptions.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+
+    Returns:
+        List of subscription summary dicts. Call ``subscription.get`` for full detail.
+
+    Raises:
+        (none expected — read tool)

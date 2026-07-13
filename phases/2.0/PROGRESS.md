@@ -66,7 +66,38 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–3) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–4) — 🚧 (2026-07-13)
+
+**Slice 4 — the subscription read family + the key-ordering resolution (D9).**
+Ported four operator_cockpit read tools: `subscription.get`,
+`subscription.list_for_customer`, `subscription.get_balance`,
+`subscription.get_esim_activation`. First three verbatim; `get_esim_activation` is
+the first **projected-dict** tool (the client reads the subscription and projects
+`{subscriptionId, iccid, msisdn, activationCode, imsi}` — no dedicated endpoint,
+mirroring the Python client).
+
+- **Resolved the R2 key-ordering seam flagged in slice 3 → D9: enabled `serde_json`
+  `preserve_order` workspace-wide.** Python preserves dict insertion order
+  everywhere; Rust's default `Value` (BTreeMap) sorts keys, so the ReAct loop's
+  `Value::to_string()` observation would diverge from the Python transcript the R2
+  gate replays — and a projected-dict tool would emit visibly-reordered JSON. The
+  `preserve_order` feature swaps `Value`'s map for `IndexMap`, matching Python for
+  *both* verbatim reserialization and `json!` literals at once. **Verified zero test
+  breakage:** the whole workspace stays green because every service golden diff is
+  `Value ==` (order-independent — `get_json` parses); the three already-ported live
+  smokes (catalog/CRM/subscription) re-ran green against the stack. See
+  `04-RISKS-AND-DECISIONS.md` D9 for the full rationale.
+- Extended `SubscriptionClient` with `get_balance` and `get_esim_activation`
+  (`get`/`list_for_customer` were already ported P1–P2). The projected dict is built
+  with `json!` in Python dict-literal order; missing fields → `null` (mirroring
+  `sub.get(...)`).
+- **Live smoke** (`subscription_tools_live.rs`, `#[ignore]`, ran green against
+  tech-vm): verbatim reads equal direct client calls; **D9 is pinned by asserting the
+  serialized `get_esim_activation` observation carries its five keys in insertion
+  order, not alphabetical** — a regression of `preserve_order` fails this test.
+  Subscription writes + the `*.mine` chat wrappers stay for later slices.
+
+---
 
 **Slice 3 — the CRM read family + shared tool helpers.** Second application of the
 slice-2 template, plus the first **composite** tool. Ported six read tools:
