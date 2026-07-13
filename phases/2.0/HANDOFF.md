@@ -16,9 +16,27 @@ subscription (4b) + crm (4c). The **portals + orchestrator + CLI** remain Python
 `bss-cockpit` core are *library* crates that cut over in P6/P7 when the Rust
 portals/CLI link them. The gate is **transcript parity**, not a hero-suite swap.
 Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **P5c
-`bss-orchestrator`** (next — the ReAct loop + 109 tools + guard stack + fixture
-player). Neither P5a nor P5b is tagged — the `v2.0.0-phase.5` tag caps the whole
-phase after P5c.
+`bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
+`v2.0.0-phase.5` tag caps the whole phase after P5c completes.
+
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slice 1 is done:** the
+hand-rolled ReAct loop (`agent::astream_once`, replacing LangGraph), the
+`MockChatModel` fixture player, the guard stack (3-strike failure bail,
+identical-call stuck bail, destructive gating with batched/granular autonomy), the
+tool registry + profiles, and the `clock.*` pilot tool family — all green under a
+fixture-driven transcript test + a description golden. **Remaining P5c slices:**
+1. **OpenRouter `ChatModel` client** (reqwest direct) — so a real model can drive
+   the same loop.
+2. **The ~106 remaining tools**, profile by profile (`customer_self_serve` first —
+   smaller + ownership-critical), each wrapping a `bss-clients` call, with
+   **schemars** arg schemas (D5) and descriptions pinned against the captured
+   `tests/golden/tool_descriptions.json`. Keep tool descriptions/param docs
+   byte-identical (R2 — they drive model behaviour).
+3. **Ownership trip-wire** (`OWNERSHIP_PATHS` / `assert_owned_output`) + **chat
+   caps** (hourly + monthly-cost, fail-closed) + `validate_profiles()`.
+4. **Prompts**: `SYSTEM_PROMPT` + the customer-chat prompt (verbatim; do NOT add
+   the ITERATIVE FLOW block to customer chat — doctrine guard).
+   The R2 fixture-corpus transcript-parity gate closes when the tools land.
 
 - **P5a `bss-knowledge` ✅ ported.** `rust/crates/bss-knowledge`: chunker + FTS
   search + indexer. Chunker golden byte-for-byte vs the oracle across the three

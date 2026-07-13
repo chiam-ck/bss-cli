@@ -1,0 +1,10 @@
+Resume the scenario clock. NOT IMPLEMENTED in v0.1.
+
+    Args:
+        (none)
+
+    Returns:
+        v0.1: structured ``NOT_IMPLEMENTED`` payload.
+
+    Raises:
+        (none in v0.1)

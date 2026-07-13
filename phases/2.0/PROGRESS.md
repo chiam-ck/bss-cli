@@ -66,6 +66,58 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
+### Phase 5c — bss-orchestrator (slice 1: loop + fixture player + guards) — 🚧 (2026-07-13)
+
+`rust/crates/bss-orchestrator` — the LLM agent brain, in-process-linked by the
+P6/P7 portals + CLI (never over the network — D3). This is the biggest, hardest
+crate (~7.2k Py LOC + 110 tools), so it lands over **several slices**. Slice 1 is
+the hardest architectural core proven on the smallest real tool surface:
+
+- **`agent::astream_once`** — the **hand-rolled ReAct loop** that replaces
+  LangGraph's `create_react_agent`: system prompt + prior transcript + user →
+  model → run `tool_calls` → append tool results → repeat until the model stops
+  calling tools. Emits the same `AgentEvent` sequence as the Python stream, incl.
+  the full **guard stack**: the 3-strike **failure bail**, the identical-call
+  **stuck bail** (`IdenticalCallTracker`), and destructive gating. `TurnUsage`
+  emitted before `FinalMessage` (the SSE-ordering lesson). Transcript-rehydration
+  parser (`messages_from_transcript`) ported with the 32k-char cap.
+- **`chat_model`** — the `ChatModel` seam (generic, so the loop drives either the
+  mock or a real client) + the **`MockChatModel` fixture player**: substring-match
+  on the latest user message → walk the `steps` array, `mock_call_{n}_{i}` ids
+  post-increment. This is the R2 acceptance harness.
+- **`safety`** — `DESTRUCTIVE_TOOLS` + `gate_destructive` with `batched`/`granular`
+  autonomy + shared `LoopState` (granular re-gates each destructive after the first).
+- **`tools`** — the registry + `ToolSpec` + the `customer_self_serve`/
+  `operator_cockpit` **profile** sets + the `LLM_HIDDEN_TOOLS` set. Tools are async
+  `Fn(Value, ToolCtx) -> Result<Value, ToolError>` (matching Python's "tool is a
+  function"). First real family: **`clock.*`** (dependency-free → deterministic).
+- **`events`** — the `AgentEvent` enum (PromptReceived / ToolCallStarted /
+  ToolCallCompleted / FinalMessage / Error / TurnUsage).
+
+**R2 discipline established.** Tool descriptions are the LLM-facing semantic
+contract (a behavioural contract with the model), so a golden `{name: description}`
+map for **all 110 tools** was captured from the Python registry up front; the
+`clock.*` descriptions are embedded byte-for-byte (`include_str!`) and pinned. Each
+future tool family validates its slice against the same golden as it lands.
+
+**Following slices (P5c.2+):** the OpenRouter `ChatModel` client (reqwest, D4-style
+direct); the remaining ~106 tools (schemars arg schemas per **D5**, profile by
+profile, `customer_self_serve` first) each wrapping a `bss-clients` call; the
+ownership trip-wire (`OWNERSHIP_PATHS`) + `chat_caps`; `SYSTEM_PROMPT` +
+customer-chat prompt; `validate_profiles()` full-coverage check. The
+**fixture-corpus transcript-parity gate (R2)** closes when the tools land.
+
+**Verification.**
+- fmt + clippy `-D warnings` clean; workspace tests green (75 groups, no regression).
+- **Description golden** (`tests/tool_descriptions.rs`, CI): the `clock.*`
+  descriptions byte-for-byte vs the Python registry docstrings.
+- **ReAct-loop transcript** (`tests/agent_loop.rs`, CI, frozen clock, no DB/HTTP):
+  a fixture drives four transcripts — happy `clock.now` round trip (deterministic
+  result under a frozen clock), destructive **block** (and gate-opens under
+  `allow_destructive=true`), 3-strike **failure bail**, identical-call **stuck
+  bail** — each asserting the exact `AgentEvent` sequence.
+- **Safety units**: batched authorises the loop; granular re-gates after the first.
+
 ### Phase 5b — bss-cockpit core — ✅ PORTED (2026-07-13)
 
 `rust/crates/bss-cockpit` — the operator-cockpit **core** the orchestrator + both

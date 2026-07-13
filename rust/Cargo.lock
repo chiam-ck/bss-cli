@@ -600,6 +600,19 @@ name = "bss-models"
 version = "0.1.0"
 
 [[package]]
+name = "bss-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "bss-clock",
+ "chrono",
+ "futures-util",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "bss-telemetry"
 version = "0.1.0"
 dependencies = [
