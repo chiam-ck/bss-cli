@@ -67,10 +67,13 @@ fn registry_with_catalog() -> ToolRegistry {
         provisioning,
     );
     let mediation = MediationClient::new("http://localhost:8007", auth.clone()).unwrap();
-    bss_orchestrator::tools::usage::register_usage_tools(&mut reg, mediation);
-    // A second CatalogClient handle backs promo.show.
+    bss_orchestrator::tools::usage::register_usage_tools(&mut reg, mediation.clone());
+    bss_orchestrator::tools::usage::register_usage_write_tools(&mut reg, mediation);
+    // A second CatalogClient handle backs promo + catalog-admin writes.
     let catalog2 = CatalogClient::new("http://localhost:8001", auth).unwrap();
-    bss_orchestrator::tools::promo::register_promo_tools(&mut reg, catalog2);
+    bss_orchestrator::tools::promo::register_promo_tools(&mut reg, catalog2.clone());
+    bss_orchestrator::tools::promo::register_promo_write_tools(&mut reg, catalog2.clone());
+    bss_orchestrator::tools::catalog::register_catalog_admin_write_tools(&mut reg, catalog2);
     bss_orchestrator::tools::ticket::register_ticket_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::ticket::register_ticket_write_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::case::register_case_tools(&mut reg, crm.clone());
@@ -188,6 +191,12 @@ async fn tool_descriptions_match_python_oracle() {
         "provisioning.resolve_stuck",
         "provisioning.retry_failed",
         "provisioning.set_fault_injection",
+        "promo.create",
+        "promo.assign",
+        "catalog.add_offering",
+        "catalog.add_price",
+        "catalog.window_offering",
+        "usage.simulate",
     ];
     for name in names {
         let tool = registry
@@ -253,6 +262,34 @@ fn subscription_canonical_reads_are_operator_only() {
         assert!(
             !CUSTOMER_SELF_SERVE.contains(&name),
             "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn promo_catalog_admin_usage_writes_profile_and_hidden() {
+    use bss_orchestrator::tools::LLM_HIDDEN_TOOLS;
+    // promo writes are operator_cockpit (LLM-visible).
+    for name in ["promo.create", "promo.assign"] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        assert!(
+            !LLM_HIDDEN_TOOLS.contains(&name),
+            "{name} must NOT be hidden"
+        );
+    }
+    // catalog admin + usage.simulate are LLM-hidden (scenario/CLI scaffolding).
+    for name in [
+        "catalog.add_offering",
+        "catalog.add_price",
+        "catalog.window_offering",
+        "usage.simulate",
+    ] {
+        assert!(
+            LLM_HIDDEN_TOOLS.contains(&name),
+            "{name} must be in LLM_HIDDEN_TOOLS"
         );
     }
 }
@@ -565,7 +602,7 @@ async fn surface_intersects_profile_with_registry() {
     assert!(surface.contains(&"customer.get".to_string()));
     // clock.freeze/advance/unfreeze are operator_cockpit + registered.
     assert!(surface.contains(&"clock.freeze".to_string()));
-    // A profile tool that isn't registered yet must not appear (promo/inventory/
-    // provisioning writes are a later slice).
-    assert!(!surface.contains(&"promo.create".to_string()));
+    // A profile tool that isn't registered yet must not appear (the customer_self_serve
+    // `*.mine` wrappers are a later slice).
+    assert!(!surface.contains(&"subscription.list_mine".to_string()));
 }

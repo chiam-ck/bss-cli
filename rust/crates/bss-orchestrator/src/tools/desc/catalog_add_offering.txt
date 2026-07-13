@@ -1,0 +1,22 @@
+Admin: add a new product offering with price + allowances. Hidden from LLM.
+
+    Args:
+        offering_id: Plan ID (e.g. ``PLAN_XS``).
+        name: Display name.
+        amount: Recurring price amount as a string (Decimal-safe).
+        currency: ISO-4217. Default SGD.
+        valid_from: Optional ISO-8601; NULL = always-active.
+        valid_to: Optional ISO-8601; NULL = no end (exclusive boundary).
+        data_mb: Optional data allowance.
+        voice_minutes: Optional voice allowance.
+        sms_count: Optional SMS allowance.
+        data_roaming_mb: Optional roaming-data allowance (v0.20+). 0 is
+            permitted (plan with no included roaming, customer can still
+            top up via VAS_ROAMING_*).
+
+    Returns:
+        TMF620 offering dict.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``catalog.offering.already_exists``: id already in use.

@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–13 done — READS COMPLETE + most writes (~90/110 tools):**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–14 done — ENTIRE OPERATOR SURFACE (reads + writes) ported (~96/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -100,21 +100,28 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   sentinel). Operator-only. Live smoke green (all error/sentinel paths, no seed
   mutation).
 
-**Remaining P5c slices (aim ~3):**
-1. **The last writes** (~6 tools) — promo.create/assign, catalog admin
-   add_offering/add_price/window_offering (LLM-hidden), usage.simulate (LLM-hidden).
-   `promo.create` is the biggest (many params → the create-promotion saga on
-   `CatalogClient`). Watch for pre-existing write-body mismatches (a 422 may be
-   *faithful*).
-2. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
+- **Slice 14** — the **last writes** (promo + catalog admin + usage.simulate, 6
+  tools). `CatalogClient` create_promotion/assign_promotion/admin_*; `MediationClient`
+  submit_usage. catalog admin + usage.simulate are LLM-hidden. Operator surface
+  complete. Live smoke green (error paths only).
+
+**Remaining P5c slices (aim ~2):**
+1. **`customer_self_serve` `*.mine` wrappers** (~14) — the genuinely distinct one:
    auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
    `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +
-   `discount_label`). Reuses the now-ported Crm/Subscription/Payment/Mediation methods.
-3. **OpenRouter `ChatModel` client** (reqwest direct) + the **ownership trip-wire**
+   `discount_label`). **Reuses the now-ported client methods** (Crm/Subscription/
+   Payment/Mediation) — the underlying calls all exist. Tools:
+   subscription.{list_mine,get_mine,get_balance_mine,get_lpa_mine},
+   usage.history_mine, customer.get_mine, payment.{method_list_mine,charge_history_mine},
+   vas.purchase_for_me, subscription.{schedule_plan_change_mine,cancel_pending_plan_
+   change_mine,terminate_mine}, case.{open_for_me,list_for_me}. `case.open_for_me`
+   hashes the transcript (SHA-256) + `store_chat_transcript` (already ported).
+2. **OpenRouter `ChatModel` client** (reqwest direct) + the **ownership trip-wire**
    (`OWNERSHIP_PATHS`/`assert_owned_output`) + **chat caps** (hourly + monthly-cost,
    fail-closed) + `validate_profiles()`, and the **prompts** (`SYSTEM_PROMPT` +
    customer-chat; do NOT add the ITERATIVE FLOW block to customer chat — doctrine
-   guard `test_iterative_flow_scope`).
+   guard `test_iterative_flow_scope`). Closes the R2 fixture-corpus transcript-parity
+   gate → tag `v2.0.0-phase.5`.
 
 Keep descriptions/param docs byte-identical (R2); **schemars** arg schemas (D5) land
 with the model client. The R2 fixture-corpus transcript-parity gate closes when the

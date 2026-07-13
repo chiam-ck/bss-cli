@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 
 use crate::auth::AuthProvider;
 use crate::base::{BssClient, DEFAULT_TIMEOUT};
@@ -193,6 +193,186 @@ impl CatalogClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 }
+
+// ── writes (promo saga + admin) ─────────────────────────────────────────────
+impl CatalogClient {
+    /// `POST /tmf-api/promotionManagement/v4/promotion` — the create-promotion saga
+    /// (BSS money terms + loyalty code). Optional fields sent only when present;
+    /// `valid_from`/`valid_to` are ISO strings sent verbatim. Backs `promo.create`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_promotion(
+        &self,
+        promotion_id: &str,
+        discount_type: &str,
+        discount_value: &str,
+        duration_kind: &str,
+        audience: &str,
+        currency: &str,
+        code: Option<&str>,
+        promo_code_kind: Option<&str>,
+        applicable_offering_ids: Option<&[String]>,
+        periods_total: Option<i64>,
+        valid_from: Option<&str>,
+        valid_to: Option<&str>,
+        display_name: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut m = Map::new();
+        m.insert("promotionId".to_string(), json!(promotion_id));
+        m.insert("discountType".to_string(), json!(discount_type));
+        m.insert("discountValue".to_string(), json!(discount_value));
+        m.insert("durationKind".to_string(), json!(duration_kind));
+        m.insert("audience".to_string(), json!(audience));
+        m.insert("currency".to_string(), json!(currency));
+        if let Some(v) = code {
+            m.insert("code".to_string(), json!(v));
+        }
+        if let Some(v) = promo_code_kind {
+            m.insert("promoCodeKind".to_string(), json!(v));
+        }
+        if let Some(v) = applicable_offering_ids {
+            m.insert("applicableOfferingIds".to_string(), json!(v));
+        }
+        if let Some(v) = periods_total {
+            m.insert("periodsTotal".to_string(), json!(v));
+        }
+        if let Some(v) = valid_from {
+            m.insert("validFrom".to_string(), json!(v));
+        }
+        if let Some(v) = valid_to {
+            m.insert("validTo".to_string(), json!(v));
+        }
+        if let Some(v) = display_name {
+            m.insert("displayName".to_string(), json!(v));
+        }
+        self.send(Method::POST, PROMO_PATH, Some(&Value::Object(m)))
+            .await
+    }
+
+    /// `POST …/promotion/{id}/assign` with `{customerIds}`. Backs `promo.assign`.
+    pub async fn assign_promotion(
+        &self,
+        promotion_id: &str,
+        customer_ids: &[String],
+    ) -> Result<Value, ClientError> {
+        let path = format!("{PROMO_PATH}/{promotion_id}/assign");
+        self.send(
+            Method::POST,
+            &path,
+            Some(&json!({"customerIds": customer_ids})),
+        )
+        .await
+    }
+
+    /// `POST /admin/catalog/offering` — add a new offering + its opening price.
+    /// Optional allowances/window sent only when present. Backs `catalog.add_offering`
+    /// (LLM-hidden).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn admin_add_offering(
+        &self,
+        offering_id: &str,
+        name: &str,
+        amount: &str,
+        currency: &str,
+        spec_id: &str,
+        valid_from: Option<&str>,
+        valid_to: Option<&str>,
+        data_mb: Option<i64>,
+        voice_minutes: Option<i64>,
+        sms_count: Option<i64>,
+        data_roaming_mb: Option<i64>,
+    ) -> Result<Value, ClientError> {
+        let mut m = Map::new();
+        m.insert("offeringId".to_string(), json!(offering_id));
+        m.insert("name".to_string(), json!(name));
+        m.insert("specId".to_string(), json!(spec_id));
+        m.insert("amount".to_string(), json!(amount));
+        m.insert("currency".to_string(), json!(currency));
+        for (k, v) in [
+            ("validFrom", valid_from.map(|s| json!(s))),
+            ("validTo", valid_to.map(|s| json!(s))),
+            ("dataMb", data_mb.map(|v| json!(v))),
+            ("voiceMinutes", voice_minutes.map(|v| json!(v))),
+            ("smsCount", sms_count.map(|v| json!(v))),
+            ("dataRoamingMb", data_roaming_mb.map(|v| json!(v))),
+        ] {
+            if let Some(val) = v {
+                m.insert(k.to_string(), val);
+            }
+        }
+        self.send(
+            Method::POST,
+            "/admin/catalog/offering",
+            Some(&Value::Object(m)),
+        )
+        .await
+    }
+
+    /// `POST /admin/catalog/offering/{id}/price` — add a price row. `retire_current`
+    /// stamps existing open rows so the new one takes over. Backs `catalog.add_price`
+    /// (LLM-hidden).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn admin_add_price(
+        &self,
+        offering_id: &str,
+        price_id: &str,
+        amount: &str,
+        currency: &str,
+        valid_from: Option<&str>,
+        valid_to: Option<&str>,
+        retire_current: bool,
+    ) -> Result<Value, ClientError> {
+        let mut m = Map::new();
+        m.insert("priceId".to_string(), json!(price_id));
+        m.insert("amount".to_string(), json!(amount));
+        m.insert("currency".to_string(), json!(currency));
+        m.insert("retireCurrent".to_string(), json!(retire_current));
+        if let Some(v) = valid_from {
+            m.insert("validFrom".to_string(), json!(v));
+        }
+        if let Some(v) = valid_to {
+            m.insert("validTo".to_string(), json!(v));
+        }
+        let path = format!("/admin/catalog/offering/{offering_id}/price");
+        self.send(Method::POST, &path, Some(&Value::Object(m)))
+            .await
+    }
+
+    /// `PATCH /admin/catalog/offering/{id}/window` — set the validity window
+    /// (`validFrom`/`validTo`, each sent when present). Backs `catalog.window_offering`
+    /// (LLM-hidden).
+    pub async fn admin_set_offering_window(
+        &self,
+        offering_id: &str,
+        valid_from: Option<&str>,
+        valid_to: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut m = Map::new();
+        if let Some(v) = valid_from {
+            m.insert("validFrom".to_string(), json!(v));
+        }
+        if let Some(v) = valid_to {
+            m.insert("validTo".to_string(), json!(v));
+        }
+        let path = format!("/admin/catalog/offering/{offering_id}/window");
+        self.send(Method::PATCH, &path, Some(&Value::Object(m)))
+            .await
+    }
+
+    async fn send(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, ClientError> {
+        let resp = self.inner.request(method, path, body, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+}
+
+/// The TMF671 promotion collection path (mirrors the Python client's `_PROMO`).
+const PROMO_PATH: &str = "/tmf-api/promotionManagement/v4/promotion";
 
 /// Minimal query-value encoding for the characters that appear in ids/codes
 /// (space + `&`/`+`/`=`/`%`/`#`). Ids are `CUST-001`-shaped, so this is a

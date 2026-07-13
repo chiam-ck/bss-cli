@@ -66,7 +66,34 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–13) — 🚧 (2026-07-14)
+### Phase 5c — bss-orchestrator (slices 1–14) — 🚧 (2026-07-14)
+
+**Slice 14 — the last writes: promo + catalog admin + usage.simulate (OPERATOR
+SURFACE COMPLETE).** Six tools. `CatalogClient` gained `create_promotion` (the
+13-param create-promotion saga), `assign_promotion`, and the admin
+`admin_add_offering`/`admin_add_price`/`admin_set_offering_window`; `MediationClient`
+gained `submit_usage` (`roamingIndicator` only when true). Tools:
+- `promo.create`/`promo.assign` (operator-visible); `catalog.add_offering`/`add_price`/
+  `window_offering` + `usage.simulate` are **LLM-hidden** (scenario/CLI scaffolding) —
+  pinned by `promo_catalog_admin_usage_writes_profile_and_hidden`.
+- `usage.simulate`'s `event_time` defaults to whole-second `bss_clock::now()`
+  (`clock_now().replace(microsecond=0).isoformat()`), matching the clock.now seam.
+- `valid_from`/`valid_to` are ISO strings passed verbatim (the Python
+  `fromisoformat().isoformat()` round-trip is identity for canonical values).
+
+**Verification:** fmt + clippy clean; workspace green; 6 descriptions byte-pinned.
+**Live smoke** (`promo_catalog_usage_writes_live.rs`, `#[ignore]`) green against
+tech-vm — error paths only (no promotion/offering/usage row created): `multi` promo
+without periods_total → policy stop, bogus promo assign → error, catalog admin on a
+bogus offering → error, `usage.simulate` on an unknown MSISDN → mediation's
+block-at-edge `subscription_must_exist`.
+
+**🎉 Tool ledger: ~96/110 — the ENTIRE operator tool surface (reads + writes) is
+ported.** Remaining: the **`customer_self_serve` `*.mine`** wrappers (~14, the
+auth-binding/ownership slice), then the **OpenRouter model client + ownership
+trip-wire + chat caps + prompts** → then `v2.0.0-phase.5`.
+
+---
 
 **Slice 13 — operational WRITES (inventory / port_request / provisioning).** Seven
 tools. New client methods: `InventoryClient::add_msisdn_range`; `CrmClient::

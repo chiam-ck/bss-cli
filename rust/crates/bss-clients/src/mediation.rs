@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::Method;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use crate::auth::AuthProvider;
 use crate::base::{BssClient, DEFAULT_TIMEOUT};
@@ -66,6 +66,44 @@ impl MediationClient {
         }
         let path = format!("/tmf-api/usageManagement/v4/usage?{}", params.join("&"));
         let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+}
+
+// ── writes ──────────────────────────────────────────────────────────────────
+impl MediationClient {
+    /// `POST /tmf-api/usageManagement/v4/usage` — submit one usage event.
+    /// `roamingIndicator` is included only when true (matching the Python client).
+    /// Backs `usage.simulate` (LLM-hidden). Returns the usage doc.
+    pub async fn submit_usage(
+        &self,
+        msisdn: &str,
+        event_type: &str,
+        event_time: &str,
+        quantity: i64,
+        unit: &str,
+        roaming_indicator: bool,
+    ) -> Result<Value, ClientError> {
+        let mut m = serde_json::Map::new();
+        m.insert("msisdn".to_string(), json!(msisdn));
+        m.insert("eventType".to_string(), json!(event_type));
+        m.insert("eventTime".to_string(), json!(event_time));
+        m.insert("quantity".to_string(), json!(quantity));
+        m.insert("unit".to_string(), json!(unit));
+        if roaming_indicator {
+            m.insert("roamingIndicator".to_string(), json!(true));
+        }
+        let resp = self
+            .inner
+            .request(
+                Method::POST,
+                "/tmf-api/usageManagement/v4/usage",
+                Some(&Value::Object(m)),
+                None,
+            )
+            .await?;
         resp.json()
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))

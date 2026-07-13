@@ -1,0 +1,23 @@
+Submit a single usage event to mediation. Primary way for the LLM /
+    scenario runner to inject data/voice/SMS usage. Mediation decrements the
+    matching subscription balance synchronously and may block the
+    subscription if a bundle hits zero.
+
+    Args:
+        msisdn: 8-digit mobile number of the consuming subscription.
+        event_type: One of ``data``, ``voice_minutes``, ``sms``.
+        quantity: Integer amount in ``unit``.
+        unit: One of ``mb``, ``gb``, ``minutes``, ``count``.
+        event_time: Optional ISO-8601 timestamp. Defaults to ``now`` (UTC).
+        roaming_indicator: v0.17 — set True to mark this event as
+            occurring on a visited (roaming) network. Rating routes
+            the decrement to the ``data_roaming`` BundleBalance and
+            independent block-on-exhaust applies.
+
+    Returns:
+        Usage dict ``{id, msisdn, subscriptionId, processed, processingError?}``.
+        If ``processed=False``, check ``processingError`` for the rejection reason.
+
+    Raises:
+        PolicyViolationFromServer: various; the usual recoveries are to check
+        subscription state and add VAS if exhausted.
