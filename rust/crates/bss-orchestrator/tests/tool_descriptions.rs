@@ -38,7 +38,14 @@ fn registry_with_catalog() -> ToolRegistry {
         subscription.clone(),
     );
     bss_orchestrator::tools::customer::register_customer_write_tools(&mut reg, crm.clone());
-    bss_orchestrator::tools::subscription::register_subscription_tools(&mut reg, subscription);
+    bss_orchestrator::tools::subscription::register_subscription_tools(
+        &mut reg,
+        subscription.clone(),
+    );
+    bss_orchestrator::tools::subscription::register_subscription_write_tools(
+        &mut reg,
+        subscription,
+    );
     let payment = PaymentClient::new("http://localhost:8003", auth.clone()).unwrap();
     bss_orchestrator::tools::payment::register_payment_tools(&mut reg, payment);
     let com = ComClient::new("http://localhost:8004", auth.clone()).unwrap();
@@ -151,6 +158,13 @@ async fn tool_descriptions_match_python_oracle() {
         "ticket.resolve",
         "ticket.close",
         "ticket.cancel",
+        "subscription.terminate",
+        "subscription.purchase_vas",
+        "subscription.renew_now",
+        "subscription.tick_renewals_now",
+        "subscription.schedule_plan_change",
+        "subscription.cancel_pending_plan_change",
+        "subscription.migrate_to_new_price",
     ];
     for name in names {
         let tool = registry
@@ -218,6 +232,31 @@ fn subscription_canonical_reads_are_operator_only() {
             "{name} must not be exposed to customer_self_serve"
         );
     }
+}
+
+#[test]
+fn subscription_writes_profile_destructive_and_hidden() {
+    use bss_orchestrator::tools::LLM_HIDDEN_TOOLS;
+    use bss_orchestrator::DESTRUCTIVE_TOOLS;
+    for name in [
+        "subscription.terminate",
+        "subscription.purchase_vas",
+        "subscription.renew_now",
+        "subscription.tick_renewals_now",
+        "subscription.schedule_plan_change",
+        "subscription.cancel_pending_plan_change",
+        "subscription.migrate_to_new_price",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+    }
+    // terminate is destructive; purchase_vas explicitly is NOT (it adds allowance).
+    assert!(DESTRUCTIVE_TOOLS.contains(&"subscription.terminate"));
+    assert!(!DESTRUCTIVE_TOOLS.contains(&"subscription.purchase_vas"));
+    // migrate_to_new_price is hidden from the LLM (operator/scenario only).
+    assert!(LLM_HIDDEN_TOOLS.contains(&"subscription.migrate_to_new_price"));
 }
 
 #[test]

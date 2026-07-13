@@ -19,7 +19,7 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–10 done — READS COMPLETE + CRM writes (~71/110 tools):**
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–11 done — READS COMPLETE + CRM/subscription writes (~78/110 tools):**
 - **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
   LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
   bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
@@ -84,14 +84,19 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
   `get_ticket` read). `case.close`/`ticket.cancel` destructive. Mutating live smoke
   green (case + ticket lifecycle, trigger bodies accepted).
 
+- **Slice 11** — **subscription writes** (7 tools). 7 new `SubscriptionClient` write
+  methods; `terminate_with_reason` reproduces the no-body-when-default logic exactly.
+  `migrate_to_new_price` LLM-hidden. Conservative live smoke green (reversible
+  schedule→cancel round-trip + bogus-id error paths for the charging/destructive ones).
+
 **Remaining P5c slices (batched — aim ~3):**
-1. **The rest of the operator writes** (~27 tools) — subscription/order/payment,
-   inventory/port_request/provisioning/promo + catalog admin. All client calls;
-   destructive gating already exists in `safety.rs`. Watch for more pre-existing
-   write-body mismatches like `add_contact_medium` (exercise the bodies live; a 422 may
-   be *faithful*, not a bug — check the Python client vs service before "fixing").
-   `order.create`/`payment.add_card` are composites (create+submit; tokenize+attach —
-   `local_tokenize_card` is a pure sandbox function). Likely 1–2 slices.
+1. **order + payment writes** (~5 tools) — `order.create` (com.create_order +
+   submit_order composite), `order.cancel`; `payment.add_card` (the pure
+   `local_tokenize_card` sandbox tokenizer — brand detection + FAIL/DECLINE embedding
+   + a uuid token → create_payment_method), `payment.remove_method`, `payment.charge`.
+   Then the remaining **inventory/port_request/provisioning/promo + catalog admin**
+   writes (~10). Watch for more pre-existing write-body mismatches like
+   `add_contact_medium` (a 422 may be *faithful*).
 2. **`customer_self_serve` `*.mine` wrappers** (~17) — the genuinely distinct one:
    auth-context actor binding (`ToolCtx.actor` + a `CHAT_NO_ACTOR_BOUND` error), an
    `assert_subscription_owned` ownership pre-check, `_annotate_pricing` (rust_decimal +

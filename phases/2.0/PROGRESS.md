@@ -66,7 +66,34 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–10) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–11) — 🚧 (2026-07-14)
+
+**Slice 11 — subscription WRITES.** Seven tools (terminate, purchase_vas, renew_now,
+tick_renewals_now, schedule_plan_change, cancel_pending_plan_change,
+migrate_to_new_price). Seven new `SubscriptionClient` write methods:
+- `terminate_with_reason` reproduces the Python body logic exactly — **no body** when
+  `reason=None` + `release_inventory=true` (server defaults `customer_requested`),
+  else `{reason?, releaseInventory(only when false)}` (kept the existing raw-body
+  `terminate(id, body)` for the crm-service caller).
+- `purchase_vas`/`renew`/`tick_renewals_now`/`schedule_plan_change`/`cancel_plan_change`
+  are thin; `migrate_to_new_price` is **LLM-hidden** (operator/scenario only; pinned
+  in `LLM_HIDDEN_TOOLS`), `effective_from` sent verbatim.
+- `subscription.terminate` destructive; `subscription.purchase_vas` explicitly NOT
+  (adds allowance) — both pinned.
+
+**Verification:** fmt + clippy clean; workspace green; 7 descriptions byte-pinned.
+**Conservative live smoke** (`subscription_writes_live.rs`, `#[ignore]`) green against
+tech-vm — a **reversible** `schedule_plan_change → cancel_pending_plan_change`
+round-trip on a real subscription (pending set then cleared, seed data unchanged),
+plus structured-error paths for terminate/renew/purchase_vas/migrate against bogus
+ids (no real termination/charge), and `tick_renewals_now` tolerated (403-or-ok).
+
+**Tool ledger:** ~78/110 (reads complete + customer/case/ticket + subscription writes).
+Remaining: order + payment writes (composites: order.create=create+submit,
+payment.add_card=tokenize+attach), inventory/port_request/provisioning/promo + catalog
+admin. Then the `*.mine` wrappers + model client + ownership/caps/prompts.
+
+---
 
 **Slice 10 — case + ticket WRITES.** Eleven tools (case: open/close/add_note/
 transition/update_priority; ticket: open/assign/transition/resolve/close/cancel).

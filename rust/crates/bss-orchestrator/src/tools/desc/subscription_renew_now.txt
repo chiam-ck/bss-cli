@@ -1,0 +1,15 @@
+Manually trigger a subscription renewal (charges COF, resets balances).
+    Normal renewals happen automatically on the period boundary via the
+    v0.18 in-process worker — use this only for edge cases (operator
+    reproducing a charge, scenario driving a deterministic outcome).
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        Updated subscription dict with fresh ``balances`` and new ``nextRenewalAt``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``subscription.renew.requires_active_cof``: no valid card; fix
+              with ``payment.add_card`` then retry.

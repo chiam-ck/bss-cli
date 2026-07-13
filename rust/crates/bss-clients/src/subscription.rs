@@ -125,6 +125,122 @@ impl SubscriptionClient {
         }))
     }
 
+    // ── writes ────────────────────────────────────────────────────────────
+
+    /// `POST /subscription-api/v1/subscription/{id}/terminate` (DESTRUCTIVE). Sends
+    /// **no body** when `reason` is None and `release_inventory` is true (the server
+    /// then defaults `reason="customer_requested"`), else `{reason?, releaseInventory
+    /// (only when false)}` — matching the Python client exactly. Backs
+    /// `subscription.terminate` (+ later `subscription.terminate_mine`).
+    pub async fn terminate_with_reason(
+        &self,
+        subscription_id: &str,
+        reason: Option<&str>,
+        release_inventory: bool,
+    ) -> Result<Value, ClientError> {
+        let body: Option<Value> = if reason.is_none() && release_inventory {
+            None
+        } else {
+            let mut m = serde_json::Map::new();
+            if let Some(r) = reason {
+                m.insert("reason".to_string(), json!(r));
+            }
+            if !release_inventory {
+                m.insert("releaseInventory".to_string(), json!(false));
+            }
+            Some(Value::Object(m))
+        };
+        let path = format!("/subscription-api/v1/subscription/{subscription_id}/terminate");
+        let resp = self
+            .inner
+            .request(Method::POST, &path, body.as_ref(), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /subscription-api/v1/subscription/{id}/vas-purchase` with
+    /// `{vasOfferingId}`. Backs `subscription.purchase_vas` (+ `vas.purchase_for_me`).
+    pub async fn purchase_vas(
+        &self,
+        subscription_id: &str,
+        vas_offering_id: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/subscription-api/v1/subscription/{subscription_id}/vas-purchase");
+        self.post(&path, Some(&json!({"vasOfferingId": vas_offering_id})))
+            .await
+    }
+
+    /// `POST /subscription-api/v1/subscription/{id}/renew` — manual renewal (no
+    /// body). Backs `subscription.renew_now`.
+    pub async fn renew(&self, subscription_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/subscription-api/v1/subscription/{subscription_id}/renew");
+        self.post(&path, None).await
+    }
+
+    /// `POST /admin-api/v1/renewal/tick-now` — the v0.18 deterministic sweep (gated
+    /// by `BSS_ALLOW_ADMIN_RESET`). Backs `subscription.tick_renewals_now`.
+    pub async fn tick_renewals_now(&self) -> Result<Value, ClientError> {
+        self.post("/admin-api/v1/renewal/tick-now", None).await
+    }
+
+    /// `POST /subscription-api/v1/subscription/{id}/schedule-plan-change` with
+    /// `{newOfferingId}` — applies at next renewal. Backs
+    /// `subscription.schedule_plan_change` (+ the `_mine` wrapper).
+    pub async fn schedule_plan_change(
+        &self,
+        subscription_id: &str,
+        new_offering_id: &str,
+    ) -> Result<Value, ClientError> {
+        let path =
+            format!("/subscription-api/v1/subscription/{subscription_id}/schedule-plan-change");
+        self.post(&path, Some(&json!({"newOfferingId": new_offering_id})))
+            .await
+    }
+
+    /// `POST /subscription-api/v1/subscription/{id}/cancel-plan-change` (no body) —
+    /// clears the pending fields. Backs `subscription.cancel_pending_plan_change`.
+    pub async fn cancel_plan_change(&self, subscription_id: &str) -> Result<Value, ClientError> {
+        let path =
+            format!("/subscription-api/v1/subscription/{subscription_id}/cancel-plan-change");
+        self.post(&path, None).await
+    }
+
+    /// `POST /subscription-api/v1/admin/subscription/migrate-price` — operator price
+    /// migration across every active subscription on `offering_id`. `effective_from`
+    /// is the caller's ISO-8601 instant (the Python tool round-trips it through
+    /// `datetime.fromisoformat().isoformat()`). Returns `{count, subscriptionIds}`.
+    /// Backs `subscription.migrate_to_new_price` (LLM-hidden).
+    pub async fn migrate_to_new_price(
+        &self,
+        offering_id: &str,
+        new_price_id: &str,
+        effective_from: &str,
+        notice_days: i64,
+        initiated_by: &str,
+    ) -> Result<Value, ClientError> {
+        let body = json!({
+            "offeringId": offering_id,
+            "newPriceId": new_price_id,
+            "effectiveFrom": effective_from,
+            "noticeDays": notice_days,
+            "initiatedBy": initiated_by,
+        });
+        self.post(
+            "/subscription-api/v1/admin/subscription/migrate-price",
+            Some(&body),
+        )
+        .await
+    }
+
+    async fn post(&self, path: &str, body: Option<&Value>) -> Result<Value, ClientError> {
+        let resp = self.inner.request(Method::POST, path, body, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `POST /subscription-api/v1/subscription` — create and activate. `body`
     /// carries `customerId`/`offeringId`/`msisdn`/`iccid`/`paymentMethodId` plus
     /// the optional `priceSnapshot` and `commercialOrderId` (the idempotency key —

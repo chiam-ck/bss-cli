@@ -1,0 +1,26 @@
+Schedule a plan change to take effect at the next renewal boundary.
+
+    The new offering's price is snapshotted *now* (the customer commits to
+    that price even if the catalog re-prices later). At the next renewal,
+    the new amount is charged, the offering is swapped, and the bundle is
+    reset per the new plan's allowances. There is no proration and no
+    immediate effect — that's the doctrine.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+        new_offering_id: Target offering (e.g. ``PLAN_L``). Must be in the
+            active catalog and different from the current plan.
+
+    Returns:
+        Updated subscription dict with ``pendingOfferingId`` /
+        ``pendingOfferingPriceId`` / ``pendingEffectiveAt`` populated.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``subscription.plan_change.not_eligible_state``: only active
+              subscriptions can schedule changes.
+            - ``subscription.plan_change.same_offering``: target equals current.
+            - ``subscription.plan_change.target_not_sellable_now``: target
+              is not in the live catalog right now.
+            - ``subscription.plan_change.already_pending``: cancel the
+              existing pending change first.
