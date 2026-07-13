@@ -19,19 +19,27 @@ Split into **P5a `bss-knowledge`** (done), **P5b `bss-cockpit` core** (done), **
 `bss-orchestrator`** (started — multi-slice). Nothing is tagged yet — the
 `v2.0.0-phase.5` tag caps the whole phase after P5c completes.
 
-**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slice 1 is done:** the
-hand-rolled ReAct loop (`agent::astream_once`, replacing LangGraph), the
-`MockChatModel` fixture player, the guard stack (3-strike failure bail,
-identical-call stuck bail, destructive gating with batched/granular autonomy), the
-tool registry + profiles, and the `clock.*` pilot tool family — all green under a
-fixture-driven transcript test + a description golden. **Remaining P5c slices:**
-1. **OpenRouter `ChatModel` client** (reqwest direct) — so a real model can drive
-   the same loop.
-2. **The ~106 remaining tools**, profile by profile (`customer_self_serve` first —
-   smaller + ownership-critical), each wrapping a `bss-clients` call, with
-   **schemars** arg schemas (D5) and descriptions pinned against the captured
-   `tests/golden/tool_descriptions.json`. Keep tool descriptions/param docs
-   byte-identical (R2 — they drive model behaviour).
+**P5c is multi-slice** (~7.2k Py LOC + 110 tools). **Slices 1–2 done:**
+- **Slice 1** — the hand-rolled ReAct loop (`agent::astream_once`, replacing
+  LangGraph), the `MockChatModel` fixture player, the guard stack (3-strike failure
+  bail, identical-call stuck bail, destructive gating w/ batched/granular autonomy),
+  the tool registry + profiles, and the `clock.*` pilot family.
+- **Slice 2** — the **client-backed tool pattern** (the template for all remaining
+  tools): a tool closure captures its typed `bss-clients` client, returns the response
+  **verbatim**, maps `ClientError`→structured observation. Byte-parity follows
+  transitively from the service golden diffs (P1–P4), so the gate is a live
+  `tool == direct client call` smoke, not a re-diff against the Python tool. First
+  family: the six **catalog reads** (extended `CatalogClient` with `list_offerings`/
+  `list_vas`/`get_active_price_at`). Description golden + profile-membership pinned.
+
+**Remaining P5c slices:**
+1. **The ~100 remaining tools**, profile by profile (`customer_self_serve` first —
+   smaller + ownership-critical), each following the slice-2 pattern (capture client,
+   return verbatim, map errors) with descriptions pinned against
+   `tests/golden/tool_descriptions.json`. Many need new `bss-clients` methods (add
+   them as consumers, mirroring the catalog extension). **schemars** arg schemas (D5)
+   when the model client lands. Keep descriptions/param docs byte-identical (R2).
+2. **OpenRouter `ChatModel` client** (reqwest direct) — a real model drives the loop.
 3. **Ownership trip-wire** (`OWNERSHIP_PATHS` / `assert_owned_output`) + **chat
    caps** (hourly + monthly-cost, fail-closed) + `validate_profiles()`.
 4. **Prompts**: `SYSTEM_PROMPT` + the customer-chat prompt (verbatim; do NOT add

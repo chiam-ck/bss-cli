@@ -1,0 +1,10 @@
+Get a single VAS offering.
+
+    Args:
+        vas_offering_id: VAS offering ID, e.g. ``VAS_DATA_5GB``, ``VAS_DATA_DAYPASS``.
+
+    Returns:
+        VAS offering dict.
+
+    Raises:
+        NotFound: unknown VAS offering.

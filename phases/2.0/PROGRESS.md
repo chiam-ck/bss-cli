@@ -66,7 +66,40 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slice 1: loop + fixture player + guards) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–2) — 🚧 (2026-07-13)
+
+**Slice 2 — the client-backed tool pattern (catalog read family).** The template
+for the remaining ~100 tools: a tool is a closure capturing its typed `bss-clients`
+client, returning the client response **verbatim** and mapping `ClientError` to the
+structured observation (`graph._tool_error_to_observation` — policy→`rule`+detail,
+else `CLIENT_ERROR`+status). Byte-parity of the tool output follows **transitively**
+from the P3 catalog service golden diff (Rust catalog == Python catalog), so no
+re-diff against the Python tool is needed — the live test asserts `tool output ==
+direct client call` instead.
+
+- Ported the six catalog **read** tools (`list_offerings`, `get_offering`,
+  `list_vas`, `get_vas`, `list_active_offerings`, `get_active_price`), descriptions
+  embedded byte-for-byte and pinned against the golden.
+- Extended `CatalogClient` with `list_offerings()`, `list_vas()`, and
+  `get_active_price_at(id, at)` (the `at`-aware variant — sends `activeAt` only when
+  `Some`, matching Python's `params` gate; the existing `get_active_price` delegates,
+  so P3/P4 callers are untouched).
+- The 3 catalog **admin write** tools (hidden from the LLM) defer with the admin
+  client methods.
+
+**Verification (slice 2).** fmt + clippy clean; workspace green (76 groups, no
+regression — the client delegation didn't disturb com/subscription). Description
+golden extended to the catalog family + **profile-membership** assertions
+(operator_cockpit sees all six; customer_self_serve sees only the three public
+reads, not `get_active_price`/`list_offerings`) + a `surface()` intersection test.
+**Live smoke** (`tests/catalog_tools_live.rs`, `#[ignore]`): each read tool against
+the running catalog returns the client response verbatim (asserted equal to a direct
+client call) with real data (PLAN_M, offerings, VAS, price rows); unknown offering →
+`CLIENT_ERROR`, not a panic.
+
+---
+
+**Slice 1 — the ReAct loop + fixture player + guards.**
 
 `rust/crates/bss-orchestrator` — the LLM agent brain, in-process-linked by the
 P6/P7 portals + CLI (never over the network — D3). This is the biggest, hardest

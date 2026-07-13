@@ -56,16 +56,50 @@ impl CatalogClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `GET /tmf-api/productCatalogManagement/v4/productOffering` — every offering
+    /// (plans + VAS), no time filter. Backs the `catalog.list_offerings` tool.
+    pub async fn list_offerings(&self) -> Result<Value, ClientError> {
+        let path = "/tmf-api/productCatalogManagement/v4/productOffering";
+        let resp = self.inner.request(Method::GET, path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET /vas/offering` — every VAS offering. Backs the `catalog.list_vas` tool.
+    pub async fn list_vas(&self) -> Result<Value, ClientError> {
+        let resp = self
+            .inner
+            .request(Method::GET, "/vas/offering", None, None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `GET /tmf-api/productCatalogManagement/v4/productOfferingPrice/active/{id}`.
     ///
-    /// The lowest active recurring price at the current moment. A 422 carrying
-    /// `catalog.price.no_active_row` maps to [`ClientError::Policy`] (com turns it
-    /// into `policy.offering.not_sellable_now`). Only the no-`at` variant is
-    /// ported — com's create path never passes a moment.
+    /// The lowest active recurring price at the current moment (no-`at` variant —
+    /// the server defaults to now). A 422 carrying `catalog.price.no_active_row`
+    /// maps to [`ClientError::Policy`].
     pub async fn get_active_price(&self, offering_id: &str) -> Result<Value, ClientError> {
-        let path = format!(
+        self.get_active_price_at(offering_id, None).await
+    }
+
+    /// As [`CatalogClient::get_active_price`] but at an explicit moment. Sends the
+    /// `activeAt` query only when `active_at` is `Some` — matching the Python
+    /// client's `params["activeAt"] = at.isoformat()` gate exactly.
+    pub async fn get_active_price_at(
+        &self,
+        offering_id: &str,
+        active_at: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut path = format!(
             "/tmf-api/productCatalogManagement/v4/productOfferingPrice/active/{offering_id}"
         );
+        if let Some(at) = active_at {
+            path.push_str(&format!("?activeAt={}", encode(at)));
+        }
         let resp = self.inner.request(Method::GET, &path, None, None).await?;
         resp.json()
             .await

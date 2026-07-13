@@ -7,6 +7,7 @@
 //! ToolError>`; the registry maps the dotted LLM name to it, matching the names
 //! used by [`crate::safety::DESTRUCTIVE_TOOLS`] and `TOOL_SURFACE.md`.
 
+pub mod catalog;
 pub mod clock;
 
 use std::collections::BTreeMap;

@@ -18,6 +18,7 @@ tracing = { workspace = true }
 futures-util = { workspace = true }
 
 bss-clock = { workspace = true }
+bss-clients = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
