@@ -66,7 +66,35 @@ deterministic layer) + **human-reviewed live soak** (the judgment layer, R2).
   caps), the `AgentEvent` stream, and the `MockChatModel` fixture player. Gate:
   fixture-corpus transcript parity. The big one.
 
-### Phase 5c — bss-orchestrator (slices 1–9) — 🚧 (2026-07-13)
+### Phase 5c — bss-orchestrator (slices 1–10) — 🚧 (2026-07-13)
+
+**Slice 10 — case + ticket WRITES.** Eleven tools (case: open/close/add_note/
+transition/update_priority; ticket: open/assign/transition/resolve/close/cancel).
+Added 11 `CrmClient` write methods (open_case with the optional description/agent/
+transcript-hash args the later `case.open_for_me` needs, store_chat_transcript,
+add_case_note, patch_case, close_case, open_ticket, assign_ticket, transition_ticket,
+resolve_ticket, cancel_ticket). Two seams:
+- **FSM transitions take `{"trigger"}`, not `{"state"}`.** The friendly target-state
+  → trigger maps (`CASE_STATE_TO_TRIGGER`, `TICKET_STATE_TO_TRIGGER` +
+  `IN_PROGRESS_BY_SOURCE`) live in the tool layer; an unknown target/source yields a
+  `ToolError::Other{kind:"ValueError"}` → the exact `{"error":"ValueError","detail":…}`
+  observation the graph renders (verified). `ticket.transition`/`ticket.close` cost a
+  `get_ticket` read to resolve `in_progress` (three triggers land there). A shared
+  `py_list_repr` renders the "valid targets" list Python-style (single-quoted).
+- `case.close` + `ticket.cancel` are destructive — pinned by
+  `case_ticket_writes_are_operator_and_destructive_gated`.
+
+**Verification:** fmt + clippy clean; workspace green; 11 descriptions byte-pinned.
+**Mutating live smoke** (`case_ticket_writes_live.rs`, `#[ignore]`) green against
+tech-vm: case open→note→priority→**transition (trigger body accepted)**→unknown-state
+**ValueError**; ticket open→resolve→close→case close — the `{"trigger"}` bodies the
+prior `{"state"}`/`{"toState"}` shapes 422'd on are accepted.
+
+**Tool ledger:** ~71/110 (reads complete + customer/case/ticket writes). Remaining
+writes: subscription/order/payment, inventory/port_request/provisioning/promo +
+catalog admin. Then the `*.mine` wrappers + model client + ownership/caps/prompts.
+
+---
 
 **Slice 9 — customer + interaction WRITES (writes begin).** Seven tools
 (`customer.create/update_contact/add_contact_medium/remove_contact_medium/

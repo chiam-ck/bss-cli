@@ -1,0 +1,13 @@
+Resolve a ticket with mandatory resolution notes.
+
+    Args:
+        ticket_id: Ticket ID with the TKT- prefix (opaque suffix).
+        resolution_notes: Free text — what fixed the issue.
+
+    Returns:
+        Updated ticket dict with ``state="resolved"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``ticket.resolve.requires_resolution_notes``: pass a non-empty
+              ``resolution_notes``.

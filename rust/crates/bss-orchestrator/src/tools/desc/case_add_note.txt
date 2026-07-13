@@ -1,0 +1,11 @@
+Append an internal note to a case.
+
+    Args:
+        case_id: Case ID with the CASE- prefix (opaque suffix).
+        body: Note text (free text).
+
+    Returns:
+        The created note ``{id, caseId, authorId, createdAt, body}``.
+
+    Raises:
+        PolicyViolationFromServer: ``case.add_note.case_must_be_open``.

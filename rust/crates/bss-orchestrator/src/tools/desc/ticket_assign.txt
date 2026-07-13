@@ -1,0 +1,12 @@
+Assign a ticket to an agent. Agent must be in ``active`` state.
+
+    Args:
+        ticket_id: Ticket ID with the TKT- prefix (opaque suffix).
+        agent_id: Agent ID with the AGT- prefix (opaque suffix). Get from ``agents.list``.
+
+    Returns:
+        Updated ticket dict with ``assignedAgent`` set.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``ticket.assign.agent_must_be_active``: choose an active agent.

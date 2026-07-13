@@ -1,17 +1,54 @@
-//! Trouble-ticket read tools — TMF621. Port of the read slice of
-//! `orchestrator/bss_orchestrator/tools/ticket.py`. Verbatim `CrmClient` wrappers.
-//! Ticket writes (open/assign/transition/resolve/close/cancel) land with the CRM
-//! write slice.
+//! Trouble-ticket tools — TMF621. Port of `orchestrator/bss_orchestrator/tools/
+//! ticket.py`. Reads are verbatim `CrmClient` wrappers; the **write** tools
+//! (`register_ticket_write_tools`) map a friendly target `state` → the state-machine
+//! `trigger` the API takes. `in_progress` is reachable via three triggers
+//! (start/resume/reopen), so that target costs one `get_ticket` read to resolve;
+//! an unknown target/source yields a `ValueError` observation (matching Python).
 
 use std::sync::Arc;
 
 use bss_clients::CrmClient;
 use futures_util::future::FutureExt;
+use serde_json::Value;
 
-use super::{map_client_err as map_err, opt_str, req_str, RegisteredTool, ToolRegistry};
+use super::{
+    map_client_err as map_err, opt_str, py_list_repr, req_str, RegisteredTool, ToolError,
+    ToolRegistry,
+};
 
 const DESC_GET: &str = include_str!("desc/ticket_get.txt");
 const DESC_LIST: &str = include_str!("desc/ticket_list.txt");
+const DESC_OPEN: &str = include_str!("desc/ticket_open.txt");
+const DESC_ASSIGN: &str = include_str!("desc/ticket_assign.txt");
+const DESC_TRANSITION: &str = include_str!("desc/ticket_transition.txt");
+const DESC_RESOLVE: &str = include_str!("desc/ticket_resolve.txt");
+const DESC_CLOSE: &str = include_str!("desc/ticket_close.txt");
+const DESC_CANCEL: &str = include_str!("desc/ticket_cancel.txt");
+
+/// Target ticket state → trigger (`_TICKET_STATE_TO_TRIGGER`). `in_progress` is
+/// deliberately absent (resolved from the current state via [`IN_PROGRESS_BY_SOURCE`]).
+const TICKET_STATE_TO_TRIGGER: &[(&str, &str)] = &[
+    ("acknowledged", "ack"),
+    ("cancelled", "cancel"),
+    ("closed", "close"),
+    ("pending", "wait"),
+    ("resolved", "resolve"),
+];
+
+/// Source state → trigger that reaches `in_progress` (`_TICKET_IN_PROGRESS_TRIGGER_
+/// BY_SOURCE`).
+const IN_PROGRESS_BY_SOURCE: &[(&str, &str)] = &[
+    ("acknowledged", "start"),
+    ("pending", "resume"),
+    ("resolved", "reopen"),
+];
+
+fn value_error(detail: String) -> ToolError {
+    ToolError::Other {
+        kind: "ValueError".to_string(),
+        detail,
+    }
+}
 
 /// Register the two ticket **read** tools, each capturing a clone of `client`.
 pub fn register_ticket_tools(registry: &mut ToolRegistry, client: CrmClient) {
@@ -48,6 +85,162 @@ pub fn register_ticket_tools(registry: &mut ToolRegistry, client: CrmClient) {
                 )
                 .await
                 .map_err(map_err)
+            }
+            .boxed()
+        }),
+    });
+}
+
+/// Resolve a target state → trigger, reading the ticket's current state when the
+/// target is `in_progress` (three triggers land there). Mirrors the Python client's
+/// `transition_ticket` mapping + `ValueError`s exactly.
+async fn resolve_ticket_trigger(
+    c: &CrmClient,
+    ticket_id: &str,
+    to_state: &str,
+) -> Result<String, ToolError> {
+    if to_state == "in_progress" {
+        let current = c.get_ticket(ticket_id).await.map_err(map_err)?;
+        let src = current.get("state").and_then(Value::as_str).unwrap_or("");
+        IN_PROGRESS_BY_SOURCE
+            .iter()
+            .find(|(s, _)| *s == src)
+            .map(|(_, t)| t.to_string())
+            .ok_or_else(|| {
+                let sources: Vec<&str> = IN_PROGRESS_BY_SOURCE.iter().map(|(s, _)| *s).collect();
+                value_error(format!(
+                    "No transition to in_progress from '{src}'; valid sources: {}",
+                    py_list_repr(&sources)
+                ))
+            })
+    } else {
+        TICKET_STATE_TO_TRIGGER
+            .iter()
+            .find(|(s, _)| *s == to_state)
+            .map(|(_, t)| t.to_string())
+            .ok_or_else(|| {
+                let targets: Vec<&str> = TICKET_STATE_TO_TRIGGER.iter().map(|(s, _)| *s).collect();
+                value_error(format!(
+                    "Unknown target state '{to_state}'; valid targets: {} + ['in_progress']",
+                    py_list_repr(&targets)
+                ))
+            })
+    }
+}
+
+/// Register the six ticket **write** tools, each capturing a clone of `client`.
+/// `ticket.cancel` is destructive (safety-gated at the tool boundary).
+pub fn register_ticket_write_tools(registry: &mut ToolRegistry, client: CrmClient) {
+    let c = client.clone();
+    registry.register(RegisteredTool {
+        name: "ticket.open".to_string(),
+        description: DESC_OPEN.to_string(),
+        func: Arc::new(move |args, _ctx| {
+            let c = c.clone();
+            async move {
+                let ticket_type = req_str(&args, "ticket_type")?;
+                let subject = req_str(&args, "subject")?;
+                let case_id = opt_str(&args, "case_id");
+                let customer_id = opt_str(&args, "customer_id");
+                let order_id = opt_str(&args, "order_id");
+                let subscription_id = opt_str(&args, "subscription_id");
+                let service_id = opt_str(&args, "service_id");
+                c.open_ticket(
+                    &ticket_type,
+                    &subject,
+                    case_id.as_deref(),
+                    customer_id.as_deref(),
+                    order_id.as_deref(),
+                    subscription_id.as_deref(),
+                    service_id.as_deref(),
+                )
+                .await
+                .map_err(map_err)
+            }
+            .boxed()
+        }),
+    });
+
+    let c = client.clone();
+    registry.register(RegisteredTool {
+        name: "ticket.assign".to_string(),
+        description: DESC_ASSIGN.to_string(),
+        func: Arc::new(move |args, _ctx| {
+            let c = c.clone();
+            async move {
+                let ticket_id = req_str(&args, "ticket_id")?;
+                let agent_id = req_str(&args, "agent_id")?;
+                c.assign_ticket(&ticket_id, &agent_id)
+                    .await
+                    .map_err(map_err)
+            }
+            .boxed()
+        }),
+    });
+
+    let c = client.clone();
+    registry.register(RegisteredTool {
+        name: "ticket.transition".to_string(),
+        description: DESC_TRANSITION.to_string(),
+        func: Arc::new(move |args, _ctx| {
+            let c = c.clone();
+            async move {
+                let ticket_id = req_str(&args, "ticket_id")?;
+                let to_state = req_str(&args, "to_state")?;
+                let trigger = resolve_ticket_trigger(&c, &ticket_id, &to_state).await?;
+                c.transition_ticket(&ticket_id, &trigger)
+                    .await
+                    .map_err(map_err)
+            }
+            .boxed()
+        }),
+    });
+
+    let c = client.clone();
+    registry.register(RegisteredTool {
+        name: "ticket.resolve".to_string(),
+        description: DESC_RESOLVE.to_string(),
+        func: Arc::new(move |args, _ctx| {
+            let c = c.clone();
+            async move {
+                let ticket_id = req_str(&args, "ticket_id")?;
+                let resolution_notes = req_str(&args, "resolution_notes")?;
+                c.resolve_ticket(&ticket_id, &resolution_notes)
+                    .await
+                    .map_err(map_err)
+            }
+            .boxed()
+        }),
+    });
+
+    // ticket.close — transition to `closed` (→ trigger `close`), mirroring the
+    // Python client's `close_ticket` delegating to `transition_ticket`.
+    let c = client.clone();
+    registry.register(RegisteredTool {
+        name: "ticket.close".to_string(),
+        description: DESC_CLOSE.to_string(),
+        func: Arc::new(move |args, _ctx| {
+            let c = c.clone();
+            async move {
+                let ticket_id = req_str(&args, "ticket_id")?;
+                let trigger = resolve_ticket_trigger(&c, &ticket_id, "closed").await?;
+                c.transition_ticket(&ticket_id, &trigger)
+                    .await
+                    .map_err(map_err)
+            }
+            .boxed()
+        }),
+    });
+
+    let c = client;
+    registry.register(RegisteredTool {
+        name: "ticket.cancel".to_string(),
+        description: DESC_CANCEL.to_string(),
+        func: Arc::new(move |args, _ctx| {
+            let c = c.clone();
+            async move {
+                let ticket_id = req_str(&args, "ticket_id")?;
+                c.cancel_ticket(&ticket_id).await.map_err(map_err)
             }
             .boxed()
         }),

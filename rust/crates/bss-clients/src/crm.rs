@@ -458,6 +458,181 @@ impl CrmClient {
         .await
     }
 
+    // ── case writes (/crm-api/v1/case) ───────────────────────────────────
+
+    /// `POST /crm-api/v1/case` — open a case (snake_case body). Optional
+    /// `description` / `opened_by_agent_id` / `chat_transcript_hash` are sent only
+    /// when present. Backs `case.open` (+ later `case.open_for_me`).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_case(
+        &self,
+        customer_id: &str,
+        subject: &str,
+        category: &str,
+        priority: &str,
+        description: Option<&str>,
+        opened_by_agent_id: Option<&str>,
+        chat_transcript_hash: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut map = serde_json::Map::new();
+        map.insert("customer_id".to_string(), json!(customer_id));
+        map.insert("subject".to_string(), json!(subject));
+        map.insert("category".to_string(), json!(category));
+        map.insert("priority".to_string(), json!(priority));
+        if let Some(d) = description {
+            map.insert("description".to_string(), json!(d));
+        }
+        if let Some(a) = opened_by_agent_id {
+            map.insert("opened_by_agent_id".to_string(), json!(a));
+        }
+        if let Some(h) = chat_transcript_hash {
+            map.insert("chat_transcript_hash".to_string(), json!(h));
+        }
+        self.post("/crm-api/v1/case", &Value::Object(map)).await
+    }
+
+    /// `POST /crm-api/v1/chat-transcript` — idempotent transcript store (hash PK).
+    /// Backs `case.open_for_me`'s transcript persistence.
+    pub async fn store_chat_transcript(
+        &self,
+        hash: &str,
+        customer_id: &str,
+        body: &str,
+    ) -> Result<Value, ClientError> {
+        let payload = json!({"hash": hash, "customer_id": customer_id, "body": body});
+        self.post("/crm-api/v1/chat-transcript", &payload).await
+    }
+
+    /// `POST /crm-api/v1/case/{id}/note`. Backs `case.add_note`.
+    pub async fn add_case_note(&self, case_id: &str, body: &str) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/case/{case_id}/note");
+        self.post(&path, &json!({"body": body})).await
+    }
+
+    /// `PATCH /crm-api/v1/case/{id}` with a raw patch. Backs `case.update_priority`
+    /// (`{"priority": …}`) and the trigger transition (`{"trigger": …}`).
+    pub async fn patch_case(&self, case_id: &str, patch: &Value) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/case/{case_id}");
+        let resp = self
+            .inner
+            .request(Method::PATCH, &path, Some(patch), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /crm-api/v1/case/{id}/close` with snake_case `{resolution_code}`. Backs
+    /// `case.close`.
+    pub async fn close_case(
+        &self,
+        case_id: &str,
+        resolution_code: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/crm-api/v1/case/{case_id}/close");
+        self.post(&path, &json!({"resolution_code": resolution_code}))
+            .await
+    }
+
+    // ── ticket writes (TMF621) ────────────────────────────────────────────
+
+    /// `POST /tmf-api/troubleTicket/v4/troubleTicket` — open a ticket. `customerId`
+    /// / `caseId` are direct fields; order/subscription/service refs attach as
+    /// `relatedEntity`. Backs `ticket.open`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn open_ticket(
+        &self,
+        ticket_type: &str,
+        subject: &str,
+        case_id: Option<&str>,
+        customer_id: Option<&str>,
+        order_id: Option<&str>,
+        subscription_id: Option<&str>,
+        service_id: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut map = serde_json::Map::new();
+        map.insert("ticketType".to_string(), json!(ticket_type));
+        map.insert("subject".to_string(), json!(subject));
+        if let Some(c) = customer_id.filter(|s| !s.is_empty()) {
+            map.insert("customerId".to_string(), json!(c));
+        }
+        if let Some(c) = case_id.filter(|s| !s.is_empty()) {
+            map.insert("caseId".to_string(), json!(c));
+        }
+        let mut relates: Vec<Value> = Vec::new();
+        if let Some(o) = order_id.filter(|s| !s.is_empty()) {
+            relates.push(json!({"entityType": "order", "id": o}));
+        }
+        if let Some(s) = subscription_id.filter(|s| !s.is_empty()) {
+            relates.push(json!({"entityType": "subscription", "id": s}));
+        }
+        if let Some(s) = service_id.filter(|s| !s.is_empty()) {
+            relates.push(json!({"entityType": "service", "id": s}));
+        }
+        if !relates.is_empty() {
+            map.insert("relatedEntity".to_string(), Value::Array(relates));
+        }
+        self.post(
+            "/tmf-api/troubleTicket/v4/troubleTicket",
+            &Value::Object(map),
+        )
+        .await
+    }
+
+    /// `PATCH …/troubleTicket/{id}` with `{assignedToAgentId}`. Backs `ticket.assign`.
+    pub async fn assign_ticket(
+        &self,
+        ticket_id: &str,
+        agent_id: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/troubleTicket/v4/troubleTicket/{ticket_id}");
+        let resp = self
+            .inner
+            .request(
+                Method::PATCH,
+                &path,
+                Some(&json!({"assignedToAgentId": agent_id})),
+                None,
+            )
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST …/troubleTicket/{id}/transition` with `{trigger}` (the caller resolves
+    /// target-state → trigger). Backs `ticket.transition` / `ticket.close`.
+    pub async fn transition_ticket(
+        &self,
+        ticket_id: &str,
+        trigger: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/troubleTicket/v4/troubleTicket/{ticket_id}/transition");
+        self.post(&path, &json!({"trigger": trigger})).await
+    }
+
+    /// `POST …/troubleTicket/{id}/resolve` with `{resolutionNotes}`. Backs
+    /// `ticket.resolve`.
+    pub async fn resolve_ticket(
+        &self,
+        ticket_id: &str,
+        resolution_notes: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/troubleTicket/v4/troubleTicket/{ticket_id}/resolve");
+        self.post(&path, &json!({"resolutionNotes": resolution_notes}))
+            .await
+    }
+
+    /// `POST …/troubleTicket/{id}/cancel` (no body). Backs `ticket.cancel`
+    /// (DESTRUCTIVE — safety-gated at the tool).
+    pub async fn cancel_ticket(&self, ticket_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/tmf-api/troubleTicket/v4/troubleTicket/{ticket_id}/cancel");
+        let resp = self.inner.request(Method::POST, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     async fn post(&self, path: &str, body: &Value) -> Result<Value, ClientError> {
         let resp = self
             .inner

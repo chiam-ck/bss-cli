@@ -1,0 +1,13 @@
+Explicitly transition a case to a new state. Prefer ``case.close``
+    for the closing transition — it enforces extra policy.
+
+    Args:
+        case_id: Case ID with the CASE- prefix (opaque suffix).
+        to_state: Target state.
+
+    Returns:
+        The updated case dict.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``case.transition.illegal``: state machine rejected this move.

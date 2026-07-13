@@ -1,0 +1,19 @@
+Open a new support case for a customer. Use this when the user reports
+    an issue that is either (a) not clearly a single technical incident, or
+    (b) likely to spawn multiple trouble tickets. Otherwise consider
+    ``ticket.open`` directly.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        subject: Short description, e.g. ``"Data stopped working this morning"``.
+        category: One of ``technical``, ``billing``, ``account``, ``information``.
+        priority: One of ``low``, ``medium``, ``high``, ``critical``.
+
+    Returns:
+        Case dict ``{id, customerId, subject, category, priority, state, createdAt}``.
+        Pass ``id`` to ``ticket.open`` as ``case_id`` to attach tickets.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``case.open.customer_must_be_active``: open the case against a
+              different customer, or activate the customer first.

@@ -1,0 +1,11 @@
+Update the priority of a case.
+
+    Args:
+        case_id: Case ID with the CASE- prefix (opaque suffix).
+        priority: New priority.
+
+    Returns:
+        The updated case dict.
+
+    Raises:
+        (none common)

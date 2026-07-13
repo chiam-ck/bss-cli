@@ -109,6 +109,13 @@ pub(crate) fn req_str(args: &Value, key: &str) -> Result<String, ToolError> {
         })
 }
 
+/// Render a slice of strings as Python's `repr(sorted(...))` — single-quoted,
+/// comma-separated, bracketed — for byte-faithful `ValueError` messages.
+pub(crate) fn py_list_repr(items: &[&str]) -> String {
+    let inner: Vec<String> = items.iter().map(|s| format!("'{s}'")).collect();
+    format!("[{}]", inner.join(", "))
+}
+
 /// An optional non-empty string arg.
 pub(crate) fn opt_str(args: &Value, key: &str) -> Option<String> {
     args.get(key)

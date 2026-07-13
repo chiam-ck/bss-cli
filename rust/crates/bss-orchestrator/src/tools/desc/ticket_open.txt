@@ -1,0 +1,21 @@
+Open a trouble ticket. Attach it to exactly ONE primary entity via the
+    most specific available ID: service > subscription > order > case > customer.
+
+    Args:
+        ticket_type: One of ``service_outage``, ``billing_issue``,
+            ``information``, ``complaint``, ``configuration_change``,
+            ``fraud_report``, ``cancellation_request``.
+        subject: Short description of the issue.
+        case_id: Parent case (CASE-... opaque suffix) if this ticket belongs to one.
+        customer_id: Linked customer (CUST-... opaque suffix).
+        order_id: Linked order (ORD-... opaque suffix).
+        subscription_id: Linked subscription (SUB-... opaque suffix).
+        service_id: Linked service (SVC-... opaque suffix).
+
+    Returns:
+        The created ticket ``{id, ticketType, state, priority, relatedEntity}``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``ticket.open.requires_at_least_one_link``: at least one of the
+              linking IDs must be provided.

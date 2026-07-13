@@ -55,7 +55,9 @@ fn registry_with_catalog() -> ToolRegistry {
     let catalog2 = CatalogClient::new("http://localhost:8001", auth).unwrap();
     bss_orchestrator::tools::promo::register_promo_tools(&mut reg, catalog2);
     bss_orchestrator::tools::ticket::register_ticket_tools(&mut reg, crm.clone());
+    bss_orchestrator::tools::ticket::register_ticket_write_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::case::register_case_tools(&mut reg, crm.clone());
+    bss_orchestrator::tools::case::register_case_write_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::port_request::register_port_request_tools(&mut reg, crm.clone());
     bss_orchestrator::tools::ops::register_ops_tools(&mut reg, crm);
     // trace — Jaeger (no auth) + two audit clients (com/subscription base URLs).
@@ -138,6 +140,17 @@ async fn tool_descriptions_match_python_oracle() {
         "customer.attest_kyc",
         "customer.close",
         "interaction.log",
+        "case.open",
+        "case.close",
+        "case.add_note",
+        "case.transition",
+        "case.update_priority",
+        "ticket.open",
+        "ticket.assign",
+        "ticket.transition",
+        "ticket.resolve",
+        "ticket.close",
+        "ticket.cancel",
     ];
     for name in names {
         let tool = registry
@@ -203,6 +216,47 @@ fn subscription_canonical_reads_are_operator_only() {
         assert!(
             !CUSTOMER_SELF_SERVE.contains(&name),
             "{name} must not be exposed to customer_self_serve"
+        );
+    }
+}
+
+#[test]
+fn case_ticket_writes_are_operator_and_destructive_gated() {
+    use bss_orchestrator::DESTRUCTIVE_TOOLS;
+    for name in [
+        "case.open",
+        "case.close",
+        "case.add_note",
+        "case.transition",
+        "case.update_priority",
+        "ticket.open",
+        "ticket.assign",
+        "ticket.transition",
+        "ticket.resolve",
+        "ticket.close",
+        "ticket.cancel",
+    ] {
+        assert!(
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+    }
+    // case.close + ticket.cancel are destructive; the rest are not.
+    for name in ["case.close", "ticket.cancel"] {
+        assert!(
+            DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must be destructive"
+        );
+    }
+    for name in [
+        "case.open",
+        "case.transition",
+        "ticket.resolve",
+        "ticket.close",
+    ] {
+        assert!(
+            !DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must NOT be destructive"
         );
     }
 }
