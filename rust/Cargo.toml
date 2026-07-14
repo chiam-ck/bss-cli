@@ -36,6 +36,9 @@ subtle = "2"
 # Standard base64 — svix webhook secret decode (`whsec_<base64>`) + signature
 # encode. Lands with bss-webhooks (P6a).
 base64 = "0.22"
+# eSIM LPA activation-code + KYC-handoff QR PNGs on the self-serve portal (P6b).
+qrcode = { version = "0.14", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
 sqlx = { version = "0.8", default-features = false, features = [
     "postgres",
     "runtime-tokio-rustls",

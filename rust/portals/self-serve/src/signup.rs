@@ -1105,6 +1105,221 @@ fn extract_activation_code(order: &Value) -> Option<String> {
     None
 }
 
+// ── GET /signup/{plan_id}/msisdn — the number picker (pre-signup) ─────────────
+
+#[derive(Deserialize)]
+pub struct MsisdnPickerQuery {
+    prefix: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: i64,
+}
+
+fn default_limit() -> i64 {
+    12
+}
+
+pub async fn msisdn_picker(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    Path(plan_id): Path<String>,
+    Query(q): Query<MsisdnPickerQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, &format!("/signup/{plan_id}/msisdn")) {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let limit = q.limit.clamp(1, 40);
+    let prefix = q
+        .prefix
+        .as_deref()
+        .filter(|p| p.chars().all(|c| c.is_ascii_digit()));
+
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Unavailable").into_response();
+    };
+    let raw = match clients.catalog.list_offerings().await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(error = %e, "portal.msisdn.catalog_failed");
+            return (StatusCode::BAD_GATEWAY, "Catalog unavailable").into_response();
+        }
+    };
+    let arr = raw.as_array().cloned().unwrap_or_default();
+    let plan = match find_plan(&flatten_offerings(&arr), &plan_id) {
+        Some(p) => p,
+        None => return (StatusCode::NOT_FOUND, format!("Unknown plan: {plan_id}")).into_response(),
+    };
+
+    let numbers_raw = clients
+        .inventory
+        .list_msisdns(Some("available"), prefix, limit)
+        .await
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .unwrap_or_default();
+    let numbers: Vec<Value> = numbers_raw
+        .iter()
+        .filter_map(|n| n.get("msisdn").and_then(Value::as_str))
+        .map(|m| {
+            let display = if m.len() == 8 && m.chars().all(|c| c.is_ascii_digit()) {
+                format!("{} {}", &m[..4], &m[4..])
+            } else {
+                m.to_string()
+            };
+            serde_json::json!({ "raw": m, "display": display })
+        })
+        .collect();
+
+    render(
+        &state,
+        "msisdn_picker.html",
+        context! {
+            plan => minijinja::Value::from_serialize(&plan),
+            numbers => minijinja::Value::from_serialize(&numbers),
+            prefix => q.prefix.clone().unwrap_or_default(),
+            request => request_ctx("/signup", Some(&identity.email)),
+        },
+    )
+}
+
+// ── GET /confirmation/{subscription_id} — post-signup eSIM QR + summary ───────
+
+pub async fn confirmation(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    Path(subscription_id): Path<String>,
+    Query(q): Query<ProgressQuery>,
+) -> Response {
+    // Capability = the in-memory signup session id (Python has no auth dep here;
+    // the browser still carries the session cookie post-signup).
+    if let Err(r) = crate::deps::require_session(&portal, "/") {
+        return r;
+    }
+    let Some(sig) = state.signup_store.get(&q.session) else {
+        return (StatusCode::NOT_FOUND, "Unknown or expired session.").into_response();
+    };
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Unavailable").into_response();
+    };
+
+    let subscription = clients
+        .subscription
+        .get(&subscription_id)
+        .await
+        .unwrap_or(Value::Null);
+
+    // Activation code: prefer the one captured on the signup session; else derive
+    // from the subscription's ICCID via inventory.
+    let mut activation_code = sig.activation_code.clone();
+    if activation_code.is_none() {
+        if let Some(iccid) = subscription.get("iccid").and_then(Value::as_str) {
+            if let Ok(payload) = clients.inventory.get_activation_code(iccid).await {
+                activation_code = payload
+                    .get("activation_code")
+                    .or_else(|| payload.get("activationCode"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+            }
+        }
+    }
+    let qr = activation_code
+        .as_deref()
+        .map(crate::qrpng::activation_qr_data_uri)
+        .unwrap_or_default();
+
+    let plan = clients
+        .catalog
+        .list_offerings()
+        .await
+        .ok()
+        .and_then(|v| v.as_array().cloned())
+        .and_then(|arr| find_plan(&flatten_offerings(&arr), &sig.plan));
+
+    render(
+        &state,
+        "confirmation.html",
+        context! {
+            subscription_id => subscription_id,
+            subscription => subscription,
+            activation_code => activation_code,
+            qr_data_uri => qr,
+            plan => plan.map(|p| minijinja::Value::from_serialize(&p)),
+            signup => minijinja::Value::from_serialize(&sig),
+            session_id => sig.session_id,
+            plan_id => sig.plan,
+            step_error_message => Option::<String>::None,
+            progress_with_trigger => false,
+            request => request_ctx("/", portal.identity_email()),
+        },
+    )
+}
+
+// ── GET /activation/{order_id} — early-arrival polling shell ─────────────────
+
+pub async fn activation(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    Path(order_id): Path<String>,
+    Query(q): Query<ProgressQuery>,
+) -> Response {
+    if let Err(r) = crate::deps::require_session(&portal, "/") {
+        return r;
+    }
+    let Some(sig) = state.signup_store.get(&q.session) else {
+        return (StatusCode::NOT_FOUND, "Unknown or expired session.").into_response();
+    };
+    if let Some(sub) = &sig.subscription_id {
+        return Redirect::to(&format!("/confirmation/{sub}?session={}", q.session)).into_response();
+    }
+    render(
+        &state,
+        "activation.html",
+        context! {
+            session_id => q.session,
+            order_id => order_id,
+            plan_id => sig.plan,
+            request => request_ctx("/", portal.identity_email()),
+        },
+    )
+}
+
+pub async fn activation_status(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    Path(order_id): Path<String>,
+    Query(q): Query<ProgressQuery>,
+) -> Response {
+    if let Err(r) = crate::deps::require_session(&portal, "/") {
+        return r;
+    }
+    let Some(sig) = state.signup_store.get(&q.session) else {
+        return (StatusCode::NOT_FOUND, "Unknown or expired session.").into_response();
+    };
+    if let Some(sub) = &sig.subscription_id {
+        return hx_redirect(&format!("/confirmation/{sub}?session={}", q.session));
+    }
+    // Still running — read fresh COM state for the stepper (best-effort).
+    let state_str = match &state.clients {
+        Some(c) => c
+            .com
+            .get_order(&order_id)
+            .await
+            .ok()
+            .and_then(|o| o.get("state").and_then(Value::as_str).map(str::to_string))
+            .unwrap_or_else(|| "in_progress".to_string()),
+        None => "in_progress".to_string(),
+    };
+    render(
+        &state,
+        "partials/activation_stepper.html",
+        context! {
+            state => state_str,
+            order_id => order_id,
+            session_id => q.session,
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]

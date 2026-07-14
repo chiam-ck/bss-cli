@@ -193,6 +193,24 @@ impl CatalogClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `GET /promo/customer-offers` — targeted-offer entitlements for a customer
+    /// (`{offers: [...]}`), optionally filtered by `state`. Backs the dashboard's
+    /// assigned-offer block.
+    pub async fn list_customer_offers(
+        &self,
+        customer_id: &str,
+        state: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut path = format!("/promo/customer-offers?customerId={}", encode(customer_id));
+        if let Some(s) = state {
+            path.push_str(&format!("&state={}", encode(s)));
+        }
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `GET /promo/preview` — portal live-preview of a typed promo code:
     /// `{valid, label, base, effective, reason}`. `customer_id` gates a targeted
     /// code on eligibility. Backs the signup form's promo field.

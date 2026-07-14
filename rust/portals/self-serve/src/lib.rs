@@ -15,12 +15,14 @@
 pub mod auth;
 pub mod clients;
 pub mod config;
+pub mod dashboard;
 pub mod deps;
 pub mod error_messages;
 pub mod kyc;
 pub mod middleware;
 pub mod offerings;
 pub mod prompts;
+pub mod qrpng;
 pub mod routes;
 pub mod security;
 pub mod signup;
@@ -87,6 +89,7 @@ fn shared_static_dir() -> PathBuf {
 /// mounts.
 pub fn build_router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(dashboard::dashboard))
         .route("/health", get(routes::health))
         .route("/welcome", get(routes::welcome))
         .route("/plans", get(routes::plans))
@@ -115,7 +118,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/signup/step/order", post(signup::signup_step_order))
         .route("/signup/step/poll", get(signup::signup_step_poll))
         .route("/signup/:plan_id", get(signup::signup_form))
+        .route("/signup/:plan_id/msisdn", get(signup::msisdn_picker))
         .route("/signup/:plan_id/progress", get(signup::signup_progress))
+        .route("/confirmation/:subscription_id", get(signup::confirmation))
+        .route("/activation/:order_id", get(signup::activation))
+        .route(
+            "/activation/:order_id/status",
+            get(signup::activation_status),
+        )
         .nest_service("/static", ServeDir::new(local_static_dir()))
         .nest_service("/portal-ui/static", ServeDir::new(shared_static_dir()))
         // Session middleware runs on every request, resolving the cookie →
