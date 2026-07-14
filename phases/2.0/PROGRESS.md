@@ -64,6 +64,37 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 13 — session-status JSON API + P6b remaining-work note — ✅ PORTED (2026-07-14)
+
+`GET /api/session/:session_id` — the read-only JSON projection of the in-memory
+signup session that the **scenario runner's HTTP step** polls (`done` + the
+resulting ids). Public (no session), matching the Python route.
+
+**P6b self-serve status.** The entire customer-facing **account + signup surface**
+is now ported and route-smoked (s1–s13): public pages, auth/login, step-up,
+signup funnel (create→KYC→COF→order→poll→confirmation), dashboard, profile
+(+cross-schema email change), payment-methods, plan-change, cancel, top-up,
+billing, eSIM, msisdn picker, activation, session-status API. **Two pieces remain
+before the P6b tag:**
+
+1. **Chat SSE** (`/chat`, `/chat/events/:id`, `/chat/message`, `/chat/reset`) —
+   the orchestrator-mediated customer chat. `bss_orchestrator::astream_once` +
+   ownership + `customer_self_serve` profile are ported (P5c), but the portal
+   still needs the **SSE streaming route** + two unported subsystems:
+   `bss_orchestrator.chat_caps` (per-identity cost/turn caps) and the
+   `ChatConversationStore` (per-customer history). A dedicated slice — the last
+   real customer feature.
+2. **Webhooks** (`/webhooks/resend`, `/webhooks/didit`) — **prod-only** receivers
+   for Resend (email delivery) + Didit (KYC), both deferred throughout this port
+   (sandbox runs logging-email + prebaked-KYC, so these are never hit). Signature
+   verification is ready in `bss-webhooks` (P6a); they land with their DB stores
+   when the prod providers do. Not on the sandbox hero path.
+
+Everything the **hero scenarios** exercise on the sandbox stack is ported except
+the chat SSE flow. P6c (cockpit) + P6 acceptance follow.
+
+---
+
 ### Phase 6b slice 12 — subscription writes + billing/esim — ✅ PORTED (2026-07-14)
 
 The rest of the account surface: plan change, cancel, top-up (step-up writes) +

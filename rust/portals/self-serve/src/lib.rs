@@ -174,6 +174,7 @@ pub fn build_router(state: AppState) -> Router {
             get(account_writes::top_up_form).post(account_writes::top_up_submit),
         )
         .route("/top-up/success", get(account_writes::top_up_success))
+        .route("/api/session/:session_id", get(signup::session_status))
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
         .route("/signup/step/kyc", post(signup::signup_step_kyc))

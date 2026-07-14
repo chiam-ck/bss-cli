@@ -1112,6 +1112,32 @@ fn extract_activation_code(order: &Value) -> Option<String> {
     None
 }
 
+// ── GET /api/session/{session_id} — JSON projection (scenario runner) ─────────
+
+/// Read-only JSON of the in-memory signup session. Public (no session): the
+/// scenario runner's HTTP step polls it for `done` + the resulting ids. Port of
+/// `bss_self_serve.routes.session_api`.
+pub async fn session_status(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Response {
+    match state.signup_store.get(&session_id) {
+        Some(sig) => axum::Json(serde_json::json!({
+            "session_id": sig.session_id,
+            "plan": sig.plan,
+            "msisdn_preference": sig.msisdn,
+            "done": sig.done,
+            "error": sig.error,
+            "customer_id": sig.customer_id,
+            "order_id": sig.order_id,
+            "subscription_id": sig.subscription_id,
+            "activation_code": sig.activation_code,
+        }))
+        .into_response(),
+        None => (StatusCode::NOT_FOUND, "Unknown or expired session.").into_response(),
+    }
+}
+
 // ── GET /signup/{plan_id}/msisdn — the number picker (pre-signup) ─────────────
 
 #[derive(Deserialize)]
