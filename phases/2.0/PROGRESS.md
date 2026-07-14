@@ -64,6 +64,42 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 4 — auth/login flow (OTP + magic-link) — ✅ PORTED (2026-07-14)
+
+The customer login gateway, **working live through the Rust binary**.
+
+- **`bss-portal-auth` (DB write flow):** `start_email_login` (reuse/create
+  identity → mint OTP + magic-link → store both HMAC-hashed → record attempt →
+  hand plaintext to the adapter, one tx) + `verify_email_login` (timing-safe
+  verify → consume matched token → **auto-link to a CRM customer by unique email
+  contact-medium** → stamp `email_verified_at`/status/`last_login_at` → mint
+  session). Rate limits over `login_attempt` window counts; `LoginError` +
+  `VerifyOutcome`; structured `LoginFailed` reasons.
+- **email adapters:** `EmailAdapter` trait + `LoggingEmailAdapter` (the greppable
+  dev mailbox the hero scenarios `tail`, branded subject) + `NoopEmailAdapter`
+  (tests) + `select_adapter`/`resolve_provider_name`. Resend/SMTP fail-fast
+  (not yet ported).
+- **portal auth routes:** GET/POST `/auth/login`, GET/POST `/auth/check-email`,
+  GET `/auth/verify` (magic link), POST `/auth/logout`. Generic customer-facing
+  copy; `Set-Cookie` via `build_session_cookie`; email `%40`-encoded (Gmail
+  +addressing). `main` fail-fasts on the pepper.
+
+**Live-validated end-to-end (two ways):** a DB round-trip smoke (start → read OTP
+→ wrong-code `Failed` → correct-code `Session` → `current_session` resolves →
+consumed-OTP `wrong_code`) against the real `portal_auth` schema; and the running
+binary (`GET /auth/login` 200 → `POST` 303 to check-email → OTP in the mailbox →
+`POST /auth/check-email` 303 to `/plans` + `Set-Cookie`).
+
+**Port-vs-oracle notes:** the `_mask_email` docstring says `a***` but the code
+produces `a**` (`max(len-1,1)`) — the Rust matches the code. Client IP is
+currently `None` (axum `ConnectInfo` not yet wired) so per-IP rate limiting is
+inert; per-email limiting is active. Both noted as follow-ups.
+
+**Deferred:** step-up (start/verify/consume + pending-action replay), the Resend
+HTML adapter.
+
+---
+
 ### Phase 6b slices 2–3 — /plans + session infrastructure — ✅ PORTED (2026-07-14)
 
 **Slice 2 — `/plans` + clients + offerings.** `offerings::flatten_offerings`
