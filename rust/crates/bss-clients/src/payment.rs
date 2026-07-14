@@ -69,8 +69,12 @@ impl PaymentClient {
         customer_id: Option<&str>,
         payment_method_id: Option<&str>,
         limit: i64,
+        offset: i64,
     ) -> Result<Value, ClientError> {
         let mut params: Vec<String> = vec![format!("limit={limit}")];
+        if offset > 0 {
+            params.push(format!("offset={offset}"));
+        }
         if let Some(c) = customer_id.filter(|s| !s.is_empty()) {
             params.push(format!("customerId={}", encode(c)));
         }
@@ -78,6 +82,19 @@ impl PaymentClient {
             params.push(format!("paymentMethodId={}", encode(m)));
         }
         let path = format!("/tmf-api/paymentManagement/v4/payment?{}", params.join("&"));
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `GET …/payment/count?customerId=` — total attempt count for pagination.
+    /// Backs the billing-history "Page N of M".
+    pub async fn count_payments(&self, customer_id: &str) -> Result<Value, ClientError> {
+        let path = format!(
+            "/tmf-api/paymentManagement/v4/payment/count?customerId={}",
+            encode(customer_id)
+        );
         let resp = self.inner.request(Method::GET, &path, None, None).await?;
         resp.json()
             .await

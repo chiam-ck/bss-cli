@@ -101,7 +101,7 @@ pub fn register_payment_tools(registry: &mut ToolRegistry, client: PaymentClient
                 let customer_id = opt_str(&args, "customer_id");
                 let method_id = opt_str(&args, "payment_method_id");
                 let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(20);
-                c.list_payments(customer_id.as_deref(), method_id.as_deref(), limit)
+                c.list_payments(customer_id.as_deref(), method_id.as_deref(), limit, 0)
                     .await
                     .map_err(map_err)
             }

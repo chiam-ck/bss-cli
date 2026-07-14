@@ -78,7 +78,7 @@ async fn payment_read_tools_return_client_responses_verbatim() {
     .await;
     assert_eq!(
         via_tool,
-        pay.list_payments(Some(&cid), None, 10).await.unwrap()
+        pay.list_payments(Some(&cid), None, 10, 0).await.unwrap()
     );
     let attempts = via_tool.as_array().expect("attempts is an array");
 

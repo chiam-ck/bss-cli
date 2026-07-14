@@ -12,6 +12,8 @@
 //! signup + KYC funnel, the post-login account surface, and the SSE chat route.
 #![forbid(unsafe_code)]
 
+pub mod account_reads;
+pub mod account_writes;
 pub mod auth;
 pub mod clients;
 pub mod config;
@@ -145,6 +147,33 @@ pub fn build_router(state: AppState) -> Router {
             "/payment-methods/:pm_id/set-default",
             post(payment_methods::set_default),
         )
+        .route("/billing/history", get(account_reads::history))
+        .route("/esim/:subscription_id", get(account_reads::esim_view))
+        .route(
+            "/plan/change",
+            get(account_writes::plan_change_form).post(account_writes::plan_change_submit),
+        )
+        .route(
+            "/plan/change/cancel",
+            post(account_writes::plan_change_cancel),
+        )
+        .route(
+            "/plan/change/scheduled",
+            get(account_writes::plan_change_scheduled),
+        )
+        .route(
+            "/subscription/:subscription_id/cancel",
+            get(account_writes::cancel_confirm).post(account_writes::cancel_submit),
+        )
+        .route(
+            "/subscription/:subscription_id/cancelled",
+            get(account_writes::cancel_success),
+        )
+        .route(
+            "/top-up",
+            get(account_writes::top_up_form).post(account_writes::top_up_submit),
+        )
+        .route("/top-up/success", get(account_writes::top_up_success))
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
         .route("/signup/step/kyc", post(signup::signup_step_kyc))

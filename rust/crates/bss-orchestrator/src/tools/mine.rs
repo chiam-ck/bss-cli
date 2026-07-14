@@ -350,7 +350,7 @@ pub fn register_customer_self_serve_tools(
             async move {
                 let actor = require_actor(&ctx)?;
                 let limit = args.get("limit").and_then(Value::as_i64).unwrap_or(20);
-                p.list_payments(Some(&actor), None, limit)
+                p.list_payments(Some(&actor), None, limit, 0)
                     .await
                     .map_err(map_err)
             }
