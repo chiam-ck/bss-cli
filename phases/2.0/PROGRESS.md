@@ -64,6 +64,55 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 1 — self-serve portal skeleton + public surface — ✅ PORTED (2026-07-14)
+
+`rust/portals/self-serve` (new `portals/*` workspace member) — the **first
+deployable portal container** of Phase 6. The axum app skeleton + the render
+stack, proven on the public static surface (no BSS read, no session):
+`/health`, `/welcome`, `/terms`, `/privacy`, `/branding/logo`, and the `/static`
++ `/portal-ui/static` mounts.
+
+**Architectural decision — reuse the Jinja templates via MiniJinja.** The
+existing `.html` templates are Jinja-compatible and MiniJinja renders them
+unchanged, so the Rust portal loads them **in place** via a two-directory loader
+(the portal's `templates/` then `bss_portal_ui`'s shared `templates/` — the
+Python `ChoiceLoader` equivalent). No template rewrite, single source of truth
+during the bilingual period, trivial parity. Branding globals are **functions**
+(`branding()` / `branding_style()`) evaluated per render, so a `settings.toml`
+theme/brand change hot-reloads on the next request; `bss_release` + `asset_v`
+are added-globals. `base.html`'s `{% set %}`/`{% block %}`/`{% if %}`/`is
+defined`/`{% include %}` all render under MiniJinja untouched.
+
+**The branding-hero lesson, validated live.** The first test pinned the literal
+`"bss-cli self-serve"` and **failed** — because the workspace `.bss-cli/settings
+.toml` sets `brand_name = "Octopus"`, so the portal correctly renders `"Octopus
+self-serve"`. This is exactly the stale-assertion the P6 acceptance task tracks:
+the fix is a **brand-aware** assertion (`bss_branding::current().brand_name`),
+not a hardcoded string. The binary boots and serves the operator brand end-to-end
+(`GET /welcome` → `<title>Welcome · Octopus self-serve</title>`), confirming the
+whole reused-template + branding integration works.
+
+**Ported this slice:** `config` (portal `Settings::from_env` — full field set
+carried for later slices), `templating` (the MiniJinja env + two-dir loader +
+branding globals + `request_ctx`), `routes` (the 5 public handlers + the render
+helper), `main` (telemetry + axum serve on 9001), `lib` (`AppState` + router +
+static mounts). Brought `minijinja` (+`loader`) + `tower-http` (`fs`) into the
+workspace.
+
+**Following P6b slices:** `/plans` + landing/dashboard (first catalog read via
+`bss-clients`), the `PortalSessionMiddleware` as a tower layer + the
+`bss-portal-auth` DB session layer, the auth/login flow (`/auth/check-email` —
+the 2nd standing hero failure), the signup + KYC funnel, the post-login account
+surface, the SSE chat route (wiring `chat_caps` + ownership `record_violation`),
+and inbound webhooks.
+
+**Verification.** fmt + clippy `-D warnings` clean workspace-wide; full workspace
+green (106 groups, no regression). 4 integration tests render the real templates
+through MiniJinja + branding; the binary boots + serves (`/health` JSON, branded
+`/welcome`).
+
+---
+
 ### Phase 6a slice 4 — bss-webhooks (signatures + redaction + idempotency) — ✅ PORTED (2026-07-14)
 
 `rust/crates/bss-webhooks` — the shared webhook substrate. The pure,
