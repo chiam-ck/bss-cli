@@ -64,6 +64,47 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6a slice 3 — bss-portal-ui (chat HTML + SSE) + bss-cockpit postprocess — ✅ PORTED (2026-07-14)
+
+The shared **LLM-output rendering** core both portals + the REPL need. Two crates:
+
+- **`bss_cockpit::postprocess`** (the P5b-deferred module lands here) —
+  `strip_channel_markup` (Harmony/`<channel|>`/`assistantfinal` tokens),
+  `strip_reasoning_leakage` (`<think>…</think>` blocks + leading/inline
+  `thought` prefixes), and `knowledge_called` (the pipe-table grammar gate for
+  renderer-less `knowledge.*` prose). **Uses `fancy-regex`** (new workspace dep)
+  for the one lookahead (`^…thought\s+(?=\S)` — the "don't eat *thoughtful*"
+  guard); the P5b note called this out exactly.
+- **`bss-portal-ui`** (new crate) — `chat_html` (the customer-chat v0.12 +
+  cockpit-thread v0.13 renderer: HTML-escape-first, then a whitelisted
+  block+inline markdown state machine → bold/italic/code/headings/ul/ol/code-
+  fence/ASCII-panel/opt-in pipe-tables; the XSS boundary) + `sse` (frame
+  encoding + status dot). `chat_html`'s lookaround italics (`(?<!\*)\*…\*(?!\*)`,
+  `(?<!\w)_…_(?!\w)`) also need `fancy-regex`. Depends on `bss-cockpit` for the
+  strip helpers (matching the Python import).
+
+**Byte-parity gate — the oracle golden.** A fixture of ~30 cases was captured by
+feeding representative inputs through the **live Python oracle**
+(`bss_cockpit.postprocess` + `bss_portal_ui.chat_html`) and pinned in
+`tests/golden_test.rs`: every `strip_*` / `render_chat_markdown` /
+`render_assistant_bubble` / `render_tool_pill` output matches **exactly**,
+including the lookaround italics, the `"  thought   \n\nfoo" → "foo"` reasoning
+strip, mixed inline markdown, code fences, ASCII panels, and opt-in vs
+suppressed pipe-tables. This is the R2-style "the renderer IS a behavioural
+contract" gate — a proportional-font browser divergence would be a real bug.
+
+**Deferred to the P6b portal consumer** (land-with-first-consumer): `agent_log`
+(the `AgentEvent` → widget-HTML projection — needs the orchestrator event types
++ a MiniJinja template render) and `paths`/static-asset bundling (`TEMPLATE_DIR`/
+`STATIC_DIR` + `partials/*.html` + `portal_base.css` + vendored htmx). These are
+app-factory-coupled.
+
+**Verification.** fmt + clippy `-D warnings` clean workspace-wide; full workspace
+green (99 groups, no regression). The oracle golden + `knowledge_called` +
+`status_html`/`format_frame` units cover the surface.
+
+---
+
 ### Phase 6a slice 2 — bss-portal-auth (security foundation) — ✅ PORTED (2026-07-14)
 
 `rust/crates/bss-portal-auth` — **first sub-slice: the pure, security-critical

@@ -51,6 +51,10 @@ lapin = { version = "2", default-features = false, features = ["rustls"] }
 tokio-executor-trait = "2"
 tokio-reactor-trait = "1"
 futures-util = "0.3"
+# Lookbehind/lookahead regex (the `regex` crate can't do them). Used by the
+# LLM-output post-processors + chat-HTML renderer ported in P6a — matches the
+# P5b note that `postprocess::*` needs fancy-regex.
+fancy-regex = "0.13"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
 tracing-opentelemetry = "0.28"
@@ -77,6 +81,7 @@ bss-cockpit = { path = "crates/bss-cockpit" }
 bss-orchestrator = { path = "crates/bss-orchestrator" }
 bss-branding = { path = "crates/bss-branding" }
 bss-portal-auth = { path = "crates/bss-portal-auth" }
+bss-portal-ui = { path = "crates/bss-portal-ui" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.
