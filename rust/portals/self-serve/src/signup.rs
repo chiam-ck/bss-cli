@@ -1,11 +1,12 @@
 //! Signup funnel — the deterministic direct-write chain. Port of
 //! `bss_self_serve.routes.signup`.
 //!
-//! **This slice (P6b s5):** the entry surface — the signup form, the live promo
-//! preview, `POST /signup` (step 1: `crm.create_customer` + identity link), and
-//! the progress page that hosts the HTMX step timeline. The KYC/COF/order/poll
-//! step routes + the Stripe-checkout and Didit-handoff variants land in the next
-//! slice.
+//! **Ported (P6b s5–s7):** the full sandbox happy path — the form, live promo
+//! preview, `POST /signup` (create customer + identity link), the progress page,
+//! and the five-step timeline: KYC (`step/kyc`, prebaked), card-on-file
+//! (`step/cof`, mock tokenizer), order (`step/order`), and poll (`step/poll` →
+//! `HX-Redirect` to `/confirmation`). **Deferred:** the Stripe-checkout COF
+//! variant and the Didit hosted-UI KYC handoff (both prod-only).
 //!
 //! Doctrine: `identity.email` is the only source of email (the form never
 //! carries it); one `bss-clients` write per step; a `portal_action` audit row
@@ -708,6 +709,402 @@ async fn complete_kyc_attest(
     }
 }
 
+// ── POST /signup/step/cof — step 3 (mock tokenizer path) ─────────────────────
+
+pub async fn signup_step_cof(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    headers: HeaderMap,
+    Query(q): Query<SessionQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, "/plans") {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let ua = user_agent(&headers);
+    let mut sig = match resolve(&state, &q.session, &identity) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+
+    // Stripe Checkout (init/return) is deferred; in sandbox the provider is mock.
+    if state.settings.payment_provider == "stripe" {
+        tracing::warn!("portal.signup.cof.stripe_deferred");
+        return render_step_fragment(&state, &sig);
+    }
+
+    if sig.step != SignupStep::PendingCof {
+        return render_step_fragment(&state, &sig);
+    }
+    signup_step_cof_mock(&state, &mut sig, ua.as_deref()).await
+}
+
+async fn signup_step_cof_mock(
+    state: &AppState,
+    sig: &mut SignupSession,
+    ua: Option<&str>,
+) -> Response {
+    let customer_id = sig.customer_id.clone().unwrap_or_default();
+    let tok = match local_tokenize(&sig.card_pan) {
+        Ok(t) => t,
+        Err(()) => {
+            record_step(
+                state,
+                sig,
+                Some(&customer_id),
+                "signup_add_card",
+                "/signup/step/cof",
+                false,
+                Some("policy.payment.method.invalid_card"),
+                ua,
+            )
+            .await;
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some("policy.payment.method.invalid_card".to_string());
+            state.signup_store.update(sig);
+            return render_step_fragment(state, sig);
+        }
+    };
+
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Signup unavailable").into_response();
+    };
+
+    match clients
+        .payment
+        .create_payment_method(&customer_id, &tok.card_token, &tok.last4, &tok.brand)
+        .await
+    {
+        Ok(method) => {
+            sig.payment_method_id = method.get("id").and_then(Value::as_str).map(str::to_string);
+            // Card PAN cleared from memory the moment tokenize + add_card succeed.
+            sig.card_pan = String::new();
+            record_step(
+                state,
+                sig,
+                Some(&customer_id),
+                "signup_add_card",
+                "/signup/step/cof",
+                true,
+                None,
+                ua,
+            )
+            .await;
+            sig.step = SignupStep::PendingOrder;
+            state.signup_store.update(sig);
+            render_step_fragment(state, sig)
+        }
+        Err(ClientError::Policy(pv)) => {
+            record_step(
+                state,
+                sig,
+                Some(&customer_id),
+                "signup_add_card",
+                "/signup/step/cof",
+                false,
+                Some(&pv.rule),
+                ua,
+            )
+            .await;
+            if !is_known(&pv.rule) {
+                tracing::info!(rule = %pv.rule, "portal.signup.unknown_policy_rule");
+            }
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some(pv.rule.clone());
+            state.signup_store.update(sig);
+            render_step_fragment(state, sig)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "portal.signup.add_card_failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Signup failed").into_response()
+        }
+    }
+}
+
+// ── POST /signup/step/order — step 4 ─────────────────────────────────────────
+
+pub async fn signup_step_order(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    headers: HeaderMap,
+    Query(q): Query<SessionQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, "/plans") {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let ua = user_agent(&headers);
+    let mut sig = match resolve(&state, &q.session, &identity) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    if sig.step != SignupStep::PendingOrder {
+        return render_step_fragment(&state, &sig);
+    }
+    let customer_id = sig.customer_id.clone().unwrap_or_default();
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Signup unavailable").into_response();
+    };
+
+    // create + submit are one conceptual write (mirrors order.create). A failure
+    // in either — or a missing order id — flips the step to failed.
+    let discount = Some(sig.promo_code.as_str()).filter(|s| !s.is_empty());
+    let created = clients
+        .com
+        .create_order(
+            &customer_id,
+            &sig.plan,
+            Some(sig.msisdn.as_str()),
+            None,
+            discount,
+            sig.skip_assigned_offer,
+        )
+        .await;
+
+    let order_id = match &created {
+        Ok(c) => c.get("id").and_then(Value::as_str).map(str::to_string),
+        Err(ClientError::Policy(_)) => None,
+        Err(e) => {
+            tracing::error!(error = %e, "portal.signup.create_order_failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Signup failed").into_response();
+        }
+    };
+
+    // Resolve the failure rule: a policy violation from create, or a missing id.
+    let submit_result = match (&created, &order_id) {
+        (Ok(_), Some(oid)) => Some(clients.com.submit_order(oid).await),
+        _ => None,
+    };
+
+    let fail_rule: Option<String> = match (&created, &order_id, &submit_result) {
+        (Err(ClientError::Policy(pv)), _, _) => Some(pv.rule.clone()),
+        (Ok(_), None, _) => Some("signup.create_order.no_id".to_string()),
+        (Ok(_), Some(_), Some(Err(ClientError::Policy(pv)))) => Some(pv.rule.clone()),
+        (Ok(_), Some(_), Some(Err(e))) => {
+            tracing::error!(error = %e, "portal.signup.submit_order_failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Signup failed").into_response();
+        }
+        _ => None,
+    };
+
+    if let Some(rule) = fail_rule {
+        record_step(
+            &state,
+            &sig,
+            Some(&customer_id),
+            "signup_create_order",
+            "/signup/step/order",
+            false,
+            Some(&rule),
+            ua.as_deref(),
+        )
+        .await;
+        if !is_known(&rule) {
+            tracing::info!(rule = %rule, "portal.signup.unknown_policy_rule");
+        }
+        sig.step = SignupStep::Failed;
+        sig.step_error = Some(rule);
+        state.signup_store.update(&sig);
+        return render_step_fragment(&state, &sig);
+    }
+
+    sig.order_id = order_id;
+    record_step(
+        &state,
+        &sig,
+        Some(&customer_id),
+        "signup_create_order",
+        "/signup/step/order",
+        true,
+        None,
+        ua.as_deref(),
+    )
+    .await;
+    sig.step = SignupStep::PendingActivation;
+    state.signup_store.update(&sig);
+    render_step_fragment(&state, &sig)
+}
+
+// ── GET /signup/step/poll — step 5 (read-only) ───────────────────────────────
+
+pub async fn signup_step_poll(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    Query(q): Query<SessionQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, "/plans") {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let mut sig = match resolve(&state, &q.session, &identity) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+
+    // Second detection (celebration dwell elapsed) — emit the HX-Redirect now.
+    if sig.step == SignupStep::Completed && sig.redirect_armed && sig.subscription_id.is_some() {
+        let sub = sig.subscription_id.as_deref().unwrap_or_default();
+        return hx_redirect(&format!("/confirmation/{sub}?session={}", sig.session_id));
+    }
+    if matches!(sig.step, SignupStep::Completed | SignupStep::Failed) {
+        return render_step_fragment(&state, &sig);
+    }
+    if sig.step != SignupStep::PendingActivation || sig.order_id.is_none() {
+        return render_step_fragment(&state, &sig);
+    }
+
+    let order_id = sig.order_id.clone().unwrap_or_default();
+    let Some(clients) = &state.clients else {
+        return render_step_fragment(&state, &sig);
+    };
+    // Best-effort poll — a transient error just retriggers on the next tick.
+    let order = match clients.com.get_order(&order_id).await {
+        Ok(o) => o,
+        Err(_) => return render_step_fragment(&state, &sig),
+    };
+
+    let stt = order.get("state").and_then(Value::as_str);
+    match stt {
+        Some("completed") => {
+            let Some(sub_id) = extract_subscription_id(&order) else {
+                // Order completed on COM but targetSubscriptionId not stamped yet
+                // (SOM/COM event race) — treat as in-progress, retrigger.
+                return render_step_fragment(&state, &sig);
+            };
+            sig.subscription_id = Some(sub_id);
+            sig.activation_code = extract_activation_code(&order);
+            sig.step = SignupStep::Completed;
+            sig.done = true;
+            sig.redirect_armed = true;
+            state.signup_store.update(&sig);
+            // First detection — render the celebration fragment; its 1.5s delayed
+            // re-trigger lands on the redirect_armed branch above next tick.
+            render_step_fragment(&state, &sig)
+        }
+        Some(s @ ("failed" | "cancelled")) => {
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some(format!("order.{s}"));
+            state.signup_store.update(&sig);
+            render_step_fragment(&state, &sig)
+        }
+        _ => render_step_fragment(&state, &sig),
+    }
+}
+
+/// Empty body carrying an `HX-Redirect` header (HTMX swaps the whole page).
+fn hx_redirect(url: &str) -> Response {
+    let mut resp = axum::response::Html(String::new()).into_response();
+    if let Ok(v) = axum::http::HeaderValue::from_str(url) {
+        resp.headers_mut()
+            .insert(axum::http::HeaderName::from_static("hx-redirect"), v);
+    }
+    resp
+}
+
+// ── helpers: tokenizer + order-payload extraction ────────────────────────────
+
+/// The mock client-side tokenizer output.
+struct TokenizedCard {
+    card_token: String,
+    last4: String,
+    brand: String,
+}
+
+/// Sandbox client-side tokenizer. Mirrors `_local_tokenize`: derives brand + last4
+/// and embeds `FAIL`/`DECLINE` in the token so the payment mock can simulate
+/// declines. `Err(())` for a non-numeric or too-short PAN.
+fn local_tokenize(card_number: &str) -> Result<TokenizedCard, ()> {
+    let digits: String = card_number
+        .chars()
+        .filter(|c| *c != ' ' && *c != '-')
+        .collect();
+    if !digits.chars().all(|c| c.is_ascii_digit()) || digits.len() < 12 {
+        return Err(());
+    }
+    let last4: String = digits[digits.len() - 4..].to_string();
+    let bin2 = &digits[..2];
+    let brand = if digits.starts_with('4') {
+        "visa"
+    } else if bin2
+        .parse::<u32>()
+        .map(|n| (51..=55).contains(&n))
+        .unwrap_or(false)
+    {
+        "mastercard"
+    } else if bin2 == "34" || bin2 == "37" {
+        "amex"
+    } else {
+        "unknown"
+    };
+    let uid = uuid::Uuid::new_v4().to_string();
+    let upper = card_number.to_uppercase();
+    let card_token = if upper.contains("FAIL") {
+        format!("tok_FAIL_{uid}")
+    } else if upper.contains("DECLINE") {
+        format!("tok_DECLINE_{uid}")
+    } else {
+        format!("tok_{uid}")
+    };
+    Ok(TokenizedCard {
+        card_token,
+        last4,
+        brand: brand.to_string(),
+    })
+}
+
+const SUB_ID_KEYS: &[&str] = &[
+    "targetSubscriptionId",
+    "target_subscription_id",
+    "subscriptionId",
+    "subscription_id",
+];
+
+/// Pull the `SUB-*` id off a completed order payload (top-level keys, then each
+/// item). Port of `_extract_subscription_id`.
+fn extract_subscription_id(order: &Value) -> Option<String> {
+    for key in SUB_ID_KEYS {
+        if let Some(v) = order.get(*key).and_then(Value::as_str) {
+            if v.starts_with("SUB-") {
+                return Some(v.to_string());
+            }
+        }
+    }
+    if let Some(items) = order.get("items").and_then(Value::as_array) {
+        for item in items {
+            for key in SUB_ID_KEYS {
+                if let Some(v) = item.get(*key).and_then(Value::as_str) {
+                    if v.starts_with("SUB-") {
+                        return Some(v.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+const ACTIVATION_KEYS: &[&str] = &["activationCode", "activation_code", "lpa"];
+
+/// Best-effort lift of the LPA activation code off the order. Port of
+/// `_extract_activation_code`.
+fn extract_activation_code(order: &Value) -> Option<String> {
+    for key in ACTIVATION_KEYS {
+        if let Some(v) = order.get(*key).and_then(Value::as_str) {
+            return Some(v.to_string());
+        }
+    }
+    if let Some(items) = order.get("items").and_then(Value::as_array) {
+        for item in items {
+            for key in ACTIVATION_KEYS {
+                if let Some(v) = item.get(*key).and_then(Value::as_str) {
+                    return Some(v.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -718,5 +1115,47 @@ mod tests {
         assert_eq!(format_msisdn("80001111"), "+65 8000 1111");
         assert_eq!(format_msisdn("123"), "123");
         assert_eq!(format_msisdn("abcdefgh"), "abcdefgh");
+    }
+
+    #[test]
+    fn tokenize_brand_last4_and_token_prefix() {
+        let visa = local_tokenize("4111 1111 1111 1111").unwrap();
+        assert_eq!(visa.brand, "visa");
+        assert_eq!(visa.last4, "1111");
+        assert!(visa.card_token.starts_with("tok_"));
+
+        let mc = local_tokenize("5312345678901234").unwrap();
+        assert_eq!(mc.brand, "mastercard");
+
+        let amex = local_tokenize("371234567890123").unwrap();
+        assert_eq!(amex.brand, "amex");
+
+        // The `FAIL`/`DECLINE` token branches are vestigial: the numeric-only
+        // guard rejects any card_number containing letters first (matches the
+        // Python `digits.isdigit()` check that precedes the marker test), so a
+        // letter-bearing PAN is `Err`, never a `tok_FAIL_`/`tok_DECLINE_` token.
+        assert!(local_tokenize("4111FAIL11111111").is_err());
+        assert!(local_tokenize("4111DECLINE111111").is_err());
+
+        // Too short / non-numeric → Err.
+        assert!(local_tokenize("4111").is_err());
+        assert!(local_tokenize("nope nope nope").is_err());
+    }
+
+    #[test]
+    fn extract_sub_and_activation() {
+        let order = serde_json::json!({
+            "state": "completed",
+            "items": [{"targetSubscriptionId": "SUB-042", "activationCode": "LPA:1$x$y"}]
+        });
+        assert_eq!(extract_subscription_id(&order).as_deref(), Some("SUB-042"));
+        assert_eq!(
+            extract_activation_code(&order).as_deref(),
+            Some("LPA:1$x$y")
+        );
+        // Top-level alias + missing.
+        let top = serde_json::json!({"subscription_id": "SUB-001"});
+        assert_eq!(extract_subscription_id(&top).as_deref(), Some("SUB-001"));
+        assert!(extract_subscription_id(&serde_json::json!({})).is_none());
     }
 }

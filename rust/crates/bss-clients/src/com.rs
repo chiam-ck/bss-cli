@@ -74,6 +74,7 @@ impl ComClient {
         msisdn_preference: Option<&str>,
         notes: Option<&str>,
         discount_code: Option<&str>,
+        skip_assigned_offer: bool,
     ) -> Result<Value, ClientError> {
         let mut map = serde_json::Map::new();
         map.insert("customerId".to_string(), json!(customer_id));
@@ -86,6 +87,10 @@ impl ComClient {
         }
         if let Some(d) = discount_code.filter(|s| !s.is_empty()) {
             map.insert("discountCode".to_string(), json!(d));
+        }
+        // v1.1 — sent only when set (customer opted out of the auto-applied offer).
+        if skip_assigned_offer {
+            map.insert("skipAssignedOffer".to_string(), json!(true));
         }
         self.post(
             "/tmf-api/productOrderingManagement/v4/productOrder",

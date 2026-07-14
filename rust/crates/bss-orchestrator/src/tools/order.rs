@@ -101,6 +101,7 @@ pub fn register_order_write_tools(registry: &mut ToolRegistry, client: ComClient
                         msisdn_preference.as_deref(),
                         notes.as_deref(),
                         discount_code.as_deref(),
+                        false,
                     )
                     .await
                     .map_err(map_err)?;
