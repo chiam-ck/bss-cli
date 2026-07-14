@@ -83,7 +83,9 @@ async fn link_and_audit_round_trip() {
         ip: None,
         user_agent: Some("rust-test"),
     };
-    record_portal_action(&pool, &rec).await.expect("audit write");
+    record_portal_action(&pool, &rec)
+        .await
+        .expect("audit write");
     let n: i64 = sqlx::query(
         "SELECT count(*) AS c FROM portal_auth.portal_action \
          WHERE identity_id = $1 AND action = 'signup_create_customer'",
