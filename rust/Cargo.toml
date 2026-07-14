@@ -33,6 +33,9 @@ rand = "0.8"
 hmac = "0.12"
 sha2 = "0.10"
 subtle = "2"
+# Standard base64 — svix webhook secret decode (`whsec_<base64>`) + signature
+# encode. Lands with bss-webhooks (P6a).
+base64 = "0.22"
 sqlx = { version = "0.8", default-features = false, features = [
     "postgres",
     "runtime-tokio-rustls",
@@ -82,6 +85,7 @@ bss-orchestrator = { path = "crates/bss-orchestrator" }
 bss-branding = { path = "crates/bss-branding" }
 bss-portal-auth = { path = "crates/bss-portal-auth" }
 bss-portal-ui = { path = "crates/bss-portal-ui" }
+bss-webhooks = { path = "crates/bss-webhooks" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.

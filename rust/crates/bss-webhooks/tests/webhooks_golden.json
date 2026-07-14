@@ -1,0 +1,129 @@
+{
+ "now": 1700000000.0,
+ "body_utf8": "{\"event\":\"email.delivered\",\"id\":\"evt_1\"}",
+ "valid": [
+  {
+   "scheme": "svix",
+   "secret": "whsec_c3ZpeC1yYXcta2V5LWFiYw==",
+   "headers": {
+    "svix-id": "msg_2f8x",
+    "svix-timestamp": "1700000000000",
+    "svix-signature": "v0,bogus v1,c0au5MyK3EI3wgPMNozeLHN01kGBMCX72sDy9ejLhW8="
+   }
+  },
+  {
+   "scheme": "stripe",
+   "secret": "whsecret-key-123",
+   "headers": {
+    "Stripe-Signature": "t=1700000000,v1=deadbeef,v1=894b83da1d47aed64b3afcf08d5459624c7e65e10f7b399d045cd95a73bfd78b"
+   }
+  },
+  {
+   "scheme": "didit_hmac",
+   "secret": "whsecret-key-123",
+   "headers": {
+    "X-Signature-V2": "2FE5FAB1DB309125FE264B21021DA109AA56C3CF94E76EF253E4B02E07C62C30",
+    "X-Timestamp": "1700000000"
+   }
+  }
+ ],
+ "svix_expected_b64": "c0au5MyK3EI3wgPMNozeLHN01kGBMCX72sDy9ejLhW8=",
+ "stripe_expected_hex": "894b83da1d47aed64b3afcf08d5459624c7e65e10f7b399d045cd95a73bfd78b",
+ "didit_expected_hex": "2fe5fab1db309125fe264b21021da109aa56c3cf94e76ef253e4b02e07c62c30",
+ "redaction": [
+  {
+   "provider": "resend",
+   "in": {
+    "to": "a@b.com",
+    "from": "x@y.com",
+    "subject": "Hi",
+    "nested": {
+     "cc": "z@w.com",
+     "keep": 1
+    }
+   },
+   "out": {
+    "to": "[redacted]",
+    "from": "[redacted]",
+    "subject": "Hi",
+    "nested": {
+     "cc": "[redacted]",
+     "keep": 1
+    }
+   }
+  },
+  {
+   "provider": "stripe",
+   "in": {
+    "email": "c@d.com",
+    "amount": 500,
+    "card": {
+     "last4": "4242",
+     "number": "4111",
+     "cvc": "123"
+    },
+    "billing_details": {
+     "x": 1
+    }
+   },
+   "out": {
+    "email": "[redacted]",
+    "amount": 500,
+    "card": {
+     "last4": "4242",
+     "number": "[redacted]",
+     "cvc": "[redacted]"
+    },
+    "billing_details": "[redacted]"
+   }
+  },
+  {
+   "provider": "didit",
+   "in": {
+    "document_number": "S1234567A",
+    "dob": "1990-01-01",
+    "full_name": "Jane",
+    "list": [
+     {
+      "nric": "T7654321B"
+     }
+    ],
+    "keep": true
+   },
+   "out": {
+    "document_number": "sha256:70f2b95bdb288b37",
+    "dob": "sha256:c5cc05628d64ef65",
+    "full_name": "[redacted]",
+    "list": [
+     {
+      "nric": "sha256:b65ccabc21e799a3"
+     }
+    ],
+    "keep": true
+   }
+  },
+  {
+   "provider": "unknown_provider",
+   "in": {
+    "anything": "stays",
+    "n": [
+     1,
+     2,
+     {
+      "a": null
+     }
+    ]
+   },
+   "out": {
+    "anything": "stays",
+    "n": [
+     1,
+     2,
+     {
+      "a": null
+     }
+    ]
+   }
+  }
+ ]
+}
