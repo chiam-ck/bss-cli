@@ -633,6 +633,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bss-portal-auth"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "hmac",
+ "rand 0.8.6",
+ "serde",
+ "sha2",
+ "subtle",
+ "tracing",
+]
+
+[[package]]
 name = "bss-telemetry"
 version = "0.1.0"
 dependencies = [

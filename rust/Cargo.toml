@@ -76,6 +76,7 @@ bss-knowledge = { path = "crates/bss-knowledge" }
 bss-cockpit = { path = "crates/bss-cockpit" }
 bss-orchestrator = { path = "crates/bss-orchestrator" }
 bss-branding = { path = "crates/bss-branding" }
+bss-portal-auth = { path = "crates/bss-portal-auth" }
 
 # Lints applied workspace-wide. Individual crates opt in with
 # `[lints] workspace = true`. clippy runs with `-D warnings` in CI.

@@ -64,6 +64,46 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6a slice 2 — bss-portal-auth (security foundation) — ✅ PORTED (2026-07-14)
+
+`rust/crates/bss-portal-auth` — **first sub-slice: the pure, security-critical
+foundation** of the ~4k-LOC package. Four modules:
+
+- **`tokens`** — the crux. OTP (6 digits via `OsRng`, the `secrets.choice`
+  analogue), 32-char URL-safe magic-link/session/step-up tokens (hand-rolled
+  base64url-nopad = Python's `token_urlsafe(24)`), and `hash_token` =
+  **hex** HMAC-SHA-256 keyed by the pepper (Python's `.hexdigest()`, stored in a
+  DB column) + timing-safe `verify_token` (`subtle::ConstantTimeEq`, the
+  `hmac.compare_digest` analogue). **Golden-vector pinned:** 5 `(token, pepper)
+  → hex` vectors captured from the oracle (incl. a unicode-pepper + empty-token
+  case) assert byte-parity. Empty pepper → `PepperMissing` (the defensive
+  `RuntimeError`, so a lifespan-wiring regression can't make every token hash
+  identically).
+- **`config`** — `Settings::from_env` (env prefix `BSS_PORTAL_`), the pepper +
+  public URL + email-provider selection + all TTL/rate-limit scalars, defaults
+  matching V0_8_0.md §1.3. Process env is the source of truth (the established
+  Rust `Settings` convention), not pydantic's `.env` parse.
+- **`startup`** — `validate_pepper_present` fail-fast (unset / `changeme`
+  sentinel / <32 chars → the byte-matched `RuntimeError` copy), the
+  bss-middleware `validate_api_token_present` pattern.
+- **`types`** — the frozen public dataclasses (`IdentityView`/`SessionView`/
+  `LoginChallenge`/`StepUpChallenge`/`StepUpToken`) + failure shapes
+  (`LoginFailed`/`StepUpFailed`) + `RateLimitExceeded` (Display copy matched).
+
+**Deferred to later P6a sub-slices** (DB/branding-coupled, land-with-consumer):
+the `service.py` DB layer (session lifecycle, step-up, `email_change`,
+`pending_action`, per-write `audit`) over the `portal_auth` schema, the
+`rate_limit` window store, and `email.py` (adapters + the branding-aware HTML
+renderers — they consume `bss-branding`'s palette per send).
+
+**Verification.** fmt + clippy `-D warnings` clean; workspace green (no
+regression). 9 tests (8 token units incl. the oracle golden-vector gate + a
+sequential startup-validator integration test — env-mutating, so serial). Token
+generators use `OsRng` (CSPRNG parity with `secrets`); the golden vectors are the
+byte-parity gate the plan calls for.
+
+---
+
 ### Phase 6a slice 1 — bss-branding — ✅ PORTED (2026-07-14)
 
 `rust/crates/bss-branding` — the operator-branding **read path + palette
