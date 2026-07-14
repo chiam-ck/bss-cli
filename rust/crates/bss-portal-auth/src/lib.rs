@@ -18,6 +18,7 @@
 pub mod audit;
 pub mod config;
 pub mod email;
+pub mod pending_action;
 pub mod service;
 pub mod startup;
 pub mod tokens;
@@ -28,9 +29,13 @@ pub use config::Settings;
 pub use email::{
     resolve_provider_name, select_adapter, EmailAdapter, LoggingEmailAdapter, NoopEmailAdapter,
 };
+pub use pending_action::{
+    consume_pending_action, stash_pending_action, PendingActionView, StashError,
+};
 pub use service::{
-    current_session, link_to_customer, revoke_session, rotate_if_due, start_email_login,
-    verify_email_login, LinkError, LoginError, VerifyOutcome,
+    consume_step_up_token, current_session, link_to_customer, revoke_session, rotate_if_due,
+    start_email_login, start_step_up, verify_email_login, verify_step_up, LinkError, LoginError,
+    StepUpError, StepUpVerify, VerifyOutcome,
 };
 pub use startup::validate_pepper_present;
 pub use tokens::{

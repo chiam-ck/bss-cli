@@ -8,7 +8,7 @@
 
 use axum::response::{IntoResponse, Redirect, Response};
 
-use bss_portal_auth::IdentityView;
+use bss_portal_auth::{IdentityView, SessionView};
 
 use crate::middleware::PortalSession;
 
@@ -46,6 +46,16 @@ pub fn require_verified_email(
     match &portal.identity {
         Some(id) if id.email_verified_at.is_some() => Ok(id.clone()),
         _ => Err(redirect_to_login(next_path)),
+    }
+}
+
+/// Gate: a session is present (not necessarily email-verified). Returns the
+/// [`SessionView`]. Port of `requires_session` — used by the step-up routes.
+#[allow(clippy::result_large_err)]
+pub fn require_session(portal: &PortalSession, next_path: &str) -> Result<SessionView, Response> {
+    match &portal.session {
+        Some(s) => Ok(s.clone()),
+        None => Err(redirect_to_login(next_path)),
     }
 }
 

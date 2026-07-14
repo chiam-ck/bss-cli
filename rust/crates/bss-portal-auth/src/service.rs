@@ -15,9 +15,13 @@ use sqlx::{PgPool, Row};
 use crate::config::Settings;
 use crate::email::EmailAdapter;
 use crate::tokens::{
-    generate_magic_link_token, generate_otp, generate_session_id, hash_token, verify_token,
+    generate_magic_link_token, generate_otp, generate_session_id, generate_step_up_grant,
+    hash_token, verify_token,
 };
-use crate::types::{IdentityView, LoginChallenge, LoginFailed, RateLimitExceeded, SessionView};
+use crate::types::{
+    IdentityView, LoginChallenge, LoginFailed, RateLimitExceeded, SessionView, StepUpChallenge,
+    StepUpFailed, StepUpToken,
+};
 
 /// A login-flow error: either a DB failure or a rate-limit trip.
 #[derive(Debug)]
@@ -675,5 +679,283 @@ pub async fn link_to_customer(
             .await?;
             Ok(())
         }
+    }
+}
+
+// ── step-up: start / verify / consume ────────────────────────────────────────
+
+/// Why a step-up start failed.
+#[derive(Debug)]
+pub enum StepUpError {
+    RateLimited(RateLimitExceeded),
+    /// Session missing or revoked (or its identity is gone).
+    SessionInvalid,
+    Db(sqlx::Error),
+}
+
+impl std::fmt::Display for StepUpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StepUpError::RateLimited(e) => write!(f, "rate limited: {e}"),
+            StepUpError::SessionInvalid => write!(f, "session not found or revoked"),
+            StepUpError::Db(e) => write!(f, "db error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for StepUpError {}
+
+impl From<sqlx::Error> for StepUpError {
+    fn from(e: sqlx::Error) -> Self {
+        StepUpError::Db(e)
+    }
+}
+
+/// Outcome of [`verify_step_up`].
+pub enum StepUpVerify {
+    Token(StepUpToken),
+    Failed(StepUpFailed),
+}
+
+/// Issue a fresh OTP scoped to `action_label`. Port of `start_step_up`.
+pub async fn start_step_up(
+    pool: &PgPool,
+    session_id: &str,
+    action_label: &str,
+    ip: Option<&str>,
+    user_agent: Option<&str>,
+    email_adapter: &dyn EmailAdapter,
+) -> Result<StepUpChallenge, StepUpError> {
+    let s = Settings::from_env();
+    let now = bss_clock::now();
+
+    // Per-session cap — keyed on the `ip` column via `session:<id>` (matches the
+    // Python reuse of the flat login_attempt log).
+    let session_key = format!("session:{session_id}");
+    let (count, oldest) = count_in_window(
+        pool,
+        "ip",
+        &session_key,
+        "step_up_start",
+        s.stepup_per_session_window_s,
+        now,
+    )
+    .await?;
+    if count >= s.stepup_per_session_max {
+        let retry = retry_after_s(oldest, now, s.stepup_per_session_window_s);
+        return Err(StepUpError::RateLimited(RateLimitExceeded {
+            retry_after_seconds: retry,
+            scope: "step_up_per_session".to_string(),
+        }));
+    }
+
+    let sess = sqlx::query("SELECT identity_id, revoked_at FROM portal_auth.session WHERE id = $1")
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some(sess) = sess else {
+        return Err(StepUpError::SessionInvalid);
+    };
+    if sess.get::<Option<DateTime<Utc>>, _>("revoked_at").is_some() {
+        return Err(StepUpError::SessionInvalid);
+    }
+    let identity_id: String = sess.get("identity_id");
+    let email: Option<String> = sqlx::query("SELECT email FROM portal_auth.identity WHERE id = $1")
+        .bind(&identity_id)
+        .fetch_optional(pool)
+        .await?
+        .map(|r| r.get("email"));
+    let Some(email) = email else {
+        return Err(StepUpError::SessionInvalid);
+    };
+
+    let otp = generate_otp();
+    let expires = now + Duration::seconds(s.stepup_token_ttl_s);
+    #[allow(clippy::expect_used)]
+    let hash = hash_token(&otp, None).expect("pepper validated at startup");
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO portal_auth.login_token \
+         (id, identity_id, kind, code_hash, action_label, issued_at, expires_at, ip, user_agent) \
+         VALUES ($1, $2, 'step_up', $3, $4, $5, $6, $7, $8)",
+    )
+    .bind(hex_id("LTK"))
+    .bind(&identity_id)
+    .bind(&hash)
+    .bind(action_label)
+    .bind(now)
+    .bind(expires)
+    .bind(ip)
+    .bind(user_agent)
+    .execute(&mut *tx)
+    .await?;
+    record_attempt(
+        &mut tx,
+        Some(&email),
+        Some(&session_key),
+        "step_up_start",
+        "issued",
+    )
+    .await?;
+    tx.commit().await?;
+
+    email_adapter.send_step_up(&email, &otp, action_label);
+
+    Ok(StepUpChallenge {
+        session_id: session_id.to_string(),
+        action_label: action_label.to_string(),
+        expires_at: expires,
+    })
+}
+
+/// Match an OTP against an active `step_up` token scoped to `action_label`. On
+/// success, consume the OTP and mint a one-shot `step_up_grant`. Port of
+/// `verify_step_up`.
+pub async fn verify_step_up(
+    pool: &PgPool,
+    session_id: &str,
+    code: &str,
+    action_label: &str,
+) -> Result<StepUpVerify, sqlx::Error> {
+    let s = Settings::from_env();
+    let now = bss_clock::now();
+
+    let Some(sess) = session_identity_if_active(pool, session_id).await? else {
+        return Ok(StepUpVerify::Failed(StepUpFailed {
+            reason: "no_active_token".to_string(),
+        }));
+    };
+
+    let rows = sqlx::query(
+        "SELECT id, code_hash, expires_at FROM portal_auth.login_token \
+         WHERE identity_id = $1 AND kind = 'step_up' AND action_label = $2 \
+           AND consumed_at IS NULL",
+    )
+    .bind(&sess)
+    .bind(action_label)
+    .fetch_all(pool)
+    .await?;
+    if rows.is_empty() {
+        return Ok(StepUpVerify::Failed(StepUpFailed {
+            reason: "no_active_token".to_string(),
+        }));
+    }
+
+    let mut matched_id: Option<String> = None;
+    let mut any_unexpired = false;
+    for row in &rows {
+        let expires: DateTime<Utc> = row.get("expires_at");
+        if expires <= now {
+            continue;
+        }
+        any_unexpired = true;
+        let hash: String = row.get("code_hash");
+        if verify_token(code, &hash, None) {
+            matched_id = Some(row.get("id"));
+            break;
+        }
+    }
+
+    let Some(matched_id) = matched_id else {
+        return Ok(StepUpVerify::Failed(StepUpFailed {
+            reason: if any_unexpired {
+                "wrong_code"
+            } else {
+                "expired"
+            }
+            .to_string(),
+        }));
+    };
+
+    let grant = generate_step_up_grant();
+    let grant_expires = now + Duration::seconds(s.stepup_grant_ttl_s);
+    #[allow(clippy::expect_used)]
+    let grant_hash = hash_token(&grant, None).expect("pepper validated at startup");
+
+    let mut tx = pool.begin().await?;
+    sqlx::query("UPDATE portal_auth.login_token SET consumed_at = $1 WHERE id = $2")
+        .bind(now)
+        .bind(&matched_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "INSERT INTO portal_auth.login_token \
+         (id, identity_id, kind, code_hash, action_label, issued_at, expires_at) \
+         VALUES ($1, $2, 'step_up_grant', $3, $4, $5, $6)",
+    )
+    .bind(hex_id("LTK"))
+    .bind(&sess)
+    .bind(&grant_hash)
+    .bind(action_label)
+    .bind(now)
+    .bind(grant_expires)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+
+    Ok(StepUpVerify::Token(StepUpToken {
+        token: grant,
+        expires_at: grant_expires,
+        action_label: action_label.to_string(),
+    }))
+}
+
+/// Validate + atomically consume a one-shot step-up grant at the moment of a
+/// sensitive write. Port of `consume_step_up_token`.
+pub async fn consume_step_up_token(
+    pool: &PgPool,
+    session_id: &str,
+    token: &str,
+    action_label: &str,
+) -> Result<bool, sqlx::Error> {
+    let now = bss_clock::now();
+    let Some(sess) = session_identity_if_active(pool, session_id).await? else {
+        return Ok(false);
+    };
+
+    let rows = sqlx::query(
+        "SELECT id, code_hash, expires_at FROM portal_auth.login_token \
+         WHERE identity_id = $1 AND kind = 'step_up_grant' AND action_label = $2 \
+           AND consumed_at IS NULL",
+    )
+    .bind(&sess)
+    .bind(action_label)
+    .fetch_all(pool)
+    .await?;
+
+    for row in &rows {
+        let expires: DateTime<Utc> = row.get("expires_at");
+        if expires <= now {
+            continue;
+        }
+        let hash: String = row.get("code_hash");
+        if verify_token(token, &hash, None) {
+            let id: String = row.get("id");
+            sqlx::query("UPDATE portal_auth.login_token SET consumed_at = $1 WHERE id = $2")
+                .bind(now)
+                .bind(&id)
+                .execute(pool)
+                .await?;
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// Return the identity id for an active (non-revoked) session, else `None`.
+async fn session_identity_if_active(
+    pool: &PgPool,
+    session_id: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    let row = sqlx::query("SELECT identity_id, revoked_at FROM portal_auth.session WHERE id = $1")
+        .bind(session_id)
+        .fetch_optional(pool)
+        .await?;
+    match row {
+        Some(r) if r.get::<Option<DateTime<Utc>>, _>("revoked_at").is_none() => {
+            Ok(Some(r.get("identity_id")))
+        }
+        _ => Ok(None),
     }
 }

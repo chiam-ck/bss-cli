@@ -25,6 +25,7 @@ pub mod routes;
 pub mod security;
 pub mod signup;
 pub mod signup_session;
+pub mod stepup;
 pub mod templating;
 
 use std::path::PathBuf;
@@ -102,6 +103,11 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/auth/verify", get(auth::verify_magic_link))
         .route("/auth/logout", post(auth::logout))
+        .route(
+            "/auth/step-up",
+            get(stepup::step_up_form).post(stepup::step_up_verify),
+        )
+        .route("/auth/step-up/start", post(stepup::step_up_start))
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
         .route("/signup/step/kyc", post(signup::signup_step_kyc))

@@ -23,6 +23,7 @@ subtle = { workspace = true }
 rand = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
+serde_json = { workspace = true }
 
 bss-branding = { workspace = true }
 bss-clock = { workspace = true }

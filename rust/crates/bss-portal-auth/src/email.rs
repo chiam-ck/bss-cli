@@ -112,6 +112,14 @@ impl NoopEmailAdapter {
         let r = self.records.lock().unwrap();
         r.get(&(email.to_string(), "login".to_string())).cloned()
     }
+
+    /// The OTP from the most recent step-up send to `email`.
+    pub fn last_step_up_code(&self, email: &str) -> Option<String> {
+        #[allow(clippy::unwrap_used)]
+        let r = self.records.lock().unwrap();
+        r.get(&(email.to_string(), "step_up".to_string()))
+            .map(|(otp, _)| otp.clone())
+    }
 }
 
 impl EmailAdapter for NoopEmailAdapter {
