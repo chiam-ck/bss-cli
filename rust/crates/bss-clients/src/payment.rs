@@ -130,6 +130,8 @@ impl PaymentClient {
         card_token: &str,
         last4: &str,
         brand: &str,
+        exp_month: i64,
+        exp_year: i64,
     ) -> Result<Value, ClientError> {
         let body = json!({
             "customerId": customer_id,
@@ -139,8 +141,8 @@ impl PaymentClient {
             "cardSummary": {
                 "brand": brand,
                 "last4": last4,
-                "expMonth": 12,
-                "expYear": 2030,
+                "expMonth": exp_month,
+                "expYear": exp_year,
                 "country": "SG",
             },
         });
@@ -153,6 +155,17 @@ impl PaymentClient {
                 None,
             )
             .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST …/paymentMethod/{id}/setDefault` — the server owns the
+    /// "exactly one default per customer" invariant. Backs the "Set default" CTA.
+    pub async fn set_default_method(&self, method_id: &str) -> Result<Value, ClientError> {
+        let path =
+            format!("/tmf-api/paymentMethodManagement/v4/paymentMethod/{method_id}/setDefault");
+        let resp = self.inner.request(Method::POST, &path, None, None).await?;
         resp.json()
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))

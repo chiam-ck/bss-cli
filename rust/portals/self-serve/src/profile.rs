@@ -31,7 +31,7 @@ use crate::AppState;
 const OWNERSHIP_RULE: &str = "policy.customer.contact_medium.unknown";
 
 /// Parse an `application/x-www-form-urlencoded` body into ordered key/value pairs.
-fn parse_form(bytes: &[u8]) -> Vec<(String, String)> {
+pub(crate) fn parse_form(bytes: &[u8]) -> Vec<(String, String)> {
     let s = String::from_utf8_lossy(bytes);
     s.split('&')
         .filter(|p| !p.is_empty())
@@ -62,11 +62,11 @@ fn urldecode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn field<'a>(form: &'a [(String, String)], key: &str) -> Option<&'a str> {
+pub(crate) fn field<'a>(form: &'a [(String, String)], key: &str) -> Option<&'a str> {
     form.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
 }
 
-fn user_agent(headers: &HeaderMap) -> Option<String> {
+pub(crate) fn user_agent(headers: &HeaderMap) -> Option<String> {
     headers
         .get(axum::http::header::USER_AGENT)
         .and_then(|v| v.to_str().ok())
@@ -75,7 +75,7 @@ fn user_agent(headers: &HeaderMap) -> Option<String> {
 
 /// One `portal_action` row (step-up routes pass `step_up_consumed = true`).
 #[allow(clippy::too_many_arguments)]
-async fn audit(
+pub(crate) async fn audit(
     state: &AppState,
     customer_id: &str,
     identity_id: &str,

@@ -772,7 +772,14 @@ async fn signup_step_cof_mock(
 
     match clients
         .payment
-        .create_payment_method(&customer_id, &tok.card_token, &tok.last4, &tok.brand)
+        .create_payment_method(
+            &customer_id,
+            &tok.card_token,
+            &tok.last4,
+            &tok.brand,
+            12,
+            2030,
+        )
         .await
     {
         Ok(method) => {
@@ -1004,16 +1011,16 @@ fn hx_redirect(url: &str) -> Response {
 // ── helpers: tokenizer + order-payload extraction ────────────────────────────
 
 /// The mock client-side tokenizer output.
-struct TokenizedCard {
-    card_token: String,
-    last4: String,
-    brand: String,
+pub(crate) struct TokenizedCard {
+    pub card_token: String,
+    pub last4: String,
+    pub brand: String,
 }
 
 /// Sandbox client-side tokenizer. Mirrors `_local_tokenize`: derives brand + last4
 /// and embeds `FAIL`/`DECLINE` in the token so the payment mock can simulate
 /// declines. `Err(())` for a non-numeric or too-short PAN.
-fn local_tokenize(card_number: &str) -> Result<TokenizedCard, ()> {
+pub(crate) fn local_tokenize(card_number: &str) -> Result<TokenizedCard, ()> {
     let digits: String = card_number
         .chars()
         .filter(|c| *c != ' ' && *c != '-')

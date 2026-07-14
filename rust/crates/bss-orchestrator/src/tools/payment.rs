@@ -125,7 +125,7 @@ pub fn register_payment_write_tools(registry: &mut ToolRegistry, client: Payment
                 let customer_id = req_str(&args, "customer_id")?;
                 let card_number = req_str(&args, "card_number")?;
                 let (token, last4, brand) = local_tokenize_card(&card_number)?;
-                c.create_payment_method(&customer_id, &token, &last4, &brand)
+                c.create_payment_method(&customer_id, &token, &last4, &brand, 12, 2030)
                     .await
                     .map_err(map_err)
             }

@@ -21,6 +21,7 @@ pub mod error_messages;
 pub mod kyc;
 pub mod middleware;
 pub mod offerings;
+pub mod payment_methods;
 pub mod profile;
 pub mod prompts;
 pub mod qrpng;
@@ -130,6 +131,19 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/profile/contact/email/cancel",
             post(profile::email_change_cancel),
+        )
+        .route("/payment-methods", get(payment_methods::list_methods))
+        .route(
+            "/payment-methods/add",
+            get(payment_methods::add_method_form).post(payment_methods::add_method),
+        )
+        .route(
+            "/payment-methods/:pm_id/remove",
+            post(payment_methods::remove_method),
+        )
+        .route(
+            "/payment-methods/:pm_id/set-default",
+            post(payment_methods::set_default),
         )
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
