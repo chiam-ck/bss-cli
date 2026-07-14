@@ -12,7 +12,9 @@
 //! signup + KYC funnel, the post-login account surface, and the SSE chat route.
 #![forbid(unsafe_code)]
 
+pub mod clients;
 pub mod config;
+pub mod offerings;
 pub mod routes;
 pub mod templating;
 
@@ -24,6 +26,7 @@ use axum::Router;
 use minijinja::Environment;
 use tower_http::services::ServeDir;
 
+use clients::PortalClients;
 use config::Settings;
 
 /// Shared application state (cheap to clone — everything behind `Arc`).
@@ -31,6 +34,9 @@ use config::Settings;
 pub struct AppState {
     pub env: Arc<Environment<'static>>,
     pub settings: Arc<Settings>,
+    /// `None` when the perimeter token isn't provisioned (e.g. template-only
+    /// tests); catalog-backed routes degrade to an empty view.
+    pub clients: Option<Arc<PortalClients>>,
 }
 
 fn repo_root() -> PathBuf {
@@ -59,6 +65,7 @@ pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(routes::health))
         .route("/welcome", get(routes::welcome))
+        .route("/plans", get(routes::plans))
         .route("/terms", get(routes::terms))
         .route("/privacy", get(routes::privacy))
         .route("/branding/logo", get(routes::branding_logo))
@@ -67,10 +74,22 @@ pub fn build_router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Construct the [`AppState`] from the environment (the MiniJinja env + settings).
+/// Construct the [`AppState`] from the environment: the MiniJinja env, the
+/// settings, and the downstream clients bundle. Client construction is
+/// best-effort — without a perimeter token the bundle is `None` and
+/// catalog-backed routes degrade to an empty view.
 pub fn build_state() -> AppState {
+    let settings = Settings::from_env();
+    let clients = match PortalClients::from_env(&settings) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(e) => {
+            tracing::warn!(error = %e, "portal.clients.unavailable");
+            None
+        }
+    };
     AppState {
         env: templating::build_environment(),
-        settings: Arc::new(Settings::from_env()),
+        settings: Arc::new(settings),
+        clients,
     }
 }

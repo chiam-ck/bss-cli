@@ -6,6 +6,7 @@ use axum::response::{Html, IntoResponse, Json, Response};
 use minijinja::{context, Value};
 use serde_json::json;
 
+use crate::offerings::flatten_offerings;
 use crate::templating::request_ctx;
 use crate::AppState;
 
@@ -41,6 +42,33 @@ pub async fn welcome(State(state): State<AppState>) -> Response {
         context! {
             is_signed_in => false,
             request => request_ctx("/welcome", None),
+        },
+    )
+}
+
+/// `GET /plans` — public catalog browse. Flattens the TMF offerings into plan
+/// cards, cheapest-first. Anonymous CTAs bounce through `/auth/login`.
+pub async fn plans(State(state): State<AppState>) -> Response {
+    let plans = match &state.clients {
+        Some(c) => match c.catalog.list_offerings().await {
+            Ok(raw) => {
+                let arr = raw.as_array().cloned().unwrap_or_default();
+                flatten_offerings(&arr)
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "portal.plans.catalog_read_failed");
+                Vec::new()
+            }
+        },
+        None => Vec::new(),
+    };
+    render(
+        &state,
+        "plans.html",
+        context! {
+            plans => Value::from_serialize(&plans),
+            is_signed_in => false,
+            request => request_ctx("/plans", None),
         },
     )
 }

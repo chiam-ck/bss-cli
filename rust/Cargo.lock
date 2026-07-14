@@ -2439,6 +2439,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "bss-branding",
+ "bss-clients",
  "bss-models",
  "bss-portal-auth",
  "bss-portal-ui",

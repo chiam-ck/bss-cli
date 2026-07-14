@@ -28,6 +28,7 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 
 bss-branding = { workspace = true }
+bss-clients = { workspace = true }
 bss-models = { workspace = true }
 bss-portal-auth = { workspace = true }
 bss-portal-ui = { workspace = true }
