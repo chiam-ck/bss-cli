@@ -609,3 +609,71 @@ pub async fn verify_email_login(
         last_seen_at: now,
     }))
 }
+
+// ── link_to_customer ─────────────────────────────────────────────────────────
+
+/// Why binding an identity to a customer failed. `AlreadyLinked` carries the
+/// customer id the identity is currently bound to (the signup route logs it).
+#[derive(Debug)]
+pub enum LinkError {
+    UnknownIdentity,
+    AlreadyLinked { existing: String },
+    Db(sqlx::Error),
+}
+
+impl std::fmt::Display for LinkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LinkError::UnknownIdentity => write!(f, "unknown identity"),
+            LinkError::AlreadyLinked { existing } => {
+                write!(f, "identity already linked to customer {existing}")
+            }
+            LinkError::Db(e) => write!(f, "db error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for LinkError {}
+
+impl From<sqlx::Error> for LinkError {
+    fn from(e: sqlx::Error) -> Self {
+        LinkError::Db(e)
+    }
+}
+
+/// Bind an identity to a customer at the moment of first paid signup. Port of
+/// `bss_portal_auth.service.link_to_customer`.
+///
+/// Idempotent: re-calling with the same `(identity, customer)` pair is a no-op.
+/// Calling with a different customer when one is already linked is a
+/// [`LinkError::AlreadyLinked`] — links are 1:1 and not reassignable from this
+/// surface.
+pub async fn link_to_customer(
+    pool: &PgPool,
+    identity_id: &str,
+    customer_id: &str,
+) -> Result<(), LinkError> {
+    let existing: Option<Option<String>> =
+        sqlx::query("SELECT customer_id FROM portal_auth.identity WHERE id = $1")
+            .bind(identity_id)
+            .fetch_optional(pool)
+            .await?
+            .map(|r| r.get("customer_id"));
+
+    match existing {
+        None => Err(LinkError::UnknownIdentity),
+        Some(Some(current)) if current == customer_id => Ok(()),
+        Some(Some(current)) => Err(LinkError::AlreadyLinked { existing: current }),
+        Some(None) => {
+            sqlx::query(
+                "UPDATE portal_auth.identity \
+                 SET customer_id = $1, status = 'registered' WHERE id = $2",
+            )
+            .bind(customer_id)
+            .bind(identity_id)
+            .execute(pool)
+            .await?;
+            Ok(())
+        }
+    }
+}

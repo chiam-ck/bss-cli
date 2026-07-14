@@ -136,6 +136,11 @@ fn price_str(p: &Value) -> String {
     }
 }
 
+/// Find a flattened plan row by id, or `None`. Port of `offerings.find_plan`.
+pub fn find_plan(flattened: &[PlanRow], plan_id: &str) -> Option<PlanRow> {
+    flattened.iter().find(|p| p.id == plan_id).cloned()
+}
+
 /// Return template-shaped rows for every active sellable plan, cheapest-first.
 pub fn flatten_offerings(offerings: &[Value]) -> Vec<PlanRow> {
     let mut sellable: Vec<&Value> = offerings.iter().filter(|o| is_sellable_plan(o)).collect();

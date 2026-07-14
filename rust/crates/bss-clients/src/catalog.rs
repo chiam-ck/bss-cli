@@ -192,6 +192,29 @@ impl CatalogClient {
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
+
+    /// `GET /promo/preview` — portal live-preview of a typed promo code:
+    /// `{valid, label, base, effective, reason}`. `customer_id` gates a targeted
+    /// code on eligibility. Backs the signup form's promo field.
+    pub async fn preview_promo(
+        &self,
+        code: &str,
+        offering: &str,
+        customer_id: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut path = format!(
+            "/promo/preview?code={}&offering={}",
+            encode(code),
+            encode(offering)
+        );
+        if let Some(cid) = customer_id {
+            path.push_str(&format!("&customerId={}", encode(cid)));
+        }
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
 }
 
 // ── writes (promo saga + admin) ─────────────────────────────────────────────

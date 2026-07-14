@@ -15,10 +15,15 @@
 pub mod auth;
 pub mod clients;
 pub mod config;
+pub mod deps;
+pub mod error_messages;
 pub mod middleware;
 pub mod offerings;
+pub mod prompts;
 pub mod routes;
 pub mod security;
+pub mod signup;
+pub mod signup_session;
 pub mod templating;
 
 use std::path::PathBuf;
@@ -33,6 +38,7 @@ use tower_http::services::ServeDir;
 
 use clients::PortalClients;
 use config::Settings;
+use signup_session::SessionStore;
 
 /// Shared application state (cheap to clone — everything behind `Arc`).
 #[derive(Clone)]
@@ -48,6 +54,8 @@ pub struct AppState {
     /// Email delivery adapter (logging/noop/…), selected at boot. `None` only if
     /// selection failed (fail-fast at startup in the binary).
     pub email_adapter: Option<Arc<dyn EmailAdapter>>,
+    /// TTL-bounded in-memory store of in-flight signup sessions.
+    pub signup_store: Arc<SessionStore>,
 }
 
 fn repo_root() -> PathBuf {
@@ -91,6 +99,10 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/auth/verify", get(auth::verify_magic_link))
         .route("/auth/logout", post(auth::logout))
+        .route("/signup", post(signup::signup_submit))
+        .route("/signup/promo/preview", get(signup::signup_promo_preview))
+        .route("/signup/:plan_id", get(signup::signup_form))
+        .route("/signup/:plan_id/progress", get(signup::signup_progress))
         .nest_service("/static", ServeDir::new(local_static_dir()))
         .nest_service("/portal-ui/static", ServeDir::new(shared_static_dir()))
         // Session middleware runs on every request, resolving the cookie →
@@ -116,12 +128,14 @@ pub fn build_state() -> AppState {
         }
     };
     let email_adapter = select_email_adapter();
+    let signup_ttl = settings.session_ttl.max(0) as u64;
     AppState {
         env: templating::build_environment(),
         settings: Arc::new(settings),
         clients,
         db: None,
         email_adapter,
+        signup_store: Arc::new(SessionStore::new(signup_ttl)),
     }
 }
 
