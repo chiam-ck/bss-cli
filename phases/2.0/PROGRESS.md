@@ -64,6 +64,39 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 9 — dashboard + eSIM QR + picker/confirmation/activation — ✅ PORTED (2026-07-14)
+
+The read-y post-login surface: the customer **dashboard** (`/`), the MSISDN
+**picker**, and the post-signup **confirmation** (eSIM QR) + **activation** pages.
+
+- **`dashboard.rs`** — `subscription.list_for_customer` + per-line `get_balance`
+  + `catalog.list_offerings` (names) + `list_customer_offers`. Ports `_bar_for`
+  (proportional fill, low/exhausted/unlimited), `_days_remaining`, `_cta_for`,
+  `_line_view` (roaming-0 filter, applied-promo badge), and `discount_label`
+  (`20% off` / `SGD 5.00 off`) — all unit-tested. Empty-state for unlinked /
+  no-subscription identities.
+- **`qrpng.rs`** — real PNG QR via new workspace deps `qrcode` + `image`
+  (encode from the module matrix; dark `#0e1014` on white, box 8, border 2).
+  Byte-for-byte parity with Python's `qrcode` lib is not a wire contract; the
+  payload/layout/colours match. PNG-magic test.
+- **signup.rs routes** — `GET /signup/:plan_id/msisdn` (available-number picker),
+  `GET /confirmation/:subscription_id` (QR + activation code w/ inventory
+  fallback + the completed step timeline), `GET /activation/:order_id` (+ `/status`
+  poll fragment → `HX-Redirect` to confirmation).
+- **clients**: `catalog.list_customer_offers` ported.
+
+**Verified:** dashboard math + `discount_label` + QR PNG unit-tested; all five
+routes smoke-gated on the binary (→ 303 login). Full data render needs the
+subscription/inventory services (not host-exposed) → P6 acceptance.
+
+**Note — middleware vs deps gating:** Python's `PortalSessionMiddleware` gates
+every non-allowlisted route; the Rust `session_layer` only *resolves* the cookie,
+so each route self-gates via `deps::require_*`. `/confirmation` + `/activation`
+therefore take `require_session` explicitly (Python relied on the middleware,
+having no route-level dep). Behaviour matches; the enforcement seam differs.
+
+---
+
 ### Phase 6b slice 8 — step-up auth (OTP grant + pending-action replay) — ✅ PORTED (2026-07-14)
 
 The **sensitive-write gate** — prerequisite for every account-surface write
