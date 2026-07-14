@@ -64,6 +64,36 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slices 2–3 — /plans + session infrastructure — ✅ PORTED (2026-07-14)
+
+**Slice 2 — `/plans` + clients + offerings.** `offerings::flatten_offerings`
+(TMF-productOffering → template dicts: sort cheapest-first, GB/unlimited
+formatting via a Python-`%g` port, voice_minutes fallback, roaming suppression)
+— byte-parity gated by `offerings_golden.json` from the oracle. `PortalClients`
+bundle (7 clients via `NamedTokenAuthProvider`, inventory on the CRM base URL),
+best-effort in `AppState` (`None` without a token → empty view). `/plans` route
+live-smoked against the tech-vm catalog (renders real plan cards).
+
+**Slice 3 — session middleware + DB session layer + security.** The meaty infra:
+- **`bss-portal-auth::service` (DB):** `current_session` / `rotate_if_due` /
+  `revoke_session` over the `portal_auth` schema (sqlx runtime queries; cookie =
+  session row id; `bss_clock::now()`; rotation past TTL/2 = new id + revoke old
+  in one tx). **Live-smoked** against the real `portal_auth.session`/`identity`
+  tables (schema-valid).
+- **portal `middleware`:** `PortalSessionMiddleware` as an axum
+  `from_fn_with_state` layer — resolves the cookie → `PortalSession` extension
+  (anon on miss), rotates + `Set-Cookie` past TTL/2. Cookie builders match the
+  Python attrs. `AppState` gains `db: Option<PgPool>`.
+- **portal `security`:** the public allowlist + `is_public_path` +
+  `safe_next_path` (open-redirect defence, unit-tested) + the sensitive/signup
+  action-label catalogues.
+- Public handlers now read `PortalSession` so the header nav reflects sign-in.
+
+Deferred to the **auth slice (4):** the login write flow (`start_email_login`/
+`verify_email_login`), step-up consume, and the email adapters.
+
+---
+
 ### Phase 6b slice 1 — self-serve portal skeleton + public surface — ✅ PORTED (2026-07-14)
 
 `rust/portals/self-serve` (new `portals/*` workspace member) — the **first
