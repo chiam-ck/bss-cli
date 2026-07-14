@@ -64,6 +64,45 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 6 — signup funnel part 2a (KYC step, prebaked) — ✅ PORTED (2026-07-14)
+
+The **KYC step** of the funnel + the wire-contract-critical `attest_kyc` fidelity
+work it forced. COF/order/poll finish the chain in s7.
+
+- **`bss-clients` `crm.attest_kyc` fidelity (R5 owed-fix).** The Rust client only
+  had the 3-arg stub path; the Python `attest_kyc` is one method with a full
+  optional param set (scenario callers use defaults, signup fills them all).
+  Extended to `attest_kyc_full(customer_id, provider, token, AttestKycOpts)` with
+  the 3-arg `attest_kyc` now a defaults wrapper — **no churn for the one existing
+  caller** (orchestrator's `customer.attest_kyc`). Body assembly extracted to a
+  pure `build_attest_body` and **golden-pinned against the Python oracle** for
+  both cases (full signup body + 3-arg stub body; `verified_at` stripped as it's
+  `now()` in both). This is the byte-for-byte wire body the CRM service receives.
+- **prebaked KYC adapter (`kyc.rs`).** `PrebakedKycAdapter` (`initiate` →
+  loopback session, `fetch_attestation` → deterministic per-email attestation),
+  `KycAttestation`/`KycSession` value types, `KycAdapter` enum + `from_provider`
+  (Didit falls back to prebaked with a warning until its routes land). The
+  email→NRIC-stub→SHA-256 hash is **golden-pinned to the oracle** (3 emails:
+  last4 + full hash + session id).
+- **`POST /signup/step/kyc`** (prebaked synchronous path) + `_complete_kyc_attest`
+  + the shared step helpers `resolve` (owning-identity 404 guard) and
+  `render_step_fragment` (`partials/signup_progress.html`). Advances
+  `pending_kyc → pending_cof`; policy violations → `failed` + audit row.
+
+**Live-validated:** the deterministic logic is golden-pinned (adapter hash + full
+attest body, both vs the Python oracle); route registration smoked on the running
+binary (`POST /signup/step/kyc` unauth → 303 to `/auth/login`; `GET` → 405,
+confirming POST-only). The attest round-trip itself needs the CRM service (not
+host-exposed) → exercised in the P6 hero-suite acceptance.
+
+**Deferred to s7 / the Didit slice:** COF step (mock tokenizer + Stripe checkout),
+order step, poll step, `_extract_*`; and the Didit hosted-UI handoff
+(`pending_kyc_handoff` + QR + `/signup/step/kyc/poll` + `/callback`, cap-exhausted
++ corroboration-timeout paths). `AttestKycOpts` carries the `document_number` /
+`nationality` overrides those need.
+
+---
+
 ### Phase 6b slice 5 — signup funnel part 1 (create-customer + form + progress) — ✅ PORTED (2026-07-14)
 
 The signup **entry surface** — everything up to the HTMX step timeline. The
