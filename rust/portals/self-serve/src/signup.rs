@@ -16,7 +16,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::{Extension, Form};
-use bss_clients::ClientError;
+use bss_clients::{AttestKycOpts, ClientError};
 use minijinja::context;
 use serde::Deserialize;
 use serde_json::Value;
@@ -25,9 +25,10 @@ use bss_portal_auth::{record_portal_action, LinkError, PortalActionRecord};
 
 use crate::deps::require_verified_email;
 use crate::error_messages::{is_known, render as render_rule};
+use crate::kyc::KycAdapter;
 use crate::middleware::PortalSession;
 use crate::offerings::{find_plan, flatten_offerings};
-use crate::prompts::KYC_PREBAKED_ATTESTATION_ID;
+use crate::prompts::{prebaked_signature, KYC_PREBAKED_ATTESTATION_ID};
 use crate::routes::render;
 use crate::signup_session::{CreateArgs, SignupSession, SignupStep};
 use crate::templating::request_ctx;
@@ -544,6 +545,167 @@ pub async fn signup_progress(
             request => request_ctx("/signup", Some(&identity.email)),
         },
     )
+}
+
+// ── step-chain shared helpers ────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct SessionQuery {
+    session: String,
+}
+
+/// Fetch the signup session for a step route, enforcing the owning-identity
+/// check. Port of `_resolve`: 404 when unknown/expired or owned by another
+/// identity.
+// Err is the 404 `Response` the caller returns straight through — boxing it would
+// only add churn (same rationale as the `deps` gate helpers).
+#[allow(clippy::result_large_err)]
+fn resolve(
+    state: &AppState,
+    session_id: &str,
+    identity: &bss_portal_auth::IdentityView,
+) -> Result<SignupSession, Response> {
+    let Some(sig) = state.signup_store.get(session_id) else {
+        return Err((StatusCode::NOT_FOUND, "Unknown or expired session.").into_response());
+    };
+    if let Some(sid) = &sig.identity_id {
+        if *sid != identity.id {
+            return Err((StatusCode::NOT_FOUND, "Unknown or expired session.").into_response());
+        }
+    }
+    Ok(sig)
+}
+
+/// Render the `partials/signup_progress.html` HTMX fragment for the current
+/// step. Port of `_render_step_fragment`.
+fn render_step_fragment(state: &AppState, sig: &SignupSession) -> Response {
+    let step_error_message = sig.step_error.as_deref().map(render_rule);
+    render(
+        state,
+        "partials/signup_progress.html",
+        context! {
+            signup => minijinja::Value::from_serialize(sig),
+            session_id => sig.session_id,
+            plan_id => sig.plan,
+            step_error_message => step_error_message,
+            payment_provider => payment_provider(state),
+            stripe_publishable_key => "",
+        },
+    )
+}
+
+// ── POST /signup/step/kyc — step 2 (prebaked synchronous path) ───────────────
+
+pub async fn signup_step_kyc(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    headers: HeaderMap,
+    Query(q): Query<SessionQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, "/plans") {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let ua = user_agent(&headers);
+    let mut sig = match resolve(&state, &q.session, &identity) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    if sig.step != SignupStep::PendingKyc {
+        return render_step_fragment(&state, &sig);
+    }
+
+    let public_url = state.settings.public_url.trim_end_matches('/');
+    let return_url = format!(
+        "{public_url}/signup/step/kyc/callback?session={}",
+        q.session
+    );
+
+    // Prebaked `initiate` never raises `KycCapExhausted`; the Didit handoff path
+    // (pending_kyc_handoff + QR + poll) is deferred with its routes.
+    let KycAdapter::Prebaked(adapter) = &state.kyc_adapter;
+    let kyc_session = adapter.initiate(&sig.email, &return_url);
+
+    // Prebaked is synchronous: complete the attest in this request and advance.
+    complete_kyc_attest(&state, &mut sig, &kyc_session.session_id, ua.as_deref()).await
+}
+
+/// Shared finisher: fetch the attestation, submit it to BSS, advance the signup.
+/// Port of `_complete_kyc_attest` (the prebaked synchronous branch; the Didit
+/// `redirect_after` callback variant lands with the handoff routes).
+async fn complete_kyc_attest(
+    state: &AppState,
+    sig: &mut SignupSession,
+    kyc_session_id: &str,
+    ua: Option<&str>,
+) -> Response {
+    let KycAdapter::Prebaked(adapter) = &state.kyc_adapter;
+    // Prebaked `fetch_attestation` never raises `KycCorroborationTimeout`.
+    let attestation = adapter.fetch_attestation(kyc_session_id);
+
+    let customer_id = sig.customer_id.clone().unwrap_or_default();
+    let token = prebaked_signature(&sig.email);
+    let opts = AttestKycOpts {
+        provider_reference: Some(&attestation.provider_reference),
+        document_type: Some(&attestation.document_type),
+        document_number_last4: Some(&attestation.document_number_last4),
+        document_number_hash: Some(&attestation.document_number_hash),
+        document_country: Some(&attestation.document_country),
+        date_of_birth: Some(&attestation.date_of_birth),
+        corroboration_id: attestation.corroboration_id.as_deref(),
+        ..Default::default()
+    };
+
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Signup unavailable").into_response();
+    };
+
+    match clients
+        .crm
+        .attest_kyc_full(&customer_id, &attestation.provider, &token, opts)
+        .await
+    {
+        Ok(_) => {
+            record_step(
+                state,
+                sig,
+                Some(&customer_id),
+                "signup_attest_kyc",
+                "/signup/step/kyc",
+                true,
+                None,
+                ua,
+            )
+            .await;
+            sig.step = SignupStep::PendingCof;
+            state.signup_store.update(sig);
+            render_step_fragment(state, sig)
+        }
+        Err(ClientError::Policy(pv)) => {
+            record_step(
+                state,
+                sig,
+                Some(&customer_id),
+                "signup_attest_kyc",
+                "/signup/step/kyc",
+                false,
+                Some(&pv.rule),
+                ua,
+            )
+            .await;
+            if !is_known(&pv.rule) {
+                tracing::info!(rule = %pv.rule, "portal.signup.unknown_policy_rule");
+            }
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some(pv.rule.clone());
+            state.signup_store.update(sig);
+            render_step_fragment(state, sig)
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "portal.signup.attest_kyc_failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Signup failed").into_response()
+        }
+    }
 }
 
 #[cfg(test)]

@@ -20,6 +20,24 @@ pub struct CrmClient {
     inner: BssClient,
 }
 
+/// Optional fields for [`CrmClient::attest_kyc_full`]. Each `None` takes the same
+/// default as the Python `attest_kyc` keyword arg, so a `default()` call produces
+/// the 3-arg stub body and a fully-populated one produces the reduced-PII body.
+#[derive(Debug, Default, Clone)]
+pub struct AttestKycOpts<'a> {
+    pub provider_reference: Option<&'a str>,
+    pub document_type: Option<&'a str>,
+    /// Explicit document number; when `None` a per-customer stub is derived.
+    pub document_number: Option<&'a str>,
+    pub document_number_last4: Option<&'a str>,
+    pub document_number_hash: Option<&'a str>,
+    pub document_country: Option<&'a str>,
+    pub date_of_birth: Option<&'a str>,
+    pub nationality: Option<&'a str>,
+    pub verified_at: Option<&'a str>,
+    pub corroboration_id: Option<&'a str>,
+}
+
 impl CrmClient {
     pub fn new(
         base_url: impl Into<String>,
@@ -401,35 +419,41 @@ impl CrmClient {
         provider: &str,
         attestation_token: &str,
     ) -> Result<Value, ClientError> {
-        // Stub document_number: 7 digits from the id's digit tail, zero-padded.
-        let tail: String = customer_id.chars().filter(char::is_ascii_digit).collect();
-        let digits: String = if tail.is_empty() {
-            // Unreachable for prefixed (CUST-…) ids, which always carry digits; a
-            // deterministic placeholder replaces Python's randomized hash fallback.
-            "0000001".to_string()
-        } else {
-            format!("{tail}0000000").chars().take(7).collect()
+        self.attest_kyc_full(
+            customer_id,
+            provider,
+            attestation_token,
+            AttestKycOpts::default(),
+        )
+        .await
+    }
+
+    /// Full channel-layer attestation — the signup funnel's prebaked/Didit path
+    /// fills every field; [`attest_kyc`] is the 3-arg stub-defaults wrapper. Both
+    /// build a byte-identical body to the Python `attest_kyc` for the same inputs:
+    /// `document_number` is always the caller's value or a deterministic
+    /// per-customer stub, and `document_number_last4`/`_hash`/`corroboration_id`
+    /// are sent only when supplied (the v0.15 reduced-PII form).
+    pub async fn attest_kyc_full(
+        &self,
+        customer_id: &str,
+        provider: &str,
+        attestation_token: &str,
+        opts: AttestKycOpts<'_>,
+    ) -> Result<Value, ClientError> {
+        let verified_at = match opts.verified_at {
+            Some(v) => v.to_string(),
+            None => chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.6f+00:00")
+                .to_string(),
         };
-        let document_number = format!("S{digits}D");
-        let ref_tail = last_chars(attestation_token, 8);
-        let sig_tail = last_chars(attestation_token, 16);
-        let verified_at = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%S%.6f+00:00")
-            .to_string();
-        let body = json!({
-            "provider": provider,
-            "provider_reference": format!("{provider}-{ref_tail}"),
-            "document_type": "nric",
-            "document_country": "SG",
-            "date_of_birth": "1990-01-01",
-            "nationality": "SG",
-            "verified_at": verified_at,
-            "attestation_payload": {
-                "token": attestation_token,
-                "signature": format!("stub-sig-{sig_tail}"),
-            },
-            "document_number": document_number,
-        });
+        let body = build_attest_body(
+            customer_id,
+            provider,
+            attestation_token,
+            &verified_at,
+            &opts,
+        );
         let path = format!("/crm-api/v1/customer/{customer_id}/kyc-attestation");
         self.post(&path, &body).await
     }
@@ -689,6 +713,77 @@ impl CrmClient {
     }
 }
 
+/// Build the `kyc-attestation` request body. Pure so it can be golden-tested
+/// against the Python oracle. `verified_at` is resolved by the caller (opts or
+/// `now()`); every other field mirrors the Python `attest_kyc` key order + defaults.
+fn build_attest_body(
+    customer_id: &str,
+    provider: &str,
+    attestation_token: &str,
+    verified_at: &str,
+    opts: &AttestKycOpts<'_>,
+) -> Value {
+    // Stub document_number: 7 digits from the id's digit tail, zero-padded.
+    let document_number = match opts.document_number {
+        Some(dn) => dn.to_string(),
+        None => {
+            let tail: String = customer_id.chars().filter(char::is_ascii_digit).collect();
+            let digits: String = if tail.is_empty() {
+                // Unreachable for prefixed (CUST-…) ids, which always carry digits;
+                // a deterministic placeholder replaces Python's randomized fallback.
+                "0000001".to_string()
+            } else {
+                format!("{tail}0000000").chars().take(7).collect()
+            };
+            format!("S{digits}D")
+        }
+    };
+    let provider_reference = match opts.provider_reference {
+        Some(r) => r.to_string(),
+        None => format!("{provider}-{}", last_chars(attestation_token, 8)),
+    };
+    let sig_tail = last_chars(attestation_token, 16);
+    let mut map = serde_json::Map::new();
+    map.insert("provider".to_string(), json!(provider));
+    map.insert("provider_reference".to_string(), json!(provider_reference));
+    map.insert(
+        "document_type".to_string(),
+        json!(opts.document_type.unwrap_or("nric")),
+    );
+    map.insert(
+        "document_country".to_string(),
+        json!(opts.document_country.unwrap_or("SG")),
+    );
+    map.insert(
+        "date_of_birth".to_string(),
+        json!(opts.date_of_birth.unwrap_or("1990-01-01")),
+    );
+    // Python default `nationality="SG"`; callers may not override it.
+    map.insert(
+        "nationality".to_string(),
+        json!(opts.nationality.unwrap_or("SG")),
+    );
+    map.insert("verified_at".to_string(), json!(verified_at));
+    map.insert(
+        "attestation_payload".to_string(),
+        json!({
+            "token": attestation_token,
+            "signature": format!("stub-sig-{sig_tail}"),
+        }),
+    );
+    map.insert("document_number".to_string(), json!(document_number));
+    if let Some(l4) = opts.document_number_last4 {
+        map.insert("document_number_last4".to_string(), json!(l4));
+    }
+    if let Some(h) = opts.document_number_hash {
+        map.insert("document_number_hash".to_string(), json!(h));
+    }
+    if let Some(c) = opts.corroboration_id {
+        map.insert("corroboration_id".to_string(), json!(c));
+    }
+    Value::Object(map)
+}
+
 /// Last `n` characters of `s` (Python's `s[-n:]`, char-wise; whole string when
 /// shorter than `n`).
 fn last_chars(s: &str, n: usize) -> String {
@@ -715,4 +810,61 @@ fn encode(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod attest_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    /// Strip the non-deterministic `verified_at` and compare to the Python oracle.
+    fn body_without_verified_at(mut v: Value) -> Value {
+        v.as_object_mut().unwrap().remove("verified_at");
+        v
+    }
+
+    #[test]
+    fn attest_body_full_matches_oracle() {
+        // Signup prebaked case for ada@example.sg / CUST-001.
+        let opts = AttestKycOpts {
+            provider_reference: Some("KYC-PREBAKED-001"),
+            document_type: Some("nric"),
+            document_number_last4: Some("943E"),
+            document_number_hash: Some(
+                "46214a44de9e853364fdda7651b017d3c09d9dfe90c4a08c4d82653eaef0d8d7",
+            ),
+            document_country: Some("SGP"),
+            date_of_birth: Some("1990-01-01"),
+            ..Default::default()
+        };
+        let body = build_attest_body(
+            "CUST-001",
+            "prebaked",
+            "prebaked-simulated-v1::ada@example.sg",
+            "IGNORED",
+            &opts,
+        );
+        let expected: Value = serde_json::from_str(
+            r#"{"attestation_payload":{"signature":"stub-sig-::ada@example.sg","token":"prebaked-simulated-v1::ada@example.sg"},"date_of_birth":"1990-01-01","document_country":"SGP","document_number":"S0010000D","document_number_hash":"46214a44de9e853364fdda7651b017d3c09d9dfe90c4a08c4d82653eaef0d8d7","document_number_last4":"943E","document_type":"nric","nationality":"SG","provider":"prebaked","provider_reference":"KYC-PREBAKED-001"}"#,
+        )
+        .unwrap();
+        assert_eq!(body_without_verified_at(body), expected);
+    }
+
+    #[test]
+    fn attest_body_stub_defaults_matches_oracle() {
+        // 3-arg (orchestrator) path for CUST-042.
+        let body = build_attest_body(
+            "CUST-042",
+            "prebaked",
+            "tok-abc123def456ghi789",
+            "IGNORED",
+            &AttestKycOpts::default(),
+        );
+        let expected: Value = serde_json::from_str(
+            r#"{"attestation_payload":{"signature":"stub-sig-c123def456ghi789","token":"tok-abc123def456ghi789"},"date_of_birth":"1990-01-01","document_country":"SG","document_number":"S0420000D","document_type":"nric","nationality":"SG","provider":"prebaked","provider_reference":"prebaked-56ghi789"}"#,
+        )
+        .unwrap();
+        assert_eq!(body_without_verified_at(body), expected);
+    }
 }

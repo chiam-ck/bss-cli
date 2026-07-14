@@ -17,6 +17,7 @@ pub mod clients;
 pub mod config;
 pub mod deps;
 pub mod error_messages;
+pub mod kyc;
 pub mod middleware;
 pub mod offerings;
 pub mod prompts;
@@ -56,6 +57,8 @@ pub struct AppState {
     pub email_adapter: Option<Arc<dyn EmailAdapter>>,
     /// TTL-bounded in-memory store of in-flight signup sessions.
     pub signup_store: Arc<SessionStore>,
+    /// KYC verification adapter selected at boot (`prebaked` in dev/scenario).
+    pub kyc_adapter: kyc::KycAdapter,
 }
 
 fn repo_root() -> PathBuf {
@@ -101,6 +104,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/auth/logout", post(auth::logout))
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
+        .route("/signup/step/kyc", post(signup::signup_step_kyc))
         .route("/signup/:plan_id", get(signup::signup_form))
         .route("/signup/:plan_id/progress", get(signup::signup_progress))
         .nest_service("/static", ServeDir::new(local_static_dir()))
@@ -129,6 +133,7 @@ pub fn build_state() -> AppState {
     };
     let email_adapter = select_email_adapter();
     let signup_ttl = settings.session_ttl.max(0) as u64;
+    let kyc_adapter = kyc::KycAdapter::from_provider(&settings.kyc_provider);
     AppState {
         env: templating::build_environment(),
         settings: Arc::new(settings),
@@ -136,6 +141,7 @@ pub fn build_state() -> AppState {
         db: None,
         email_adapter,
         signup_store: Arc::new(SessionStore::new(signup_ttl)),
+        kyc_adapter,
     }
 }
 
