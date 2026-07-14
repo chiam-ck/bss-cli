@@ -64,6 +64,43 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 7 — signup funnel part 2b (COF mock + order + poll) — ✅ PORTED (2026-07-14)
+
+Finishes the **deterministic sandbox happy path** — a customer can now sign up
+end-to-end (create → KYC → card → order → activate) with zero LLM round-trips.
+
+- **`bss-clients` `com.create_order` += `skip_assigned_offer`** (sends
+  `skipAssignedOffer: true` only when set). One existing caller (orchestrator
+  `order.create`) updated to pass `false` — matches the Python tool, which
+  doesn't expose it.
+- **`POST /signup/step/cof`** (mock tokenizer path) + `signup_step_cof_mock` +
+  `local_tokenize` (brand/last4 + `FAIL`/`DECLINE` token markers — the marker
+  branches are **vestigial**, as the numeric-only guard rejects letter-bearing
+  PANs first, faithfully preserved). Tokenize → `payment.create_payment_method`
+  (sandbox) → clear `card_pan` → `pending_order`. Stripe Checkout is deferred
+  (sandbox runs `mock`).
+- **`POST /signup/step/order`** — `create_order` + `submit_order` as one
+  conceptual write; missing-id → `signup.create_order.no_id`; → `pending_activation`.
+- **`GET /signup/step/poll`** — `com.get_order` until `state == completed`, then
+  `extract_subscription_id`/`extract_activation_code`, the two-tick
+  `redirect_armed` celebration dwell, and the `HX-Redirect` to `/confirmation`.
+  The `targetSubscriptionId`-not-yet-stamped race is treated as in-progress
+  (retrigger), matching the oracle.
+
+**Verified:** tokenizer (brand/last4/prefix/reject) + the sub-id/activation
+extractors are unit-tested; route registration smoked on the running binary
+(cof/order POST + poll GET → 303 gate; wrong method → 405). The write round-trips
+need the payment/COM services (not host-exposed) → exercised in the P6 hero-suite
+acceptance.
+
+**Deferred:** the Stripe-checkout COF variant (`checkout-init`/`checkout-return`)
+and the Didit hosted-UI KYC handoff — both prod-only. That leaves the account
+surface (profile / payment-methods / plan-change / cancel / top-up / billing /
+esim / activation / confirmation) and the SSE chat route for the remaining P6b
+slices.
+
+---
+
 ### Phase 6b slice 6 — signup funnel part 2a (KYC step, prebaked) — ✅ PORTED (2026-07-14)
 
 The **KYC step** of the funnel + the wire-contract-critical `attest_kyc` fidelity
