@@ -64,6 +64,62 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 5 — signup funnel part 1 (create-customer + form + progress) — ✅ PORTED (2026-07-14)
+
+The signup **entry surface** — everything up to the HTMX step timeline. The
+KYC/COF/order/poll step routes (+ the Stripe-checkout and Didit-handoff variants)
+are the next slice.
+
+- **shared-crate additions:** `catalog.preview_promo` (bss-clients),
+  `offerings::find_plan` (portal), and two `bss-portal-auth` DB writes ported +
+  exported: `link_to_customer` (idempotent 1:1 identity→customer bind, `LinkError`
+  {UnknownIdentity, AlreadyLinked{existing}, Db}) and `record_portal_action`
+  (`portal_action` audit row via `PortalActionRecord`; `ts` from `bss_clock::now`,
+  `tenant_id` server-default like the session/login-attempt inserts).
+- **new portal modules:** `error_messages` (the rule→customer-copy map + `render`
+  /`is_known`), `prompts` (KYC prebaked constants), `signup_session`
+  (`SignupSession` + `SignupStep` enum serialising to the Python `Literal`
+  strings + TTL-bounded in-memory `SessionStore`), `deps`
+  (`require_verified_email`/`require_linked_customer` — the imperative form of the
+  FastAPI gates, returning a 303-to-login `Response` on the Err path).
+- **routes:** `GET /signup/:plan_id` (form — plan lookup + returning-customer
+  prefill/needs-card/assigned-offer best-effort reads), `GET
+  /signup/promo/preview` (live promo preview), `POST /signup` (step 1:
+  `crm.create_customer` + atomic `link_to_customer`, with the returning-customer
+  resume-at-first-incomplete-step branch), `GET /signup/:plan_id/progress` (the
+  timeline host). One `portal_action` row per write (success + failure);
+  structured policy violations render via `error_messages`.
+
+**Live-validated (as far as the env allows):** a DB round-trip smoke
+(`audit_link_live`: link → idempotent re-link → `AlreadyLinked` → `UnknownIdentity`
+→ audit-row write + count) against the real `portal_auth` schema; and the running
+binary — login → session cookie → **authenticated `GET /signup/PLAN_M` passes the
+gate and reaches `catalog.list_offerings`** (502 only because BSS services aren't
+host-exposed from the dev box), unauth variants 303 to `/auth/login` with the
+right `next`, promo-preview empty-code → 200 empty body. The catalog-backed form
+HTML + the create-customer write land in the P6 hero-suite acceptance (full stack).
+
+**Bug caught by the live smoke:** the `:plan_id` routes were first written with
+axum-0.8 `{plan_id}` syntax; on axum 0.7 (this workspace) that is a *literal*
+segment, so `/signup/PLAN_M` 404'd — the whole funnel was dark. Fixed to `:param`;
+re-smoked green. Unit tests alone would not have caught the route-registration
+syntax.
+
+**Port-vs-oracle notes:** Python reads `app.state.payment_stripe_publishable_key`
+which `main.py` never sets → always `""`; the Rust progress render passes `""` to
+match (Checkout-redirect mode needs no client key). `main` boot-warns (db-connect
+/ email-adapter failures during `build_state_with_db`) are emitted before
+`init_telemetry` runs → **swallowed**; noted as a follow-up (reorder telemetry
+init ahead of state build). Client IP still `None` (per-IP rate limiting inert),
+carried from slice 4.
+
+**Deferred to slice 6:** KYC step (prebaked synchronous + Didit handoff/poll/
+callback), COF step (mock tokenizer + Stripe checkout init/return), order step,
+poll step, and their helpers (`_local_tokenize`, `_extract_subscription_id`/
+`_extract_activation_code`, `_render_step_fragment`).
+
+---
+
 ### Phase 6b slice 4 — auth/login flow (OTP + magic-link) — ✅ PORTED (2026-07-14)
 
 The customer login gateway, **working live through the Rust binary**.
