@@ -64,6 +64,38 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 10 — profile (contact details + cross-schema email change) — ✅ PORTED (2026-07-14)
+
+The first step-up-gated account surface + the cross-schema email-change subsystem.
+
+- **`bss-portal-auth` `email_change.rs`** — `start_email_change` (uniqueness
+  check → void prior pending → mint OTP → send to the *new* email),
+  `verify_email_change` (**the cross-schema atomic write**: OTP match → CRM
+  `contact_medium.value` + `portal_auth.identity.email` + pending consumed, all
+  in one sqlx transaction), `cancel_pending_email_change`. Result enums
+  `StartOutcome`/`VerifyChangeOutcome`. This is the documented doctrine exception
+  (DECISIONS 2026-04-27).
+- **`profile.rs`** — `GET /profile/contact` + name/phone/address updates (step-up
+  `name_update`/`phone_update`/`address_update`, ownership+type check for
+  phone/address) + email change (`.../email/change` step-up-gated, `.../email/verify`
+  where the OTP *is* the step-up, `.../email/cancel` ungated). One `bss-clients`
+  write per route; `portal_action` on success + failure.
+- **clients**: `crm.list_contact_mediums`, `update_individual`,
+  `update_contact_medium` (PATCH) ported.
+- **`stepup.rs`**: `check_step_up` finalised — computes the safe same-origin
+  Referer (`safe_referer_path`) internally for the bounce `next`.
+
+**Verified:** clippy + 111 workspace groups green; profile routes smoke on the
+binary (gated → 303 login with a proper form body). The email-change atomic
+commit is exercised in the P6 hero acceptance (needs CRM/party/contact_medium
+fixtures on the live stack).
+
+**Note:** `RawForm` needs the `application/x-www-form-urlencoded` content-type
+(browsers always send it). A content-typeless POST 415s at the extractor before
+the gate — immaterial to real traffic; noted.
+
+---
+
 ### Phase 6b slice 9 — dashboard + eSIM QR + picker/confirmation/activation — ✅ PORTED (2026-07-14)
 
 The read-y post-login surface: the customer **dashboard** (`/`), the MSISDN
