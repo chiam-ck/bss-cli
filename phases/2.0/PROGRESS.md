@@ -64,6 +64,29 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 12 — subscription writes + billing/esim — ✅ PORTED (2026-07-14)
+
+The rest of the account surface: plan change, cancel, top-up (step-up writes) +
+billing history & eSIM pages (reads).
+
+- **`account_reads.rs`** — `GET /billing/history` (paginated `list_payments` +
+  `count_payments` + method last-4 index + purpose labels) and `GET
+  /esim/:subscription_id` (ownership-checked LPA code + PNG QR). Both unit-tested
+  helpers.
+- **`account_writes.rs`** — plan change (`GET/POST /plan/change`, `/plan/change/
+  cancel`, `/plan/change/scheduled`) with `format_price` + card builder; cancel
+  (`GET/POST /subscription/:id/cancel`, `/cancelled`) with the "what's lost"
+  panel; top-up (`GET/POST /top-up`, `/top-up/success`). All writes step-up-gated
+  + ownership-checked (not-found == not-yours), one `bss-clients` write each,
+  `portal_action` on success + failure.
+- **clients**: `payment.count_payments` + `list_payments` offset passthrough (3
+  callers pass `0`).
+
+**Verified:** clippy + 111 workspace groups green; billing/purpose-label + last-4
+unit tests; all 10 routes smoke-gate on the binary (→ 303 login).
+
+---
+
 ### Phase 6b slice 11 — payment methods (list/add/remove/set-default) — ✅ PORTED (2026-07-14)
 
 The card-on-file management surface (mock mode). `payment_methods.rs`: `GET
