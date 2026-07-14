@@ -14,8 +14,10 @@
 
 pub mod clients;
 pub mod config;
+pub mod middleware;
 pub mod offerings;
 pub mod routes;
+pub mod security;
 pub mod templating;
 
 use std::path::PathBuf;
@@ -24,6 +26,7 @@ use std::sync::Arc;
 use axum::routing::get;
 use axum::Router;
 use minijinja::Environment;
+use sqlx::PgPool;
 use tower_http::services::ServeDir;
 
 use clients::PortalClients;
@@ -37,6 +40,9 @@ pub struct AppState {
     /// `None` when the perimeter token isn't provisioned (e.g. template-only
     /// tests); catalog-backed routes degrade to an empty view.
     pub clients: Option<Arc<PortalClients>>,
+    /// `portal_auth` pool for session resolution. `None` without `BSS_DB_URL`;
+    /// the session middleware then resolves every request as anonymous.
+    pub db: Option<PgPool>,
 }
 
 fn repo_root() -> PathBuf {
@@ -60,7 +66,8 @@ fn shared_static_dir() -> PathBuf {
     }
 }
 
-/// Build the portal router with all slice-1 routes + static mounts.
+/// Build the portal router with all routes + the session middleware + static
+/// mounts.
 pub fn build_router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(routes::health))
@@ -71,6 +78,12 @@ pub fn build_router(state: AppState) -> Router {
         .route("/branding/logo", get(routes::branding_logo))
         .nest_service("/static", ServeDir::new(local_static_dir()))
         .nest_service("/portal-ui/static", ServeDir::new(shared_static_dir()))
+        // Session middleware runs on every request, resolving the cookie →
+        // `PortalSession` extension (anon when absent). Layer wraps the routes.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::session_layer,
+        ))
         .with_state(state)
 }
 
@@ -91,5 +104,23 @@ pub fn build_state() -> AppState {
         env: templating::build_environment(),
         settings: Arc::new(settings),
         clients,
+        db: None,
     }
+}
+
+/// Like [`build_state`] but also connects the `portal_auth` pool (from
+/// `BSS_DB_URL`) so the session middleware can resolve cookies. Async because
+/// the pool connects; used by the binary. Falls back to `db: None` if unset or
+/// the connection fails (the portal still serves public pages).
+pub async fn build_state_with_db() -> AppState {
+    let mut state = build_state();
+    if !state.settings.db_url.is_empty() {
+        match bss_db::connect(&state.settings.db_url).await {
+            Ok(pool) => state.db = Some(pool),
+            Err(e) => tracing::warn!(error = %e, "portal.db.connect_failed"),
+        }
+    } else {
+        tracing::warn!("portal.db_url.missing");
+    }
+    state
 }

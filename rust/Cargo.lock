@@ -652,12 +652,15 @@ dependencies = [
 name = "bss-portal-auth"
 version = "0.1.0"
 dependencies = [
+ "bss-clock",
  "chrono",
  "hmac",
  "rand 0.8.6",
  "serde",
  "sha2",
+ "sqlx",
  "subtle",
+ "tokio",
  "tracing",
 ]
 
@@ -2440,6 +2443,7 @@ dependencies = [
  "axum",
  "bss-branding",
  "bss-clients",
+ "bss-db",
  "bss-models",
  "bss-portal-auth",
  "bss-portal-ui",
@@ -2448,6 +2452,7 @@ dependencies = [
  "minijinja",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "tower",
  "tower-http 0.5.2",

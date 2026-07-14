@@ -22,3 +22,9 @@ sha2 = { workspace = true }
 subtle = { workspace = true }
 rand = { workspace = true }
 tracing = { workspace = true }
+sqlx = { workspace = true }
+
+bss-clock = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

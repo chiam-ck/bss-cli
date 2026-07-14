@@ -16,11 +16,13 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+pub mod service;
 pub mod startup;
 pub mod tokens;
 pub mod types;
 
 pub use config::Settings;
+pub use service::{current_session, revoke_session, rotate_if_due};
 pub use startup::validate_pepper_present;
 pub use tokens::{
     generate_magic_link_token, generate_otp, generate_session_id, generate_step_up_grant,

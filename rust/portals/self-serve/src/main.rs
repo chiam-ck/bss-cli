@@ -5,14 +5,14 @@
 //! engine, email/KYC/payment adapter selection, and the session middleware land
 //! in following slices.
 
-use bss_self_serve::{build_router, build_state};
+use bss_self_serve::{build_router, build_state_with_db};
 use tokio::net::TcpListener;
 
 type MainError = Box<dyn std::error::Error>;
 
 #[tokio::main]
 async fn main() -> Result<(), MainError> {
-    let state = build_state();
+    let state = build_state_with_db().await;
     let _telemetry = bss_telemetry::init_telemetry(&state.settings.service_name);
 
     let port = state.settings.port;

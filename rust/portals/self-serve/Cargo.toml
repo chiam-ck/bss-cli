@@ -25,10 +25,12 @@ tower-http = { workspace = true }
 minijinja = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sqlx = { workspace = true }
 tracing = { workspace = true }
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }
+bss-db = { workspace = true }
 bss-models = { workspace = true }
 bss-portal-auth = { workspace = true }
 bss-portal-ui = { workspace = true }
