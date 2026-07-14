@@ -24,6 +24,7 @@ rand = { workspace = true }
 tracing = { workspace = true }
 sqlx = { workspace = true }
 
+bss-branding = { workspace = true }
 bss-clock = { workspace = true }
 
 [dev-dependencies]

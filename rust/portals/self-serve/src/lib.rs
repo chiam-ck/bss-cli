@@ -12,6 +12,7 @@
 //! signup + KYC funnel, the post-login account surface, and the SSE chat route.
 #![forbid(unsafe_code)]
 
+pub mod auth;
 pub mod clients;
 pub mod config;
 pub mod middleware;
@@ -23,8 +24,9 @@ pub mod templating;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
+use bss_portal_auth::EmailAdapter;
 use minijinja::Environment;
 use sqlx::PgPool;
 use tower_http::services::ServeDir;
@@ -43,6 +45,9 @@ pub struct AppState {
     /// `portal_auth` pool for session resolution. `None` without `BSS_DB_URL`;
     /// the session middleware then resolves every request as anonymous.
     pub db: Option<PgPool>,
+    /// Email delivery adapter (logging/noop/…), selected at boot. `None` only if
+    /// selection failed (fail-fast at startup in the binary).
+    pub email_adapter: Option<Arc<dyn EmailAdapter>>,
 }
 
 fn repo_root() -> PathBuf {
@@ -76,6 +81,16 @@ pub fn build_router(state: AppState) -> Router {
         .route("/terms", get(routes::terms))
         .route("/privacy", get(routes::privacy))
         .route("/branding/logo", get(routes::branding_logo))
+        .route(
+            "/auth/login",
+            get(auth::login_form).post(auth::login_submit),
+        )
+        .route(
+            "/auth/check-email",
+            get(auth::check_email_form).post(auth::check_email_submit),
+        )
+        .route("/auth/verify", get(auth::verify_magic_link))
+        .route("/auth/logout", post(auth::logout))
         .nest_service("/static", ServeDir::new(local_static_dir()))
         .nest_service("/portal-ui/static", ServeDir::new(shared_static_dir()))
         // Session middleware runs on every request, resolving the cookie →
@@ -100,11 +115,34 @@ pub fn build_state() -> AppState {
             None
         }
     };
+    let email_adapter = select_email_adapter();
     AppState {
         env: templating::build_environment(),
         settings: Arc::new(settings),
         clients,
         db: None,
+        email_adapter,
+    }
+}
+
+/// Select the email adapter from `BSS_PORTAL_EMAIL_PROVIDER` (legacy
+/// `BSS_PORTAL_EMAIL_ADAPTER` fallback). Best-effort here (`None` on error);
+/// the binary treats a hard failure as fatal at boot.
+fn select_email_adapter() -> Option<Arc<dyn EmailAdapter>> {
+    let auth = bss_portal_auth::Settings::from_env();
+    let provider =
+        bss_portal_auth::resolve_provider_name(&auth.email_provider, &auth.email_adapter);
+    match bss_portal_auth::select_adapter(
+        &provider,
+        &auth.dev_mailbox_path,
+        &auth.email_resend_api_key,
+        &auth.email_from,
+    ) {
+        Ok(a) => Some(Arc::from(a)),
+        Err(e) => {
+            tracing::warn!(error = %e, provider = %provider, "portal.email_adapter.unavailable");
+            None
+        }
     }
 }
 

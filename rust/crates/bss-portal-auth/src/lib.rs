@@ -16,13 +16,20 @@
 #![forbid(unsafe_code)]
 
 pub mod config;
+pub mod email;
 pub mod service;
 pub mod startup;
 pub mod tokens;
 pub mod types;
 
 pub use config::Settings;
-pub use service::{current_session, revoke_session, rotate_if_due};
+pub use email::{
+    resolve_provider_name, select_adapter, EmailAdapter, LoggingEmailAdapter, NoopEmailAdapter,
+};
+pub use service::{
+    current_session, revoke_session, rotate_if_due, start_email_login, verify_email_login,
+    LoginError, VerifyOutcome,
+};
 pub use startup::validate_pepper_present;
 pub use tokens::{
     generate_magic_link_token, generate_otp, generate_session_id, generate_step_up_grant,

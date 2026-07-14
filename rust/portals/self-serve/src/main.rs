@@ -12,6 +12,11 @@ type MainError = Box<dyn std::error::Error>;
 
 #[tokio::main]
 async fn main() -> Result<(), MainError> {
+    // v0.8 — fail-fast on the token pepper BEFORE any auth flow can run (mirrors
+    // the Python lifespan). The login flow's HMAC relies on it.
+    bss_portal_auth::validate_pepper_present()
+        .map_err(|e| format!("BSS_PORTAL_TOKEN_PEPPER misconfigured: {e}"))?;
+
     let state = build_state_with_db().await;
     let _telemetry = bss_telemetry::init_telemetry(&state.settings.service_name);
 

@@ -8,11 +8,55 @@
 //! + manual row mapping (the workspace pattern — no compile-time DB).
 
 use chrono::{DateTime, Duration, Utc};
+use rand::rngs::OsRng;
+use rand::RngCore;
 use sqlx::{PgPool, Row};
 
 use crate::config::Settings;
-use crate::tokens::generate_session_id;
-use crate::types::{IdentityView, SessionView};
+use crate::email::EmailAdapter;
+use crate::tokens::{
+    generate_magic_link_token, generate_otp, generate_session_id, hash_token, verify_token,
+};
+use crate::types::{IdentityView, LoginChallenge, LoginFailed, RateLimitExceeded, SessionView};
+
+/// A login-flow error: either a DB failure or a rate-limit trip.
+#[derive(Debug)]
+pub enum LoginError {
+    Db(sqlx::Error),
+    RateLimited(RateLimitExceeded),
+}
+
+impl std::fmt::Display for LoginError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoginError::Db(e) => write!(f, "db error: {e}"),
+            LoginError::RateLimited(e) => write!(f, "{e}"),
+        }
+    }
+}
+impl std::error::Error for LoginError {}
+impl From<sqlx::Error> for LoginError {
+    fn from(e: sqlx::Error) -> Self {
+        LoginError::Db(e)
+    }
+}
+
+/// The outcome of a verify: a fresh session, or a structured failure (the portal
+/// renders a generic message; `reason` is for the audit log).
+pub enum VerifyOutcome {
+    Session(SessionView),
+    Failed(LoginFailed),
+}
+
+fn hex_id(prefix: &str) -> String {
+    let mut bytes = [0u8; 8];
+    OsRng.fill_bytes(&mut bytes);
+    let mut hex = String::with_capacity(16);
+    for b in bytes {
+        hex.push_str(&format!("{b:02x}"));
+    }
+    format!("{prefix}-{hex}")
+}
 
 struct SessionRow {
     id: String,
@@ -185,4 +229,383 @@ pub async fn revoke_session(pool: &PgPool, session_id: &str) -> Result<(), sqlx:
     .execute(pool)
     .await?;
     Ok(())
+}
+
+// ── rate limits (portal_auth.login_attempt window counts) ────────────────────
+
+async fn count_in_window(
+    pool: &PgPool,
+    col: &str,
+    value: &str,
+    stage: &str,
+    window_s: i64,
+    until: DateTime<Utc>,
+) -> Result<(i64, Option<DateTime<Utc>>), sqlx::Error> {
+    let cutoff = until - Duration::seconds(window_s);
+    // `col` is a fixed identifier ("email" / "ip"), never user input.
+    let sql = format!(
+        "SELECT count(id) AS c, min(ts) AS oldest FROM portal_auth.login_attempt \
+         WHERE {col} = $1 AND stage = $2 AND ts >= $3"
+    );
+    let row = sqlx::query(&sql)
+        .bind(value)
+        .bind(stage)
+        .bind(cutoff)
+        .fetch_one(pool)
+        .await?;
+    Ok((row.get::<i64, _>("c"), row.get("oldest")))
+}
+
+fn retry_after_s(oldest: Option<DateTime<Utc>>, now: DateTime<Utc>, window_s: i64) -> i64 {
+    match oldest {
+        None => window_s,
+        Some(o) => (window_s - (now - o).num_seconds()).max(1),
+    }
+}
+
+async fn enforce_login_start(
+    pool: &PgPool,
+    email: &str,
+    ip: Option<&str>,
+) -> Result<(), LoginError> {
+    let s = Settings::from_env();
+    let now = bss_clock::now();
+    let (ce, oe) = count_in_window(
+        pool,
+        "email",
+        email,
+        "login_start",
+        s.login_per_email_window_s,
+        now,
+    )
+    .await?;
+    if ce >= s.login_per_email_max {
+        return Err(LoginError::RateLimited(RateLimitExceeded {
+            retry_after_seconds: retry_after_s(oe, now, s.login_per_email_window_s),
+            scope: "login_start_per_email".to_string(),
+        }));
+    }
+    if let Some(ip) = ip {
+        let (ci, oi) =
+            count_in_window(pool, "ip", ip, "login_start", s.login_per_ip_window_s, now).await?;
+        if ci >= s.login_per_ip_max {
+            return Err(LoginError::RateLimited(RateLimitExceeded {
+                retry_after_seconds: retry_after_s(oi, now, s.login_per_ip_window_s),
+                scope: "login_start_per_ip".to_string(),
+            }));
+        }
+    }
+    Ok(())
+}
+
+async fn enforce_login_verify(pool: &PgPool, email: &str) -> Result<(), LoginError> {
+    let s = Settings::from_env();
+    let now = bss_clock::now();
+    let (c, o) = count_in_window(
+        pool,
+        "email",
+        email,
+        "login_verify",
+        s.verify_per_email_window_s,
+        now,
+    )
+    .await?;
+    if c >= s.verify_per_email_max {
+        return Err(LoginError::RateLimited(RateLimitExceeded {
+            retry_after_seconds: retry_after_s(o, now, s.verify_per_email_window_s),
+            scope: "login_verify_per_email".to_string(),
+        }));
+    }
+    Ok(())
+}
+
+// ── magic-link URL ───────────────────────────────────────────────────────────
+
+fn build_magic_link_url(public_url: &str, email: &str, token: &str) -> String {
+    if public_url.is_empty() {
+        return token.to_string();
+    }
+    let base = public_url.trim_end_matches('/');
+    format!(
+        "{base}/auth/verify?email={}&token={}",
+        urlencode(email),
+        urlencode(token)
+    )
+}
+
+/// Minimal `urllib.parse.quote` (default safe='/'): percent-encode everything
+/// that isn't unreserved or `/`. Enough for emails + url-safe tokens.
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        let keep = b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~' | b'/');
+        if keep {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+// ── start_email_login ────────────────────────────────────────────────────────
+
+/// Mint OTP + magic-link, store hashed, hand off to the email adapter. Idempotent
+/// on the identity (a known email re-uses its row).
+pub async fn start_email_login(
+    pool: &PgPool,
+    email: &str,
+    ip: Option<&str>,
+    user_agent: Option<&str>,
+    email_adapter: &dyn EmailAdapter,
+) -> Result<LoginChallenge, LoginError> {
+    let s = Settings::from_env();
+    enforce_login_start(pool, email, ip).await?;
+
+    let now = bss_clock::now();
+    let mut tx = pool.begin().await?;
+
+    // Identity: reuse or create.
+    let existing: Option<String> =
+        sqlx::query("SELECT id FROM portal_auth.identity WHERE email = $1")
+            .bind(email)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|r| r.get("id"));
+    let identity_id = match existing {
+        Some(id) => id,
+        None => {
+            let id = hex_id("IDN");
+            sqlx::query(
+                "INSERT INTO portal_auth.identity (id, email, status, created_at) \
+                 VALUES ($1, $2, 'unverified', $3)",
+            )
+            .bind(&id)
+            .bind(email)
+            .bind(now)
+            .execute(&mut *tx)
+            .await?;
+            id
+        }
+    };
+
+    let otp = generate_otp();
+    let magic = generate_magic_link_token();
+    let expires = now + Duration::seconds(s.login_token_ttl_s);
+
+    #[allow(clippy::expect_used)]
+    for (kind, code) in [("otp", &otp), ("magic_link", &magic)] {
+        let hash = hash_token(code, None).expect("pepper validated at startup");
+        sqlx::query(
+            "INSERT INTO portal_auth.login_token \
+             (id, identity_id, kind, code_hash, issued_at, expires_at, ip, user_agent) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        )
+        .bind(hex_id("LTK"))
+        .bind(&identity_id)
+        .bind(kind)
+        .bind(&hash)
+        .bind(now)
+        .bind(expires)
+        .bind(ip)
+        .bind(user_agent)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    record_attempt(&mut tx, Some(email), ip, "login_start", "issued").await?;
+    tx.commit().await?;
+
+    let url = build_magic_link_url(&s.public_url, email, &magic);
+    email_adapter.send_login(email, &otp, &url);
+
+    Ok(LoginChallenge {
+        identity_id,
+        expires_at: expires,
+    })
+}
+
+async fn record_attempt(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    email: Option<&str>,
+    ip: Option<&str>,
+    stage: &str,
+    outcome: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO portal_auth.login_attempt (email, ip, ts, outcome, stage) \
+         VALUES ($1, $2, $3, $4, $5)",
+    )
+    .bind(email)
+    .bind(ip)
+    .bind(bss_clock::now())
+    .bind(outcome)
+    .bind(stage)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+// ── verify_email_login ───────────────────────────────────────────────────────
+
+/// Verify OTP or magic-link `code` against active tokens for `email`. On success:
+/// consume the token, mint a session, stamp `email_verified_at` (first time),
+/// auto-link to a matching CRM customer, update `last_login_at`.
+pub async fn verify_email_login(
+    pool: &PgPool,
+    email: &str,
+    code: &str,
+    ip: Option<&str>,
+    user_agent: Option<&str>,
+) -> Result<VerifyOutcome, LoginError> {
+    let s = Settings::from_env();
+    enforce_login_verify(pool, email).await?;
+
+    let now = bss_clock::now();
+    let mut tx = pool.begin().await?;
+
+    let ident = sqlx::query(
+        "SELECT id, customer_id, email_verified_at, status FROM portal_auth.identity \
+         WHERE email = $1",
+    )
+    .bind(email)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some(ident) = ident else {
+        record_attempt(&mut tx, Some(email), ip, "login_verify", "no_such_identity").await?;
+        tx.commit().await?;
+        return Ok(VerifyOutcome::Failed(LoginFailed {
+            reason: "no_such_identity".to_string(),
+        }));
+    };
+    let identity_id: String = ident.get("id");
+    let mut customer_id: Option<String> = ident.get("customer_id");
+    let email_verified_at: Option<DateTime<Utc>> = ident.get("email_verified_at");
+    let status: String = ident.get("status");
+
+    let rows = sqlx::query(
+        "SELECT id, code_hash, expires_at FROM portal_auth.login_token \
+         WHERE identity_id = $1 AND kind IN ('otp','magic_link') AND consumed_at IS NULL",
+    )
+    .bind(&identity_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    if rows.is_empty() {
+        record_attempt(&mut tx, Some(email), ip, "login_verify", "no_active_token").await?;
+        tx.commit().await?;
+        return Ok(VerifyOutcome::Failed(LoginFailed {
+            reason: "no_active_token".to_string(),
+        }));
+    }
+
+    let mut matched: Option<String> = None;
+    let mut any_unexpired = false;
+    for row in &rows {
+        let expires: DateTime<Utc> = row.get("expires_at");
+        if expires <= now {
+            continue;
+        }
+        any_unexpired = true;
+        let hash: String = row.get("code_hash");
+        if verify_token(code, &hash, None) {
+            matched = Some(row.get("id"));
+            break;
+        }
+    }
+
+    let Some(token_id) = matched else {
+        let outcome = if any_unexpired {
+            "wrong_code"
+        } else {
+            "expired"
+        };
+        record_attempt(&mut tx, Some(email), ip, "login_verify", outcome).await?;
+        tx.commit().await?;
+        return Ok(VerifyOutcome::Failed(LoginFailed {
+            reason: outcome.to_string(),
+        }));
+    };
+
+    sqlx::query("UPDATE portal_auth.login_token SET consumed_at = $1 WHERE id = $2")
+        .bind(now)
+        .bind(&token_id)
+        .execute(&mut *tx)
+        .await?;
+
+    // Auto-link to a pre-existing CRM customer by email (unique contact medium).
+    if customer_id.is_none() {
+        let cm = sqlx::query(
+            "SELECT party_id FROM crm.contact_medium \
+             WHERE medium_type = 'email' AND value = $1 AND valid_to IS NULL",
+        )
+        .bind(email)
+        .fetch_optional(&mut *tx)
+        .await?;
+        if let Some(cm) = cm {
+            let party_id: String = cm.get("party_id");
+            let cust = sqlx::query("SELECT id FROM crm.customer WHERE party_id = $1")
+                .bind(&party_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+            if let Some(cust) = cust {
+                customer_id = Some(cust.get("id"));
+            }
+        }
+    }
+
+    // Status transitions mirroring the oracle.
+    let new_status: &str = if email_verified_at.is_none() {
+        if customer_id.is_some() {
+            "registered"
+        } else {
+            "verified"
+        }
+    } else if customer_id.is_some() && status != "registered" {
+        "registered"
+    } else {
+        status.as_str()
+    };
+    let verified_at = email_verified_at.or(Some(now));
+
+    sqlx::query(
+        "UPDATE portal_auth.identity \
+         SET customer_id = $1, email_verified_at = $2, status = $3, last_login_at = $4 \
+         WHERE id = $5",
+    )
+    .bind(&customer_id)
+    .bind(verified_at)
+    .bind(new_status)
+    .bind(now)
+    .bind(&identity_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let session_id = generate_session_id();
+    let expires_at = now + Duration::seconds(s.session_ttl_s);
+    sqlx::query(
+        "INSERT INTO portal_auth.session \
+         (id, identity_id, issued_at, expires_at, last_seen_at, ip, user_agent) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    )
+    .bind(&session_id)
+    .bind(&identity_id)
+    .bind(now)
+    .bind(expires_at)
+    .bind(now)
+    .bind(ip)
+    .bind(user_agent)
+    .execute(&mut *tx)
+    .await?;
+
+    record_attempt(&mut tx, Some(email), ip, "login_verify", "success").await?;
+    tx.commit().await?;
+
+    Ok(VerifyOutcome::Session(SessionView {
+        id: session_id,
+        identity_id,
+        issued_at: now,
+        expires_at,
+        last_seen_at: now,
+    }))
 }

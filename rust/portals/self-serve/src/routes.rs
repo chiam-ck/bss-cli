@@ -13,7 +13,7 @@ use crate::templating::request_ctx;
 use crate::AppState;
 
 /// Render a template to an `Html` response, or a 500 with the error (logged).
-fn render(state: &AppState, name: &str, ctx: Value) -> Response {
+pub(crate) fn render(state: &AppState, name: &str, ctx: Value) -> Response {
     match state.env.get_template(name).and_then(|t| t.render(ctx)) {
         Ok(html) => Html(html).into_response(),
         Err(err) => {
