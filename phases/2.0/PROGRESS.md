@@ -64,6 +64,37 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 8 — step-up auth (OTP grant + pending-action replay) — ✅ PORTED (2026-07-14)
+
+The **sensitive-write gate** — prerequisite for every account-surface write
+(profile / payment-methods / plan-change / cancel / top-up). Closes the last
+deferred piece of `bss-portal-auth`.
+
+- **`bss-portal-auth` step-up flow** (service.rs): `start_step_up` (rate-limited
+  per session, mints a `step_up` OTP scoped to `action_label`), `verify_step_up`
+  (timing-safe match → consume OTP → mint a one-shot `step_up_grant`), and
+  `consume_step_up_token` (atomic one-shot consume at the write). `StepUpError` /
+  `StepUpVerify`.
+- **`pending_action.rs`** — `stash_pending_action` / `consume_pending_action`
+  over `step_up_pending_action` (JSONB payload, partial-unique supersede,
+  `step_up_token` stripped). The POST-body stash that makes the bounce→verify→
+  replay seamless.
+- **portal `/auth/step-up` routes + `check_step_up` gate** (`stepup.rs`): GET
+  form, POST `/start` (issue OTP), POST verify (→ grant cookie + replay page or
+  303). `check_step_up` reads the grant from header→form→cookie, consumes it,
+  and on miss stashes + bounces to `/auth/step-up`. `require_session` added to
+  `deps`.
+
+**Live-validated:** `stepup_live` round-trip vs the real `portal_auth` schema —
+start → wrong-code `Failed` → correct-code grant → wrong-`action_label` reject →
+one-shot consume (second = false) → pending stash/consume with `step_up_token`
+filtered. Route smoke on the binary (GET form 200; unauth POSTs → 303 login).
+
+**Unblocks:** the account-surface slices wire `check_step_up(action_label)` into
+each sensitive write; every label is already in `SENSITIVE_ACTION_LABELS`.
+
+---
+
 ### Phase 6b slice 7 — signup funnel part 2b (COF mock + order + poll) — ✅ PORTED (2026-07-14)
 
 Finishes the **deterministic sandbox happy path** — a customer can now sign up
