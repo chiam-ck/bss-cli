@@ -64,6 +64,28 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 11 — payment methods (list/add/remove/set-default) — ✅ PORTED (2026-07-14)
+
+The card-on-file management surface (mock mode). `payment_methods.rs`: `GET
+/payment-methods` (list), `GET/POST /payment-methods/add` (mock card form →
+server-side tokenize → `create_payment_method`), `POST /payment-methods/:pm_id/
+{remove,set-default}` — all step-up-gated with an ownership check. Reuses the
+signup tokenizer (`local_tokenize`, now `pub(crate)`) and the profile
+sensitive-write helpers (`parse_form`/`field`/`user_agent`/`audit`, now
+`pub(crate)`).
+
+- **clients**: `payment.create_payment_method` gains `exp_month`/`exp_year`
+  passthrough (signup + orchestrator callers pass `12, 2030` — their prior
+  defaults); `payment.set_default_method` ported.
+
+**Deferred:** the Stripe Checkout add flow (`add/checkout-init` + `checkout-return`,
+prod-only — sandbox runs mock; the `add` route bounces stripe-mode there).
+
+**Verified:** clippy + 111 workspace groups green; all routes smoke-gate on the
+binary (→ 303 login).
+
+---
+
 ### Phase 6b slice 10 — profile (contact details + cross-schema email change) — ✅ PORTED (2026-07-14)
 
 The first step-up-gated account surface + the cross-schema email-change subsystem.
