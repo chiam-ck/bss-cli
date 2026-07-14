@@ -235,9 +235,9 @@ pub async fn step_up_verify(
 /// the POST body stashed for replay). Port of `requires_step_up`.
 ///
 /// `form` is the raw POST fields (for the `step_up_token` field + the stash);
-/// `target` is the request path+query (the replay POST target); `referer_path`
-/// is the safe same-origin Referer path (the GET bounce lands there).
-#[allow(clippy::result_large_err, clippy::too_many_arguments)]
+/// `target` is the request path+query (the replay POST target). The GET bounce
+/// lands on the safe same-origin Referer path when present, else `target`.
+#[allow(clippy::result_large_err)]
 pub async fn check_step_up(
     state: &AppState,
     portal: &PortalSession,
@@ -245,7 +245,6 @@ pub async fn check_step_up(
     headers: &HeaderMap,
     form: &[(String, String)],
     target: &str,
-    referer_path: Option<&str>,
 ) -> Result<(), Response> {
     debug_assert!(
         SENSITIVE_ACTION_LABELS.contains(&action_label),
@@ -263,7 +262,8 @@ pub async fn check_step_up(
         })
         .or_else(|| read_cookie(headers, GRANT_COOKIE));
 
-    let next = referer_path.unwrap_or(target);
+    let referer = safe_referer_path(headers);
+    let next = referer.as_deref().unwrap_or(target);
 
     let ok = match (&state.db, &token) {
         (Some(pool), Some(tok)) if !tok.is_empty() => {
@@ -347,6 +347,35 @@ fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .get(name)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string)
+}
+
+/// The safe same-origin path+query from the `Referer` header, or `None`. Port of
+/// `_safe_referer_path`: rejects a different host and anything that doesn't
+/// survive `safe_next_path`.
+fn safe_referer_path(headers: &HeaderMap) -> Option<String> {
+    let raw = header_value(headers, "referer")?;
+    // Split scheme://host/path?query. A relative Referer has no "://".
+    let after_scheme = raw.split_once("://").map(|(_, r)| r).unwrap_or(&raw);
+    let (netloc, path_and_query) = match after_scheme.find('/') {
+        Some(i) => (&after_scheme[..i], &after_scheme[i..]),
+        None => (after_scheme, "/"),
+    };
+    // Reject a cross-origin Referer.
+    if raw.contains("://") {
+        let host = header_value(headers, "host").unwrap_or_default();
+        if netloc != host {
+            return None;
+        }
+    }
+    if path_and_query.is_empty() {
+        return None;
+    }
+    let candidate = path_and_query.to_string();
+    if safe_next_path(Some(&candidate), "") == candidate {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 fn read_cookie(headers: &HeaderMap, name: &str) -> Option<String> {

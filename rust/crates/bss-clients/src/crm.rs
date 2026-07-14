@@ -122,6 +122,63 @@ impl CrmClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// The customer's active contact mediums (the `contactMedium` array off the
+    /// TMF629 `get_customer` response). Backs the profile-contact view.
+    pub async fn list_contact_mediums(&self, customer_id: &str) -> Result<Value, ClientError> {
+        let cust = self.get_customer(customer_id).await?;
+        Ok(cust
+            .get("contactMedium")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(Vec::new())))
+    }
+
+    /// `PATCH …/customer/{id}/individual` — partial display-name update
+    /// (`givenName`/`familyName` sent only when present). Backs
+    /// `/profile/contact/name/update`.
+    pub async fn update_individual(
+        &self,
+        customer_id: &str,
+        given_name: Option<&str>,
+        family_name: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        let mut map = serde_json::Map::new();
+        if let Some(g) = given_name {
+            map.insert("givenName".to_string(), json!(g));
+        }
+        if let Some(f) = family_name {
+            map.insert("familyName".to_string(), json!(f));
+        }
+        let path = format!("/tmf-api/customerManagement/v4/customer/{customer_id}/individual");
+        let resp = self
+            .inner
+            .request(Method::PATCH, &path, Some(&Value::Object(map)), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `PATCH …/customer/{id}/contactMedium/{cm}` — phone/address value update.
+    /// Email uses the cross-schema change flow. Backs the profile phone/address
+    /// updates.
+    pub async fn update_contact_medium(
+        &self,
+        customer_id: &str,
+        medium_id: &str,
+        value: &str,
+    ) -> Result<Value, ClientError> {
+        let path = format!(
+            "/tmf-api/customerManagement/v4/customer/{customer_id}/contactMedium/{medium_id}"
+        );
+        let resp = self
+            .inner
+            .request(Method::PATCH, &path, Some(&json!({ "value": value })), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `GET /crm-api/v1/customer/{id}/kyc-status`. Backs `customer.get_kyc_status`.
     pub async fn get_kyc_status(&self, customer_id: &str) -> Result<Value, ClientError> {
         let path = format!("/crm-api/v1/customer/{customer_id}/kyc-status");

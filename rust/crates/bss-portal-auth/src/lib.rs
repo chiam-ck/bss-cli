@@ -18,6 +18,7 @@
 pub mod audit;
 pub mod config;
 pub mod email;
+pub mod email_change;
 pub mod pending_action;
 pub mod service;
 pub mod startup;
@@ -28,6 +29,10 @@ pub use audit::{record_portal_action, PortalActionRecord};
 pub use config::Settings;
 pub use email::{
     resolve_provider_name, select_adapter, EmailAdapter, LoggingEmailAdapter, NoopEmailAdapter,
+};
+pub use email_change::{
+    cancel_pending_email_change, start_email_change, verify_email_change, EmailChangeApplied,
+    EmailChangeFailed, EmailChangeStarted, StartOutcome, VerifyChangeOutcome,
 };
 pub use pending_action::{
     consume_pending_action, stash_pending_action, PendingActionView, StashError,

@@ -21,6 +21,7 @@ pub mod error_messages;
 pub mod kyc;
 pub mod middleware;
 pub mod offerings;
+pub mod profile;
 pub mod prompts;
 pub mod qrpng;
 pub mod routes;
@@ -111,6 +112,25 @@ pub fn build_router(state: AppState) -> Router {
             get(stepup::step_up_form).post(stepup::step_up_verify),
         )
         .route("/auth/step-up/start", post(stepup::step_up_start))
+        .route("/profile/contact", get(profile::contact_view))
+        .route("/profile/contact/name/update", post(profile::name_update))
+        .route("/profile/contact/phone/update", post(profile::phone_update))
+        .route(
+            "/profile/contact/address/update",
+            post(profile::address_update),
+        )
+        .route(
+            "/profile/contact/email/change",
+            post(profile::email_change_start),
+        )
+        .route(
+            "/profile/contact/email/verify",
+            get(profile::email_change_verify_form).post(profile::email_change_verify_submit),
+        )
+        .route(
+            "/profile/contact/email/cancel",
+            post(profile::email_change_cancel),
+        )
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
         .route("/signup/step/kyc", post(signup::signup_step_kyc))
