@@ -18,11 +18,22 @@ wire + verbatim prompts + the `OpenRouterChatModel` production client. Validated
 end-to-end (a live OpenRouter turn drove the loop against the running Rust services).
 Deferred to P6 (route-coupled): `chat_caps` + `ownership::record_violation`.
 
-**➡️ NEXT: Phase 6 — the portals** (self-serve 9001 + cockpit 9002). They link the
+**➡️ Phase 6 — the portals — 🚧 IN PROGRESS.** Self-serve 9001 + cockpit 9002 link the
 P5 library crates, add the CRM screens + chat routes (wiring `chat_caps` + the
 ownership `record_violation` + `build_customer_chat_prompt`), and are the first
-acceptance target for the 4 standing hero failures (branding text,
-`/auth/check-email` 400, Jaeger `spanCount` → get to 19/19). See `03-PHASES.md` §Phase 6.
+acceptance target for the 4 standing hero failures. Decomposition: **P6a** shared
+crates → **P6b** self-serve → **P6c** csr. See `03-PHASES.md` §Phase 6 + PROGRESS §Phase 6.
+
+- **P6a slice 1 DONE:** `rust/crates/bss-branding` ported (read path + THEMES + marks +
+  css + assets + logo helper; 12 CI tests; phosphor-block doctrine pin). Next P6a:
+  `bss-portal-auth`, then `bss-portal-ui` + confirm `bss-webhooks`.
+- **⚠️ "branding text" hero failure is a STALE ASSERTION, not a bug.** The scenario
+  `portal_self_serve_signup_direct.yaml` *visit /welcome* pins `"bss-cli self-serve"`,
+  but post-v1.8 `/welcome` renders `{{ branding().brand_name }} self-serve` and the
+  brand name is operator-configurable; the tech-vm stack runs a custom brand, so it
+  fails identically on Python + Rust. Fix at acceptance = make the assertion brand-aware,
+  not change portal behaviour. (Confirmed by the human.)
+- Remaining 2 standing failures: `/auth/check-email` 400, Jaeger `spanCount`.
 
 <details><summary>P5c slice history (1–16) — all ✅</summary>
 

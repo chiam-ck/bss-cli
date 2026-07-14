@@ -42,7 +42,74 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
-## Phase 5 — orchestrator lib + knowledge + cockpit-core — 🚧 IN PROGRESS
+## Phase 6 — portals (self-serve, csr) — 🚧 IN PROGRESS
+
+The first phase to **cut over deployable containers again** since P4 — the two
+portals (self-serve 9001, cockpit/csr 9002) that link the P5 library crates
+(orchestrator, cockpit-core, knowledge). Decomposition (03-PHASES §Phase 6):
+**P6a** the shared crates (`bss-branding`, `bss-portal-auth`, `bss-portal-ui`,
+`bss-webhooks`), **P6b** self-serve (~65 endpoints), **P6c** csr/cockpit + CRM
+screens. Exit: `make e2e` green vs the Rust portals + the 4 standing hero
+failures closed (→ 19/19).
+
+**⚠️ Acceptance note — the "branding text" hero failure is not a bug, it's a
+stale assertion.** `scenarios/portal_self_serve_signup_direct.yaml` step *visit
+/welcome* asserts `body_contains: ["bss-cli self-serve", …]`. Post-v1.8 the
+`/welcome` template renders `{{ branding().brand_name }} self-serve`, and the
+**brand name is operator-configurable** (`[branding]` in `settings.toml` +
+`BSS_BRAND_*` env). The tech-vm stack runs a **custom** operator brand, so the
+hardcoded `"bss-cli self-serve"` no longer matches — and fails **identically on
+Python and Rust** (why it was logged "not a regression"). The P6 acceptance fix
+is to make that assertion **brand-aware** (assert the configured `brand_name`, or
+the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
+portal behaviour. Tracked as the branding half of the P6 acceptance task.
+
+### Phase 6a slice 1 — bss-branding — ✅ PORTED (2026-07-14)
+
+`rust/crates/bss-branding` — the operator-branding **read path + palette
+definitions** (v1.8), the crate both portals' templates + the email renderers
+need. Six modules mirroring the Python package (writes stay in
+`bss_cockpit.config`, unported here per the single-write-path seam):
+
+- **`themes`** — `ThemePalette` + the 6 dark palettes as a `LazyLock<IndexMap>`
+  so iteration/`picker` order matches Python's insertion-ordered dict;
+  `DEFAULT_THEME_ID`.
+- **`css`** — `branding_css_block` (the minified `:root{…}` var block, 16
+  slots). **Doctrine pin:** a unit test asserts the exact phosphor block so a
+  palette edit that diverges from the hand-written `portal_base.css` `:root`
+  fallback (the no-branding render) fails in CI.
+- **`marks`** — `LOGO_MARKS` + `validate_mark` (1–3 printable chars, HTML-active
+  chars rejected — the email-HTML security boundary). `isprintable` parity is
+  approximated as "not control, not whitespace except space" — exact for every
+  tested mark; the only divergence is exotic Cf format chars a logo mark never
+  carries (documented at the seam).
+- **`assets`** — `sniff_image_type` (PNG/JPEG/WebP magic bytes, **never SVG**),
+  `MAX_LOGO_BYTES` (256 KB), the fixed-filename allowlist (anti-traversal).
+- **`config`** — `BrandingSettings` (validated) + `BrandingView` (resolved) +
+  `current()`/`file_settings()`/`reset_cache()`/`branding_dir()`. Mirrors the
+  P5b `bss-cockpit` config seam **exactly**: one `stat()` per call, mtime
+  hot-reload, **last-good on parse/validation error**, **defaults on absence
+  (never bootstraps, never crashes)**, and the `BSS_BRAND_*` env overrides
+  re-read **per call** (branding is non-secret preference — deliberately unlike
+  the v0.9 tokens-load-once rule).
+- **`logo`** — framework-free port of `web.py` (`logo_http()` returns bytes +
+  content-type + immutable cache headers as a plain struct; the P6 axum portal
+  wraps it — the core crate stays web-framework-free).
+
+**Verification.** fmt + clippy `-D warnings` clean; workspace green (no
+regression). **12 tests** all pure/CI (no oracle process — the palette values
+*are* the oracle): the four oracle test files ported 1:1 — `test_assets`
+(sniff/cap), `test_css` (block shape + all-slots + the exact-phosphor pin),
+`test_config` (defaults-on-absence, mtime reload, last-good on bad-TOML /
+unknown-theme, env overrides + invalid-override-ignored, logo resolution +
+degrade), plus mark validation + theme insertion order. `current()`'s
+process-global cache forces the config cases into one sequential integration
+test (parallel cases would race the cache + process env), same as the
+`bss-cockpit` config test.
+
+---
+
+## Phase 5 — orchestrator lib + knowledge + cockpit-core — ✅ COMPLETE (tag `v2.0.0-phase.5`)
 
 The hard port, and the first phase with **no deployable cutover of its own** (D3):
 these are *library* crates. Their cutover happens in P6/P7 when the Rust

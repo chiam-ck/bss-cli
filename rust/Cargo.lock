@@ -481,6 +481,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bss-branding"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "bss-clients"
 version = "0.1.0"
 dependencies = [
