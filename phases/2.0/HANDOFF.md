@@ -4,7 +4,7 @@ This is the cold-start guide for resuming the Rust migration. Read this first,
 then [`PROGRESS.md`](PROGRESS.md) for the detailed log and [`00-STRATEGY.md`](00-STRATEGY.md)
 for the why.
 
-## Where we are (2026-07-14)
+## Where we are (2026-07-15)
 
 **Phase 4 is COMPLETE — the ENTIRE SERVICE PLANE IS RUST. Tagged `v2.0.0-phase.4`.**
 All 8 backend services run Rust images. The **portals + CLI** remain Python.
@@ -24,9 +24,45 @@ ownership `record_violation` + `build_customer_chat_prompt`), and are the first
 acceptance target for the 4 standing hero failures. Decomposition: **P6a** shared
 crates → **P6b** self-serve → **P6c** csr. See `03-PHASES.md` §Phase 6 + PROGRESS §Phase 6.
 
-- **P6a slice 1 DONE:** `rust/crates/bss-branding` ported (read path + THEMES + marks +
-  css + assets + logo helper; 12 CI tests; phosphor-block doctrine pin). Next P6a:
-  `bss-portal-auth`, then `bss-portal-ui` + confirm `bss-webhooks`.
+- **P6a — the shared crates — ✅ DONE (all 4 slices).**
+  - `bss-branding` (read path + THEMES + marks + css + assets + logo helper;
+    phosphor-block doctrine pin).
+  - `bss-portal-auth` (security foundation: OTP + magic-link login, server-side
+    sessions + rotation, HMAC-SHA-256 token storage w/ pepper, `select_adapter`
+    email dispatch). Extended through P6b as the funnel needed it: `audit.rs`
+    (`record_portal_action`), `link_to_customer`, step-up auth (`start`/`verify`/
+    `consume` + per-session cap), `pending_action.rs` (stash/replay), and
+    `email_change.rs` (the cross-schema `crm`+`portal_auth` atomic email change,
+    the documented doctrine exception).
+  - `bss-portal-ui` (chat HTML + SSE partials) + `bss-cockpit` postprocess.
+  - `bss-webhooks` (signature verify svix/stripe/didit_hmac + redaction +
+    idempotency) — confirmed parity; used by the prod-only webhook receivers.
+
+- **P6b — self-serve (9001) — 🚧 ~90% (s1–s13 done, chat SSE remains).** The entire
+  customer-facing **account + signup surface** is ported and route-smoked:
+  - **s1–s4:** app skeleton + public surface, `/plans` (first catalog read),
+    session middleware + DB session layer + security allowlist, auth/login
+    (OTP + magic-link) end-to-end.
+  - **s5–s9:** the signup funnel — create-customer + form, KYC step (prebaked
+    adapter, golden-pinned; `attest_kyc_full` wire-body fidelity), COF (mock) +
+    order + poll, dashboard + eSIM PNG QR + picker/confirmation/activation.
+  - **s10–s13:** profile (contact details + cross-schema email change),
+    payment-methods (list/add/remove/set-default, mock), subscription writes
+    (plan-change/cancel/top-up, all step-up-gated) + billing history & eSIM reads,
+    `GET /api/session/:session_id` (scenario-runner poll surface).
+  - **Reusable sensitive-write pattern** established: `RawForm` → `parse_form` →
+    `require_linked_customer` → `check_step_up` → ownership check → one bss-clients
+    write → `audit` → redirect/re-render (helpers `pub(crate)` in `profile.rs`).
+  - **Two pieces remain before the P6b tag:** (1) **chat SSE** — the last real
+    customer feature; the orchestrator side is ported (P5c) but the portal needs
+    the SSE streaming route + `chat_caps` (per-identity cost/turn caps) +
+    `ChatConversationStore` (per-customer history). (2) **webhooks**
+    (`/webhooks/resend`, `/webhooks/didit`) — **prod-only**, deferred throughout
+    (sandbox runs logging-email + prebaked-KYC), never on the hero path.
+  - **⚠️ axum is 0.7, NOT 0.8** — path params are `:param`, not `{param}`. Registering
+    `/signup/{plan_id}` made the whole funnel 404; only the live smoke caught it (unit
+    tests can't see route-registration syntax). Live-smoke every new route.
+
 - **⚠️ "branding text" hero failure is a STALE ASSERTION, not a bug.** The scenario
   `portal_self_serve_signup_direct.yaml` *visit /welcome* pins `"bss-cli self-serve"`,
   but post-v1.8 `/welcome` renders `{{ branding().brand_name }} self-serve` and the
@@ -34,6 +70,11 @@ crates → **P6b** self-serve → **P6c** csr. See `03-PHASES.md` §Phase 6 + PR
   fails identically on Python + Rust. Fix at acceptance = make the assertion brand-aware,
   not change portal behaviour. (Confirmed by the human.)
 - Remaining 2 standing failures: `/auth/check-email` 400, Jaeger `spanCount`.
+
+**Next:** finish P6b with the **chat SSE** slice (port `chat_caps` + the conversation
+store, then the axum SSE route + `AgentOwnershipViolation`→generic reply +
+cap-trip→templated SSE), then **P6c** (cockpit 9002 + CRM screens), then **P6
+acceptance** (hero 19/19, incl. making the branding assertion brand-aware).
 
 <details><summary>P5c slice history (1–16) — all ✅</summary>
 
@@ -299,33 +340,40 @@ fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: finish Phase 5 (P5b → P5c), then Phase 6+ portals/CLI
+## What to do next: finish P6b (chat SSE), then P6c cockpit, then P6 acceptance
 
-Phase 5 is underway. **P5a `bss-knowledge` is ported; next is P5b `bss-cockpit`
-core, then P5c `bss-orchestrator`.** See [`03-PHASES.md`](03-PHASES.md) §Phase 5
-and PROGRESS §Phase 5.
+Phases 4 and 5 are done. **P6a (shared crates) is done; P6b self-serve is ~90% —
+only the chat SSE flow remains.** See [`03-PHASES.md`](03-PHASES.md) §Phase 6 and
+PROGRESS §Phase 6.
 
-- **P5b — `bss-cockpit` core** (`packages/bss-cockpit`, ~3.6k Py LOC): the
-  `Conversation` store (`cockpit` schema — `transcript_text()` format is a frozen
-  contract the orchestrator's `_messages_from_transcript` parses), the
-  `pending_destructive` row (the `/confirm` contract), the chrome filter
-  (`_ASSISTANT_CHROME_PREFIXES` — the inventory-lock test pins the set), prompt
-  composition (`_COCKPIT_INVARIANTS` is code-defined, prepended verbatim), and
-  `settings.toml` hot-reload (mtime cache; `toml_edit` for writes). The ASCII
-  **renderers** can defer to P6/P7 (land with the first browser/CLI consumer).
-  Golden-diff the transcript format + pending_destructive rows.
-- **P5c — `bss-orchestrator`** (~7.2k Py LOC): the biggest. Hand-roll the ReAct
-  loop (no LangGraph — system prompt + messages → OpenRouter → run tool_calls →
-  append ToolMessage → repeat). Port the guard stack 1:1 (`safety.wrap_destructive`
-  + autonomy `LoopState`; the 3-strike failure + `_IdenticalCallTracker` bails;
-  `ownership.assert_owned_output`; `chat_caps`). Keep **tool descriptions/param
-  docstrings byte-identical** (R2 — they drive model behaviour). Reimplement
-  `MockChatModel` (substring-match on latest user text → walk `steps`) so the
-  fixture corpus replays event-identically. Port tools profile-by-profile,
-  `customer_self_serve` first (smaller, ownership-critical). **Don't** add the
-  ITERATIVE FLOW block to customer chat (doctrine guard).
+- **P6b last slice — chat SSE** (`portals/self-serve/bss_self_serve/routes/chat.py`,
+  ~578 LOC → `rust/portals/self-serve/src/chat.rs`): `/chat`, `/chat/widget`,
+  `/chat/message`, `/chat/reset`, `/chat/events/:session_id`. The orchestrator side
+  is already ported (P5c: `astream_once`, `AgentEvent`, `AgentOwnershipViolation`,
+  `OWNERSHIP_PATHS`, `OpenRouterChatModel`, the `CUSTOMER_SELF_SERVE` profile). Still
+  to port: **`bss_orchestrator.chat_caps`** (`check_caps`/`record_chat_turn` —
+  per-identity cost/turn caps) and the **`ChatConversationStore`** (per-customer
+  history), then the axum SSE route itself. `AgentOwnershipViolation` → generic
+  safety reply; cap-trip → templated SSE frame. **Don't** add the ITERATIVE FLOW
+  block to the customer chat prompt (doctrine guard).
+- **P6c — csr/cockpit (9002) + CRM screens** (~65 endpoints): links the same P5
+  library crates; adds the Customers/Cases/Orders/Catalog/Subscription screens
+  (direct `bss-clients` reads/writes, section-degrading) with the v1.6 two-step
+  confirm on destructive/money-moving verbs, plus the cockpit chat (wiring
+  `chat_caps` + ownership `record_violation` + `build_cockpit_prompt`).
+- **P6 acceptance** — hero suite to **19/19**: close the 3 real standing failures
+  (`/auth/check-email` 400, Jaeger `spanCount`, and whatever the portal port surfaces)
+  and make the **branding-text assertion brand-aware** (it's a stale string, not a
+  bug — see the ⚠️ above and PROGRESS §Phase 6).
 
-Then Phase 6+ (portals self-serve 9001 + cockpit 9002, then CLI):
+Reference for the remaining portal work — copy from the P6b account/signup slices
+already landed (`rust/portals/self-serve/src/{signup,profile,account_writes}.rs`):
+the `RawForm`→`parse_form`→gate→ownership→one-write→`audit` sensitive-write pattern,
+`deps.rs` self-gating (Rust `session_layer` only *resolves* the cookie; each route
+self-gates, unlike Python's middleware), and MiniJinja rendering the existing Jinja
+templates in place via the two-directory `path_loader`.
+
+Older P5 recipe (kept for reference — both crates are ported):
 
 - The **4 standing hero failures** are all portal/trace (branding text,
   `/auth/check-email` 400, Jaeger `spanCount`) — they land in the P6 portal port and
