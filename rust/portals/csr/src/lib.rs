@@ -34,6 +34,7 @@ pub mod inflight;
 pub mod orders;
 pub mod routes;
 pub mod sessions;
+pub mod subscriptions;
 pub mod templating;
 pub mod tool_row;
 pub mod turn;
@@ -154,6 +155,32 @@ pub fn build_router(state: AppState) -> Router {
         .route(
             "/catalog/:offering_id/retire",
             post(catalog::retire_offering),
+        )
+        // Subscriptions — detail + lifecycle CRUD (v1.6). Nested under the
+        // customers nav (active_page="customers"); no separate list screen.
+        .route(
+            "/subscriptions/:subscription_id",
+            get(subscriptions::subscription_detail),
+        )
+        .route(
+            "/subscriptions/:subscription_id/plan-change",
+            post(subscriptions::schedule_plan_change),
+        )
+        .route(
+            "/subscriptions/:subscription_id/plan-change/cancel",
+            post(subscriptions::cancel_plan_change),
+        )
+        .route(
+            "/subscriptions/:subscription_id/renew",
+            post(subscriptions::renew_now),
+        )
+        .route(
+            "/subscriptions/:subscription_id/vas",
+            post(subscriptions::purchase_vas),
+        )
+        .route(
+            "/subscriptions/:subscription_id/terminate",
+            post(subscriptions::terminate),
         )
         .nest_service("/static", ServeDir::new(templating::local_static_dir()))
         .nest_service(

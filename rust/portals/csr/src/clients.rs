@@ -12,8 +12,8 @@
 use std::sync::Arc;
 
 use bss_clients::{
-    AuthProvider, CatalogClient, ComClient, CrmClient, InventoryClient, NamedTokenAuthProvider,
-    PaymentClient, ProvisioningClient, SomClient, SubscriptionClient,
+    AuthProvider, CatalogClient, ComClient, CrmClient, InventoryClient, MediationClient,
+    NamedTokenAuthProvider, PaymentClient, ProvisioningClient, SomClient, SubscriptionClient,
 };
 
 use crate::config::Settings;
@@ -32,6 +32,7 @@ pub struct CockpitClients {
     pub subscription: SubscriptionClient,
     pub payment: PaymentClient,
     pub provisioning: ProvisioningClient,
+    pub mediation: MediationClient,
 }
 
 impl CockpitClients {
@@ -51,6 +52,8 @@ impl CockpitClients {
                 .map_err(mk)?,
             payment: PaymentClient::new(settings.payment_url.clone(), auth.clone()).map_err(mk)?,
             provisioning: ProvisioningClient::new(settings.provisioning_url.clone(), auth.clone())
+                .map_err(mk)?,
+            mediation: MediationClient::new(settings.mediation_url.clone(), auth.clone())
                 .map_err(mk)?,
         })
     }

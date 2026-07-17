@@ -54,21 +54,24 @@ async fn post(path: &str, body: &str) -> (StatusCode, String) {
     (status, location)
 }
 
-/// The customer-, case-, order- and catalog-screen entries of the oracle's
-/// `_CONFIRM_GATED` table. The remaining entries (subscriptions) land with that
-/// screen. Each tuple is `(path, extra_form_fields)` — the confirm test appends
-/// `confirm=yes` to the extras.
+/// The full `_CONFIRM_GATED` table from the oracle's `test_routes_crm.py`, all ten
+/// entries across every CRM screen. Each tuple is `(path, extra_form_fields)` — the
+/// confirm test appends `confirm=yes` to the extras.
 ///
 /// Note `/catalog/PLAN_M/retire` refuses with its OWN copy ("Check the confirm
 /// box…"), not the shared `CONFIRM_REQUIRED` string — the gate is what's pinned,
-/// so the test asserts `err=` is present rather than a specific message.
-const CONFIRM_GATED: [(&str, &str); 7] = [
+/// so the test asserts a gate-refusal message is present rather than one exact
+/// string.
+const CONFIRM_GATED: [(&str, &str); 10] = [
     ("/customers/CUST-001/close", ""),
     ("/customers/CUST-001/contact/CM-1/remove", ""),
     ("/case/CASE-042/close", "resolution_code=no_fault_found"),
     ("/case/CASE-042/ticket/TKT-101/cancel", ""),
     ("/orders/ORD-014/submit", ""),
     ("/orders/ORD-014/cancel", ""),
+    ("/subscriptions/SUB-007/renew", ""),
+    ("/subscriptions/SUB-007/vas", "vas_offering_id=VAS_1GB"),
+    ("/subscriptions/SUB-007/terminate", ""),
     ("/catalog/PLAN_M/retire", ""),
 ];
 
