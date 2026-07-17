@@ -1,0 +1,44 @@
+[package]
+name = "portal-csr"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Operator cockpit portal (service 9002). Rust port of portals/csr. The browser surface over the Postgres-backed cockpit Conversation store (the CLI REPL is canonical) plus the v1.6 CRM screens."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "portal-csr"
+path = "src/main.rs"
+
+[lib]
+name = "bss_csr"
+path = "src/lib.rs"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+futures-util = { workspace = true }
+tower-http = { workspace = true }
+minijinja = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+bss-branding = { workspace = true }
+bss-clients = { workspace = true }
+bss-clock = { workspace = true }
+bss-cockpit = { workspace = true }
+bss-db = { workspace = true }
+bss-models = { workspace = true }
+bss-orchestrator = { workspace = true }
+bss-portal-ui = { workspace = true }
+bss-telemetry = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }

@@ -2531,6 +2531,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "portal-csr"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "bss-branding",
+ "bss-clients",
+ "bss-clock",
+ "bss-cockpit",
+ "bss-db",
+ "bss-models",
+ "bss-orchestrator",
+ "bss-portal-ui",
+ "bss-telemetry",
+ "chrono",
+ "futures-util",
+ "minijinja",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tower",
+ "tower-http 0.5.2",
+ "tracing",
+]
+
+[[package]]
 name = "portal-self-serve"
 version = "0.1.0"
 dependencies = [
