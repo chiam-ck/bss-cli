@@ -566,10 +566,14 @@ dependencies = [
 name = "bss-cli"
 version = "0.1.0"
 dependencies = [
+ "bss-clients",
  "bss-clock",
+ "bss-cockpit",
+ "bss-context",
  "bss-telemetry",
  "chrono",
  "clap",
+ "serde_json",
  "tokio",
 ]
 

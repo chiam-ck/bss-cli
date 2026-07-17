@@ -6,4 +6,5 @@
 //! business logic in a command; the CLI calls the orchestrator or `bss-clients`
 //! and nothing more (CLAUDE.md).
 
+pub mod catalog;
 pub mod clock;

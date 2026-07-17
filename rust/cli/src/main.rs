@@ -20,6 +20,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod commands;
+mod runtime;
 
 /// `bss` — BSS-CLI, terminal-first, LLM-native telco BSS.
 #[derive(Parser)]
@@ -35,6 +36,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Browse the product catalog (TMF620).
+    Catalog(commands::catalog::CatalogArgs),
     /// Time helpers (v0.1 = wall clock).
     Clock(commands::clock::ClockArgs),
 }
@@ -53,6 +56,7 @@ async fn main() -> ExitCode {
 
     let cli = Cli::parse();
     match cli.command {
+        Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
         // `bss` with no subcommand → the REPL (canonical cockpit). Not yet ported;
         // a following slice lands it. Fail loudly rather than silently no-op.
