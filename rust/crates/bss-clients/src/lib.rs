@@ -33,7 +33,10 @@ pub use auth::{
 pub use base::{BssClient, DEFAULT_TIMEOUT};
 pub use catalog::CatalogClient;
 pub use com::ComClient;
-pub use crm::{AttestKycOpts, CrmClient};
+pub use crm::{
+    ticket_in_progress_trigger, ticket_trigger_for_state, AttestKycOpts, CrmClient,
+    TICKET_IN_PROGRESS_BY_SOURCE, TICKET_STATE_TO_TRIGGER,
+};
 pub use errors::ClientError;
 pub use inventory::InventoryClient;
 pub use jaeger::{JaegerClient, JaegerError, DEFAULT_JAEGER_URL};

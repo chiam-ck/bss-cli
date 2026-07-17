@@ -310,54 +310,14 @@ pub struct FlashQuery {
     err: String,
 }
 
-/// 303 back onto the 360, carrying an optional flash/err. Empty values are
-/// dropped, so a bare redirect stays a bare URL.
+/// `_back_to_customer` — 303 onto the 360 with an optional flash/err.
 fn back_to_customer(customer_id: &str, flash: &str, err: &str) -> Response {
-    let mut params: Vec<String> = Vec::new();
-    if !flash.is_empty() {
-        params.push(format!("flash={}", urlencode(flash)));
-    }
-    if !err.is_empty() {
-        params.push(format!("err={}", urlencode(err)));
-    }
-    let mut url = format!("/customers/{customer_id}");
-    if !params.is_empty() {
-        url.push('?');
-        url.push_str(&params.join("&"));
-    }
-    // 303 — POST/redirect/GET, so a refresh doesn't re-submit the write.
-    Redirect::to(&url).into_response()
+    crate::routes::back_to(&format!("/customers/{customer_id}"), flash, err)
 }
 
-/// Python's `urllib.parse.urlencode`, which quotes with **`quote_plus`**: space
-/// becomes `+` (not `%20`), and only `[A-Za-z0-9_.-~]` pass through — note `/` is
-/// escaped, unlike the self-serve portal's `next=` encoder.
-fn urlencode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for b in s.bytes() {
-        if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-' | b'~') {
-            out.push(b as char);
-        } else if b == b' ' {
-            out.push('+');
-        } else {
-            out.push_str(&format!("%{b:02X}"));
-        }
-    }
-    out
-}
-
-/// Run one customer write; flash the outcome back onto the 360.
-///
-/// This is the whole error contract of the CRM screens: a policy violation shows
-/// the operator the rule's own message (that text is written for a human), and any
-/// other client error degrades to a status code — never a stack trace, never a raw
-/// downstream body.
+/// `_write` — run one customer write; flash the outcome back onto the 360.
 fn write_result(customer_id: &str, action: &str, r: Result<Value, ClientError>) -> Response {
-    match r {
-        Ok(_) => back_to_customer(customer_id, action, ""),
-        Err(ClientError::Policy(p)) => back_to_customer(customer_id, "", &p.message),
-        Err(e) => back_to_customer(customer_id, "", &format!("CRM error ({})", e.status_code())),
-    }
+    crate::routes::write_result(&format!("/customers/{customer_id}"), action, r)
 }
 
 // ── Writes ───────────────────────────────────────────────────────────
@@ -616,60 +576,6 @@ mod tests {
         assert_eq!(
             loc(r),
             "/customers/CUST-1?err=Case+CASE-042+has+2+open+tickets."
-        );
-    }
-
-    /// Captured from the live oracle (`urllib.parse.quote_plus`) — the encoder is
-    /// the only thing standing between an operator-facing policy message and a
-    /// mangled query string.
-    #[test]
-    fn urlencode_matches_python_quote_plus() {
-        assert_eq!(urlencode("a~b"), "a~b");
-        assert_eq!(urlencode("a/b"), "a%2Fb");
-        assert_eq!(urlencode("a*b"), "a%2Ab");
-        assert_eq!(urlencode("a'b"), "a%27b");
-        // Non-ASCII is percent-encoded per UTF-8 byte.
-        assert_eq!(urlencode("café"), "caf%C3%A9");
-        assert_eq!(urlencode("CRM error (503)"), "CRM+error+%28503%29");
-        assert_eq!(
-            urlencode("This action needs the expanded confirm step."),
-            "This+action+needs+the+expanded+confirm+step."
-        );
-    }
-
-    /// The v1.6.1 gate, in the direction that matters: a policy violation's own
-    /// message reaches the operator, and any other failure degrades to a status
-    /// code without leaking the downstream body.
-    #[test]
-    fn write_result_maps_errors() {
-        let loc = |r: Response| {
-            r.headers()
-                .get("location")
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string()
-        };
-        let policy = ClientError::Policy(bss_db::PolicyViolation {
-            rule: "case.close.requires_all_tickets_resolved".to_string(),
-            message: "Resolve them first.".to_string(),
-            context: json!({}),
-        });
-        assert_eq!(
-            loc(write_result("CUST-1", "closed", Err(policy))),
-            "/customers/CUST-1?err=Resolve+them+first."
-        );
-        let server = ClientError::Server {
-            status: 503,
-            detail: "upstream down".to_string(),
-        };
-        assert_eq!(
-            loc(write_result("CUST-1", "closed", Err(server))),
-            "/customers/CUST-1?err=CRM+error+%28503%29"
-        );
-        assert_eq!(
-            loc(write_result("CUST-1", "closed", Ok(json!({})))),
-            "/customers/CUST-1?flash=closed"
         );
     }
 }

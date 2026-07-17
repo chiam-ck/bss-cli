@@ -106,7 +106,7 @@ async fn resume(state: &AppState, session_id: &str) -> Result<Conversation, Resp
         .map_err(|e| (StatusCode::NOT_FOUND, format!("{e}")).into_response())
 }
 
-fn model_label(state: &AppState) -> String {
+pub(crate) fn model_label(state: &AppState) -> String {
     let cfg = bss_cockpit::current(None);
     let _ = state;
     cfg.as_ref()

@@ -25,23 +25,12 @@ const DESC_RESOLVE: &str = include_str!("desc/ticket_resolve.txt");
 const DESC_CLOSE: &str = include_str!("desc/ticket_close.txt");
 const DESC_CANCEL: &str = include_str!("desc/ticket_cancel.txt");
 
-/// Target ticket state → trigger (`_TICKET_STATE_TO_TRIGGER`). `in_progress` is
-/// deliberately absent (resolved from the current state via [`IN_PROGRESS_BY_SOURCE`]).
-const TICKET_STATE_TO_TRIGGER: &[(&str, &str)] = &[
-    ("acknowledged", "ack"),
-    ("cancelled", "cancel"),
-    ("closed", "close"),
-    ("pending", "wait"),
-    ("resolved", "resolve"),
-];
-
-/// Source state → trigger that reaches `in_progress` (`_TICKET_IN_PROGRESS_TRIGGER_
-/// BY_SOURCE`).
-const IN_PROGRESS_BY_SOURCE: &[(&str, &str)] = &[
-    ("acknowledged", "start"),
-    ("pending", "resume"),
-    ("resolved", "reopen"),
-];
+// The FSM maps live on `CrmClient` — the cockpit's CRM workbench needs the same
+// tables, and Python keeps them in the client for exactly that reason.
+use bss_clients::{
+    ticket_in_progress_trigger, ticket_trigger_for_state, TICKET_IN_PROGRESS_BY_SOURCE,
+    TICKET_STATE_TO_TRIGGER,
+};
 
 fn value_error(detail: String) -> ToolError {
     ToolError::Other {
@@ -102,22 +91,21 @@ async fn resolve_ticket_trigger(
     if to_state == "in_progress" {
         let current = c.get_ticket(ticket_id).await.map_err(map_err)?;
         let src = current.get("state").and_then(Value::as_str).unwrap_or("");
-        IN_PROGRESS_BY_SOURCE
-            .iter()
-            .find(|(s, _)| *s == src)
-            .map(|(_, t)| t.to_string())
+        ticket_in_progress_trigger(src)
+            .map(str::to_string)
             .ok_or_else(|| {
-                let sources: Vec<&str> = IN_PROGRESS_BY_SOURCE.iter().map(|(s, _)| *s).collect();
+                let sources: Vec<&str> = TICKET_IN_PROGRESS_BY_SOURCE
+                    .iter()
+                    .map(|(s, _)| *s)
+                    .collect();
                 value_error(format!(
                     "No transition to in_progress from '{src}'; valid sources: {}",
                     py_list_repr(&sources)
                 ))
             })
     } else {
-        TICKET_STATE_TO_TRIGGER
-            .iter()
-            .find(|(s, _)| *s == to_state)
-            .map(|(_, t)| t.to_string())
+        ticket_trigger_for_state(to_state)
+            .map(str::to_string)
             .ok_or_else(|| {
                 let targets: Vec<&str> = TICKET_STATE_TO_TRIGGER.iter().map(|(s, _)| *s).collect();
                 value_error(format!(

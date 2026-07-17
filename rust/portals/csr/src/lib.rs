@@ -23,6 +23,7 @@
 #![forbid(unsafe_code)]
 
 pub mod bubble;
+pub mod cases;
 pub mod clients;
 pub mod cockpit;
 pub mod config;
@@ -109,6 +110,30 @@ pub fn build_router(state: AppState) -> Router {
             post(customers::close_customer),
         )
         .route("/customers/:customer_id/case", post(customers::open_case))
+        // Cases — queue + thread + workbench (v1.6).
+        .route("/cases", get(cases::cases_list))
+        .route("/case/:case_id", get(cases::case_thread))
+        .route("/case/:case_id/close", post(cases::case_close))
+        .route("/case/:case_id/note", post(cases::case_add_note))
+        .route("/case/:case_id/transition", post(cases::case_transition))
+        .route("/case/:case_id/priority", post(cases::case_priority))
+        .route("/case/:case_id/ticket", post(cases::case_open_ticket))
+        .route(
+            "/case/:case_id/ticket/:ticket_id/assign",
+            post(cases::ticket_assign),
+        )
+        .route(
+            "/case/:case_id/ticket/:ticket_id/transition",
+            post(cases::ticket_transition),
+        )
+        .route(
+            "/case/:case_id/ticket/:ticket_id/resolve",
+            post(cases::ticket_resolve),
+        )
+        .route(
+            "/case/:case_id/ticket/:ticket_id/cancel",
+            post(cases::ticket_cancel),
+        )
         .nest_service("/static", ServeDir::new(templating::local_static_dir()))
         .nest_service(
             "/portal-ui/static",

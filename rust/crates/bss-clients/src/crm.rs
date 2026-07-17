@@ -20,6 +20,50 @@ pub struct CrmClient {
     inner: BssClient,
 }
 
+/// Target ticket state → state-machine trigger (Python's
+/// `_TICKET_STATE_TO_TRIGGER`). Mirrors `services/crm/app/domain/ticket_state.py`.
+///
+/// `in_progress` is deliberately absent: three triggers land there
+/// (start / resume / reopen), so it resolves from the ticket's *current* state via
+/// [`TICKET_IN_PROGRESS_BY_SOURCE`] instead.
+///
+/// This lives on the client, not in a caller, because two callers need it — the
+/// `ticket.transition` tool and the cockpit's CRM workbench. Two copies of an FSM
+/// map is exactly the drift this table exists to prevent.
+pub const TICKET_STATE_TO_TRIGGER: &[(&str, &str)] = &[
+    ("acknowledged", "ack"),
+    ("cancelled", "cancel"),
+    ("closed", "close"),
+    ("pending", "wait"),
+    ("resolved", "resolve"),
+];
+
+/// Source state → the trigger that reaches `in_progress` from it (Python's
+/// `_TICKET_IN_PROGRESS_TRIGGER_BY_SOURCE`).
+pub const TICKET_IN_PROGRESS_BY_SOURCE: &[(&str, &str)] = &[
+    ("acknowledged", "start"),
+    ("pending", "resume"),
+    ("resolved", "reopen"),
+];
+
+/// The trigger for a target ticket state, or `None` when the target isn't directly
+/// reachable (including `in_progress` — see [`ticket_in_progress_trigger`]).
+pub fn ticket_trigger_for_state(to_state: &str) -> Option<&'static str> {
+    TICKET_STATE_TO_TRIGGER
+        .iter()
+        .find(|(s, _)| *s == to_state)
+        .map(|(_, t)| *t)
+}
+
+/// The trigger reaching `in_progress` from `src`, or `None` when no such
+/// transition exists.
+pub fn ticket_in_progress_trigger(src: &str) -> Option<&'static str> {
+    TICKET_IN_PROGRESS_BY_SOURCE
+        .iter()
+        .find(|(s, _)| *s == src)
+        .map(|(_, t)| *t)
+}
+
 /// Optional fields for [`CrmClient::attest_kyc_full`]. Each `None` takes the same
 /// default as the Python `attest_kyc` keyword arg, so a `default()` call produces
 /// the 3-arg stub body and a fully-populated one produces the reduced-PII body.
@@ -224,6 +268,21 @@ impl CrmClient {
         state: Option<&str>,
         agent_id: Option<&str>,
     ) -> Result<Value, ClientError> {
+        self.list_cases_paged(customer_id, state, agent_id, None, None)
+            .await
+    }
+
+    /// [`Self::list_cases`] with explicit paging (v1.6 — the cockpit case queue).
+    /// Each of `limit`/`offset` is sent only when `Some`, mirroring Python's
+    /// `if limit is not None`.
+    pub async fn list_cases_paged(
+        &self,
+        customer_id: Option<&str>,
+        state: Option<&str>,
+        agent_id: Option<&str>,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Value, ClientError> {
         let mut params: Vec<String> = Vec::new();
         if let Some(c) = customer_id.filter(|s| !s.is_empty()) {
             params.push(format!("customerId={}", encode(c)));
@@ -233,6 +292,12 @@ impl CrmClient {
         }
         if let Some(a) = agent_id.filter(|s| !s.is_empty()) {
             params.push(format!("assignedAgentId={}", encode(a)));
+        }
+        if let Some(l) = limit {
+            params.push(format!("limit={l}"));
+        }
+        if let Some(o) = offset {
+            params.push(format!("offset={o}"));
         }
         let mut path = "/crm-api/v1/case".to_string();
         if !params.is_empty() {
@@ -639,6 +704,34 @@ impl CrmClient {
         resp.json()
             .await
             .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `PATCH /crm-api/v1/case/{id}` with `{"trigger": …}` — a state-machine
+    /// transition.
+    ///
+    /// Takes the **trigger**, not the target state: `resume` (pending_customer →
+    /// in_progress) and `take` (open → in_progress) share a target, so the target
+    /// alone is ambiguous. Callers holding a target state map it first
+    /// (`bss_orchestrator::tools::case`); the cockpit's workbench buttons already
+    /// carry triggers.
+    pub async fn transition_case(
+        &self,
+        case_id: &str,
+        trigger: &str,
+    ) -> Result<Value, ClientError> {
+        self.patch_case(case_id, &json!({ "trigger": trigger }))
+            .await
+    }
+
+    /// `PATCH /crm-api/v1/case/{id}` with `{"priority": …}`. Backs
+    /// `case.update_priority`.
+    pub async fn update_case_priority(
+        &self,
+        case_id: &str,
+        priority: &str,
+    ) -> Result<Value, ClientError> {
+        self.patch_case(case_id, &json!({ "priority": priority }))
+            .await
     }
 
     /// `POST /crm-api/v1/case/{id}/close` with snake_case `{resolution_code}`. Backs
