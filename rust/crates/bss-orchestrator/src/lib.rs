@@ -19,6 +19,7 @@
 #![forbid(unsafe_code)]
 
 pub mod agent;
+pub mod chat_caps;
 pub mod chat_model;
 pub mod config;
 pub mod events;
@@ -29,6 +30,7 @@ pub mod safety;
 pub mod tools;
 
 pub use agent::{astream_once, AgentConfig};
+pub use chat_caps::{CapLimits, CapStatus, ChatCaps};
 pub use chat_model::{AiTurn, ChatMessage, ChatModel, MockChatModel, Role, ToolCall, Usage};
 pub use config::Settings;
 pub use events::AgentEvent;

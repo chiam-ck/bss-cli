@@ -31,6 +31,13 @@ pub struct Settings {
     pub db_url: String,
     pub env: String,
     pub tenant_default: String,
+    // ── v0.12 chat scoping ──────────────────────────────────────────
+    // The chat surface owns `audit.chat_usage` because no single domain
+    // service does — the table aggregates costs across CRM / subscription /
+    // payment writes that chat drives.
+    pub chat_rate_per_customer_per_hour: i64,
+    pub chat_cost_cap_per_customer_per_month_cents: i64,
+    pub chat_rate_per_ip_per_hour: i64,
 }
 
 impl Settings {
@@ -53,6 +60,21 @@ impl Settings {
             db_url: env_or("BSS_DB_URL", ""),
             env: env_or("BSS_ENV", "development"),
             tenant_default: env_or("BSS_TENANT_DEFAULT", "DEFAULT"),
+            chat_rate_per_customer_per_hour: env_int("BSS_CHAT_RATE_PER_CUSTOMER_PER_HOUR", 20),
+            chat_cost_cap_per_customer_per_month_cents: env_int(
+                "BSS_CHAT_COST_CAP_PER_CUSTOMER_PER_MONTH_CENTS",
+                200,
+            ),
+            chat_rate_per_ip_per_hour: env_int("BSS_CHAT_RATE_PER_IP_PER_HOUR", 60),
+        }
+    }
+
+    /// The three chat caps as a [`crate::chat_caps::CapLimits`].
+    pub fn cap_limits(&self) -> crate::chat_caps::CapLimits {
+        crate::chat_caps::CapLimits {
+            rate_per_customer_per_hour: self.chat_rate_per_customer_per_hour,
+            cost_cap_per_customer_per_month_cents: self.chat_cost_cap_per_customer_per_month_cents,
+            rate_per_ip_per_hour: self.chat_rate_per_ip_per_hour,
         }
     }
 
