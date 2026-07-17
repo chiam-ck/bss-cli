@@ -10,9 +10,9 @@
 //! `OWNERSHIP_PATHS` enumerates the JSON paths whose values must equal the actor for
 //! each customer-bound tool. An empty list means "no customer-bound output by
 //! contract" — the entry must still be present so `validate_ownership_paths_cover_
-//! profile` can confirm the seam was considered. The route-side `record_violation`
-//! (CRM interaction log) lands with the P6 chat route.
+//! profile` can confirm the seam was considered.
 
+use bss_clients::CrmClient;
 use serde_json::Value;
 
 /// Raised when a tool's response leaks a customer-bound id that doesn't match the
@@ -142,6 +142,125 @@ pub fn assert_owned_output(
     Ok(())
 }
 
+/// Best-effort: log to `tracing` + emit a CRM interaction on the actor's record so
+/// the violation is auditable. The CRM interaction triggers the v0.1 auto-logging
+/// path which writes an `audit.domain_event` row server-side, satisfying the
+/// "audit row written" requirement (phases/V0_12_0.md §2.1).
+///
+/// Failures here must not mask the original violation; they are logged and
+/// swallowed. Port of Python's `record_violation`.
+pub async fn record_violation(
+    crm: &CrmClient,
+    actor: &str,
+    tool_name: &str,
+    path: &str,
+    found: &Value,
+    transcript_so_far: &str,
+) {
+    let (summary, body) = violation_audit_text(actor, tool_name, path, found, transcript_so_far);
+    tracing::error!(
+        tool_name = %tool_name,
+        actor = %actor,
+        path = %path,
+        found = %truncate_chars(&found.to_string(), 200),
+        "agent.ownership_violation"
+    );
+    if let Err(e) = crm
+        .log_interaction_full(actor, &summary, None, Some("outbound"), Some(&body))
+        .await
+    {
+        tracing::error!(
+            tool_name = %tool_name,
+            actor = %actor,
+            error = %e,
+            "agent.ownership_violation.audit_log_failed"
+        );
+    }
+}
+
+/// The `(summary, body)` written to the CRM interaction. Pure so the audit text is
+/// golden-testable against the oracle — it lands in the permanent audit trail, so
+/// the exact wording is the contract.
+fn violation_audit_text(
+    actor: &str,
+    tool_name: &str,
+    path: &str,
+    found: &Value,
+    transcript_so_far: &str,
+) -> (String, String) {
+    let found_repr = py_repr(found);
+    let body = format!(
+        "Tool: {tool_name}\n\
+         Path: {path}\n\
+         Found value: {found_repr}\n\
+         Expected actor: {actor}\n\
+         Transcript (first 1000 chars):\n{}",
+        truncate_chars(transcript_so_far, 1000)
+    );
+    // Python interpolates `{tool_name!r}` — repr(), i.e. SINGLE quotes. Rust's
+    // `{:?}` would emit double quotes and silently drift the audit text.
+    let summary = format!(
+        "P0 agent ownership violation on {} — output leaked {path}={found_repr}",
+        py_repr_str(tool_name)
+    );
+    (summary, body)
+}
+
+/// Python slicing (`s[:n]`) counts *characters*, not bytes.
+fn truncate_chars(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
+/// Python `repr()` for a JSON value — the leaked value is interpolated with `!r`
+/// into both the interaction summary and body, so the audit text depends on it.
+/// Strings take Python's quote selection: single quotes unless the string contains
+/// a `'` and no `"`.
+fn py_repr(v: &Value) -> String {
+    match v {
+        Value::String(s) => py_repr_str(s),
+        Value::Bool(true) => "True".to_string(),
+        Value::Bool(false) => "False".to_string(),
+        Value::Null => "None".to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::Array(items) => {
+            let inner: Vec<String> = items.iter().map(py_repr).collect();
+            format!("[{}]", inner.join(", "))
+        }
+        Value::Object(map) => {
+            let inner: Vec<String> = map
+                .iter()
+                .map(|(k, val)| format!("{}: {}", py_repr_str(k), py_repr(val)))
+                .collect();
+            format!("{{{}}}", inner.join(", "))
+        }
+    }
+}
+
+fn py_repr_str(s: &str) -> String {
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push(quote);
+    for ch in s.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c == quote => {
+                out.push('\\');
+                out.push(c);
+            }
+            c => out.push(c),
+        }
+    }
+    out.push(quote);
+    out
+}
+
 /// Startup self-check: every tool in `profile_tools` has an `OWNERSHIP_PATHS` entry
 /// (`[]` allowed — a missing entry is not). Port of
 /// `validate_ownership_paths_cover_profile`.
@@ -210,5 +329,55 @@ mod tests {
         // `customerId` absent → walk yields nothing → ok.
         let out = json!({"id": "SUB-1", "state": "active"}).to_string();
         assert!(assert_owned_output("subscription.get_mine", &out, "CUST-1").is_ok());
+    }
+
+    /// Golden — the violation audit text lands in the permanent CRM interaction
+    /// record, so the wording is a contract. Captured from the Python oracle.
+    #[test]
+    fn violation_audit_text_matches_oracle() {
+        let (summary, body) = violation_audit_text(
+            "CUST-001",
+            "subscription.get",
+            "[*].customerId",
+            &json!("CUST-002"),
+            "what is my balance?",
+        );
+        assert_eq!(
+            summary,
+            "P0 agent ownership violation on 'subscription.get' — \
+             output leaked [*].customerId='CUST-002'"
+        );
+        assert_eq!(
+            body,
+            "Tool: subscription.get\n\
+             Path: [*].customerId\n\
+             Found value: 'CUST-002'\n\
+             Expected actor: CUST-001\n\
+             Transcript (first 1000 chars):\n\
+             what is my balance?"
+        );
+    }
+
+    /// `{found!r}` / `{tool_name!r}` are Python reprs — single-quoted strings, and
+    /// `True`/`None` rather than `true`/`null`. Captured from the oracle.
+    #[test]
+    fn py_repr_matches_oracle() {
+        assert_eq!(py_repr(&json!("CUST-002")), "'CUST-002'");
+        assert_eq!(py_repr(&json!("it's")), "\"it's\"");
+        assert_eq!(py_repr(&Value::Null), "None");
+        assert_eq!(py_repr(&json!(true)), "True");
+        assert_eq!(py_repr(&json!(42)), "42");
+        assert_eq!(py_repr(&json!(["a", "b"])), "['a', 'b']");
+        assert_eq!(py_repr(&json!({"k": "v"})), "{'k': 'v'}");
+    }
+
+    /// Python's `s[:1000]` counts characters, not bytes — a multi-byte transcript
+    /// must not be sliced mid-codepoint (Rust would panic on a byte slice).
+    #[test]
+    fn transcript_truncation_is_char_wise() {
+        let long: String = "é".repeat(1500);
+        let (_, body) = violation_audit_text("CUST-001", "t", "p", &json!("x"), &long);
+        let transcript = body.rsplit("chars):\n").next().unwrap();
+        assert_eq!(transcript.chars().count(), 1000);
     }
 }

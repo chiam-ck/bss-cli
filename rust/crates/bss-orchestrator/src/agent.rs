@@ -4,12 +4,16 @@
 //! append tool results → repeat until the model stops calling tools).
 //!
 //! Yields the same [`AgentEvent`] sequence as the Python stream, including the
-//! guard stack: the 3-strike failure bail, the identical-call stuck bail, and the
-//! destructive gating. (Ownership trip-wire + chat caps land with their CRM/DB
-//! dependencies in a later slice.)
+//! guard stack: the 3-strike failure bail, the identical-call stuck bail, the
+//! destructive gating, and (P6b) the v0.12 output-ownership trip-wire. Chat caps
+//! are the chat route's business — they gate *before* the turn and record after it,
+//! so they never belong inside the loop.
+
+use bss_clients::CrmClient;
 
 use crate::chat_model::{ChatMessage, ChatModel, Role, ToolCall};
 use crate::events::AgentEvent;
+use crate::ownership::{assert_owned_output, record_violation};
 use crate::safety::{gate_destructive, AutonomyMode, LoopState};
 use crate::tools::{ToolCtx, ToolError, ToolRegistry};
 
@@ -44,6 +48,10 @@ pub struct AgentConfig {
     pub ctx: ToolCtx,
     /// Model identifier reported in `TurnUsage` when the model surfaces no usage.
     pub model_name: String,
+    /// CRM client used **only** to audit an ownership violation (`record_violation`
+    /// logs an interaction on the actor's record). `None` skips the audit write; the
+    /// violation still ends the turn. The chat route supplies it.
+    pub crm_audit: Option<CrmClient>,
 }
 
 impl Default for AgentConfig {
@@ -56,6 +64,7 @@ impl Default for AgentConfig {
             transcript: String::new(),
             ctx: ToolCtx::default(),
             model_name: String::new(),
+            crm_audit: None,
         }
     }
 }
@@ -209,6 +218,33 @@ pub async fn astream_once_to<M: ChatModel>(
                     ),
                 });
                 return;
+            }
+
+            // v0.12 — output ownership trip-wire. Skips error-status results (they
+            // cannot carry customer-bound rows by definition) and runs only when an
+            // actor is bound (the chat surface) so non-chat callers (CLI / scenario
+            // / CSR) keep their full-surface behaviour.
+            if !config.ctx.actor.is_empty() && !is_error && !tc.name.is_empty() {
+                if let Err(v) = assert_owned_output(&tc.name, &result_full, &config.ctx.actor) {
+                    // Best-effort audit trail — record_violation never raises. Then
+                    // surface to the route handler, which renders the generic
+                    // user-facing message.
+                    if let Some(crm) = &config.crm_audit {
+                        record_violation(
+                            crm,
+                            &config.ctx.actor,
+                            &v.tool_name,
+                            &v.path,
+                            &v.found,
+                            prompt,
+                        )
+                        .await;
+                    }
+                    emit!(AgentEvent::Error {
+                        message: format!("AgentOwnershipViolation: {}", v.tool_name),
+                    });
+                    return;
+                }
             }
         }
     }

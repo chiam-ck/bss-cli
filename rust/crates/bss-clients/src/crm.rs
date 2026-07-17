@@ -516,25 +516,37 @@ impl CrmClient {
     }
 
     /// `POST /tmf-api/customerInteractionManagement/v1/interaction` — log a TMF683
-    /// interaction. `direction` defaults to `inbound`; `channel` is filled from the
-    /// request context server-side (never sent here); `body_text` maps to the
-    /// optional `body` field. Backs `interaction.log`.
+    /// interaction with the server defaults: `direction=inbound`, `channel` filled
+    /// from the request context server-side. Backs `interaction.log` (the only
+    /// caller that wants the defaults).
     pub async fn log_interaction(
         &self,
         customer_id: &str,
         summary: &str,
         body_text: Option<&str>,
     ) -> Result<Value, ClientError> {
-        let mut map = serde_json::Map::new();
-        map.insert("customerId".to_string(), json!(customer_id));
-        map.insert("summary".to_string(), json!(summary));
-        map.insert("direction".to_string(), json!("inbound"));
-        if let Some(b) = body_text {
-            map.insert("body".to_string(), json!(b));
-        }
+        self.log_interaction_full(customer_id, summary, None, None, body_text)
+            .await
+    }
+
+    /// `POST /tmf-api/customerInteractionManagement/v1/interaction` — the full
+    /// TMF683 surface. `direction` defaults to `inbound` when `None`; `channel` is
+    /// omitted when `None` (the server fills it from the caller's `X-BSS-Channel`);
+    /// `body_text` maps to the optional `body` free-text field.
+    ///
+    /// The ownership trip-wire's audit record needs `direction="outbound"`, which
+    /// the 3-arg form can't express.
+    pub async fn log_interaction_full(
+        &self,
+        customer_id: &str,
+        summary: &str,
+        channel: Option<&str>,
+        direction: Option<&str>,
+        body_text: Option<&str>,
+    ) -> Result<Value, ClientError> {
         self.post(
             "/tmf-api/customerInteractionManagement/v1/interaction",
-            &Value::Object(map),
+            &build_interaction_body(customer_id, summary, channel, direction, body_text),
         )
         .await
     }
@@ -770,6 +782,33 @@ impl CrmClient {
     }
 }
 
+/// Build the TMF683 `interaction` request body. Pure so it can be golden-tested
+/// against the Python oracle. Key order mirrors Python's dict literal exactly
+/// (`customerId`, `summary`, `direction`, then the conditional `channel` /
+/// `body`) — D9 has `preserve_order` on workspace-wide, so order is wire-visible.
+fn build_interaction_body(
+    customer_id: &str,
+    summary: &str,
+    channel: Option<&str>,
+    direction: Option<&str>,
+    body_text: Option<&str>,
+) -> Value {
+    let mut map = serde_json::Map::new();
+    map.insert("customerId".to_string(), json!(customer_id));
+    map.insert("summary".to_string(), json!(summary));
+    map.insert(
+        "direction".to_string(),
+        json!(direction.unwrap_or("inbound")),
+    );
+    if let Some(c) = channel {
+        map.insert("channel".to_string(), json!(c));
+    }
+    if let Some(b) = body_text {
+        map.insert("body".to_string(), json!(b));
+    }
+    Value::Object(map)
+}
+
 /// Build the `kyc-attestation` request body. Pure so it can be golden-tested
 /// against the Python oracle. `verified_at` is resolved by the caller (opts or
 /// `now()`); every other field mirrors the Python `attest_kyc` key order + defaults.
@@ -878,6 +917,44 @@ mod attest_tests {
     fn body_without_verified_at(mut v: Value) -> Value {
         v.as_object_mut().unwrap().remove("verified_at");
         v
+    }
+
+    /// Golden — serialized byte-for-byte against the Python oracle's payload dict.
+    /// Key ORDER is part of the contract (D9 `preserve_order`).
+    #[test]
+    fn interaction_body_defaults_match_oracle() {
+        // What `interaction.log` sends through the 3-arg wrapper.
+        let body = build_interaction_body("CUST-001", "Called in", None, None, Some("some notes"));
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"customerId":"CUST-001","summary":"Called in","direction":"inbound","body":"some notes"}"#
+        );
+    }
+
+    #[test]
+    fn interaction_body_outbound_matches_oracle() {
+        // The ownership trip-wire's audit record — the case the 3-arg form can't
+        // express (direction=outbound).
+        let body = build_interaction_body(
+            "CUST-002",
+            "P0 agent ownership violation on 'x' — output leaked a=1",
+            None,
+            Some("outbound"),
+            Some("Tool: x"),
+        );
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"customerId":"CUST-002","summary":"P0 agent ownership violation on 'x' — output leaked a=1","direction":"outbound","body":"Tool: x"}"#
+        );
+    }
+
+    #[test]
+    fn interaction_body_omits_absent_optionals() {
+        let body = build_interaction_body("CUST-003", "bare", None, None, None);
+        assert_eq!(
+            serde_json::to_string(&body).unwrap(),
+            r#"{"customerId":"CUST-003","summary":"bare","direction":"inbound"}"#
+        );
     }
 
     #[test]
