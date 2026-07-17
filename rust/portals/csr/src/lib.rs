@@ -12,20 +12,21 @@
 //! **`BSSApiTokenMiddleware` is deliberately NOT on this portal's inbound HTTP.**
 //! Outbound calls carry the cockpit's named token via [`clients`].
 //!
-//! **Slice 1 (this):** the app skeleton — config, branding-aware MiniJinja
-//! templating (reusing the existing Jinja templates), the static mounts, `/health`,
-//! and [`views`] (the shared snake_case/camelCase-lenient payload helpers every
-//! later screen reads through).
+//! **Done:** the app skeleton (config, branding-aware MiniJinja templating over
+//! the existing Jinja templates, static mounts, `/health`), [`views`] (the shared
+//! snake_case/camelCase-lenient payload helpers every screen reads through), the
+//! ASCII renderers (in `bss-cockpit`), the cockpit chat thread + SSE + `/confirm`,
+//! and the [`customers`] CRM screen.
 //!
-//! **Following slices:** the ASCII renderers (the P5b debt), the cockpit chat
-//! thread + SSE + `/confirm`, then the CRM screens (customers / cases / orders /
-//! catalog / subscriptions / search), settings + branding + handoff.
+//! **Remaining:** the rest of the CRM screens (cases / orders / catalog /
+//! subscriptions / search), settings + branding + handoff.
 #![forbid(unsafe_code)]
 
 pub mod bubble;
 pub mod clients;
 pub mod cockpit;
 pub mod config;
+pub mod customers;
 pub mod guards;
 pub mod inflight;
 pub mod routes;
@@ -82,6 +83,32 @@ pub fn build_router(state: AppState) -> Router {
         .route("/cockpit/:session_id/confirm", post(cockpit::post_confirm))
         .route("/cockpit/:session_id/focus", post(cockpit::post_focus))
         .route("/cockpit/:session_id/events", get(cockpit::events))
+        // ── CRM screens (v1.6). Direct policy-gated reads/writes — no
+        // orchestrator hop. Destructive verbs are confirm-gated in the handler.
+        .route("/customers", get(customers::customers_list))
+        .route("/customers/:customer_id", get(customers::customer_detail))
+        .route(
+            "/customers/:customer_id/interaction",
+            post(customers::log_interaction),
+        )
+        .route("/customers/:customer_id/name", post(customers::update_name))
+        .route(
+            "/customers/:customer_id/contact",
+            post(customers::add_contact),
+        )
+        .route(
+            "/customers/:customer_id/contact/:medium_id",
+            post(customers::update_contact),
+        )
+        .route(
+            "/customers/:customer_id/contact/:medium_id/remove",
+            post(customers::remove_contact),
+        )
+        .route(
+            "/customers/:customer_id/close",
+            post(customers::close_customer),
+        )
+        .route("/customers/:customer_id/case", post(customers::open_case))
         .nest_service("/static", ServeDir::new(templating::local_static_dir()))
         .nest_service(
             "/portal-ui/static",

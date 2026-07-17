@@ -99,10 +99,30 @@ impl CrmClient {
     /// `GET /tmf-api/customerManagement/v4/customer` with optional `status` /
     /// `name` filters (Python maps `state`→`status`, `name_contains`→`name`; each
     /// sent only when present). Returns a JSON array. Backs `customer.list`.
+    ///
+    /// Unpaged: `limit`/`offset` are omitted, so the server's own default page
+    /// size applies — exactly what Python does when the kwargs are left unset.
+    /// The cockpit's customer list needs paging; see [`Self::list_customers_paged`].
     pub async fn list_customers(
         &self,
         state: Option<&str>,
         name_contains: Option<&str>,
+    ) -> Result<Value, ClientError> {
+        self.list_customers_paged(state, name_contains, None, None)
+            .await
+    }
+
+    /// [`Self::list_customers`] with explicit paging. Each of `limit`/`offset` is
+    /// sent only when `Some`, mirroring Python's `if limit is not None` — passing
+    /// `None` is *not* the same as passing the server default, since omitting
+    /// `offset` and sending `offset=0` differ for any future server that treats
+    /// the absent case specially.
+    pub async fn list_customers_paged(
+        &self,
+        state: Option<&str>,
+        name_contains: Option<&str>,
+        limit: Option<i64>,
+        offset: Option<i64>,
     ) -> Result<Value, ClientError> {
         let mut params: Vec<String> = Vec::new();
         if let Some(s) = state.filter(|s| !s.is_empty()) {
@@ -110,6 +130,12 @@ impl CrmClient {
         }
         if let Some(n) = name_contains.filter(|s| !s.is_empty()) {
             params.push(format!("name={}", encode(n)));
+        }
+        if let Some(l) = limit {
+            params.push(format!("limit={l}"));
+        }
+        if let Some(o) = offset {
+            params.push(format!("offset={o}"));
         }
         let mut path = "/tmf-api/customerManagement/v4/customer".to_string();
         if !params.is_empty() {
