@@ -22,6 +22,7 @@
 //! catalog / subscriptions / search), settings + branding + handoff.
 #![forbid(unsafe_code)]
 
+pub mod bubble;
 pub mod clients;
 pub mod config;
 pub mod guards;
