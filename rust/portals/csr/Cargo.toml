@@ -29,6 +29,7 @@ serde_json = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
+fancy-regex = { workspace = true }
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }

@@ -2546,6 +2546,7 @@ dependencies = [
  "bss-portal-ui",
  "bss-telemetry",
  "chrono",
+ "fancy-regex",
  "futures-util",
  "minijinja",
  "serde",
