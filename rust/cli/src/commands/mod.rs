@@ -6,12 +6,14 @@
 //! business logic in a command; the CLI calls the orchestrator or `bss-clients`
 //! and nothing more (CLAUDE.md).
 
+pub mod case;
 pub mod catalog;
 pub mod clock;
 pub mod order;
 pub mod prov;
 pub mod som;
 pub mod subscription;
+pub mod ticket;
 pub mod usage;
 
 use serde_json::Value;
