@@ -359,15 +359,24 @@ Phases 4 and 5 are done. **P6a (shared crates) is done; P6b self-serve is
 feature-complete (s1–s14)** — only the prod-only webhooks remain, and they're not
 on the hero path. See [`03-PHASES.md`](03-PHASES.md) §Phase 6 and PROGRESS §Phase 6.
 
-- **P6c — csr/cockpit (9002) + CRM screens** (~65 endpoints): links the same P5
-  library crates; adds the Customers/Cases/Orders/Catalog/Subscription screens
-  (direct `bss-clients` reads/writes, section-degrading) with the v1.6 two-step
-  confirm on destructive/money-moving verbs, plus the cockpit chat
-  (`build_cockpit_prompt` + the `/confirm` pending-destructive contract + the P5b
-  `Conversation` store). `chat_caps`, `record_violation` and the streaming
-  `astream_once_to` all landed in P6b s14 — P6c **consumes** them rather than
-  porting them. Still deferred from P5b and owed here: the cockpit **ASCII
-  renderers** + `strip_fake_propose`/`postprocess::*`.
+- **P6c — csr/cockpit (9002) — 🚧 the cockpit is DONE; the CRM screens remain.**
+  Landed: the crate skeleton + `views` (the `field` doctrine rule) + the
+  `read_autonomy_mode` seam P5c missed; **the whole renderer family** (10 modules,
+  45 byte-golden cases) + `dispatch` + `strip_fake_propose` — the P5b debt is now
+  fully paid; and **`cockpit.py` end to end** (guards, sessions index, turn
+  planning, the bubble override chain, tool-row HTML, the v1.6.1 `Inflight`
+  registry, and all 8 routes), live-smoked against the shared `cockpit` schema
+  with a real OpenRouter turn.
+  **Still owed:** the CRM screens (customers / cases / orders / catalog /
+  subscriptions / case / search, ~1.6k LOC) — direct `bss-clients` reads/writes,
+  section-degrading, with the **v1.6 two-step confirm** on destructive/money-moving
+  verbs (`crm-danger-form` → `confirm=yes`; the route must refuse without it,
+  `test_routes_crm.py` pins both directions) — plus settings/branding/handoff
+  (~360 LOC). They follow the P6b sensitive-write pattern.
+  **Deferred to P7 on purpose:** `trace.*` / `knowledge.*` are absent from the
+  cockpit's tool registry — they need a Jaeger/Audit/PgPool handle the portal
+  bundle doesn't carry, and land with the CLI wiring where the registry is built
+  once and shared. Noted at the call site.
 - **P6 acceptance** — hero suite to **19/19**: close the 3 real standing failures
   (`/auth/check-email` 400, Jaeger `spanCount`, and whatever the portal port surfaces)
   and make the **branding-text assertion brand-aware** (it's a stale string, not a

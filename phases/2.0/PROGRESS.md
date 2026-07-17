@@ -194,11 +194,55 @@ reconnect attaches as an **observer** (`_INFLIGHT`) instead of re-driving. This 
 *cancels* the turn — so `astream_once_to`'s `false`-means-stop sink must **not** be
 pattern-matched here.
 
-**Remaining in P6c:** the `trace` renderer; `chrome_filter::strip_fake_propose`;
-the rest of `cockpit.py` (thread page, `_render_tool_row_as_pre`, focus snapshot,
-the ~440-line SSE turn driver + `_INFLIGHT`); the CRM screens (customers / cases /
-orders / catalog / subscriptions / case / search, ~1.6k LOC); settings + branding +
-handoff (~360 LOC). Then **P6b's prod-only webhooks** and **P6 acceptance**.
+**s3d–s3g + s2i — `cockpit.py` is PORTED END TO END, and the renderer family is
+COMPLETE (45 golden cases).**
+
+- **s3d `strip_fake_propose`** — the last P5b deferral, landed with its cockpit
+  consumer exactly as `chrome_filter`'s doc predicted (its narration-lead
+  lookbehind is why `fancy-regex` was chosen). Byte-golden ×10. The case that
+  matters: prose **legitimately** mentioning `/confirm` survives untouched AND is
+  not flagged — `was_modified` reflects only the banner + call strips, never the
+  /confirm-sentence strip, because that flag gates the caller's stall warning.
+- **s3e `bubble`** — the override chain. **The staged pending row is the truth and
+  the bubble must match it**, whatever the model wrote: all three observed
+  wrap-ups after a BLOCKED destructive ("Done." implying it ran; a mimicry-shaped
+  propose paired with a *real* tool_call so the stall warning doesn't fire; empty)
+  collapse to the canonical `Proposed X(args). Type /confirm to authorise.`
+  **⚠️ A test of mine was wrong and the oracle corrected it:** `mentions_confirm`
+  is computed on the **post-strip** text, so `"Type /confirm and I'll do it."` gets
+  eaten whole by the boilerplate regex and does **not** stall. That surfaced a
+  **faithful oracle quirk, now pinned**: the empty-check runs *before*
+  `strip_fake_propose`, so a bubble stripped to nothing stays **empty** — not
+  `(no reply)`, no stall. Reproduced under R5; **the fix belongs in the Python
+  first.**
+- **s3f `tool_row` + `inflight`** — `&#10;` newline encoding is **not cosmetic**:
+  SSE requires `data:` be one physical line, and a raw `\n` splits the frame and
+  silently drops every card line after the first. The registry is the v1.6.1
+  contract — **the turn is DETACHED and a reconnect OBSERVES**, the opposite of
+  P6b's chat where a dropped receiver cancels; pinned by a test that drops every
+  observer and asserts the turn still persists. `broadcast` (not `mpsc`) so a
+  second tab observes rather than steals.
+- **s3g — the routes assembled.** Thin by design; the correctness lives in
+  `turn`/`bubble`/`guards`. **Live-smoked:** all 8 routes resolve, unknown session
+  → 404, and **the sessions index read REAL sessions from the shared `cockpit`
+  schema — the same rows the Python REPL writes**. A real OpenRouter turn streamed
+  `live` → tool pill → tool-row `<pre>` → **heartbeat** (the 10s beat firing during
+  LLM silence) → bubble → `done`, and all three rows persisted to
+  `cockpit.message`. Registry omits `trace.*`/`knowledge.*` — they need a
+  Jaeger/Audit/PgPool handle this bundle doesn't carry; they land with P7's CLI
+  wiring where the registry is built once and shared.
+- **s2i `trace`** — the swimlane. `tag["value"] is True` is an **identity** check
+  (a truthy `1` does not mark an error); the v0.9 identity column hides entirely
+  when no span is tagged, so pre-v0.9 traces stay clean.
+
+**Remaining in P6 (~2.4k LOC + acceptance):** the **CRM screens** (customers 355 /
+cases 260 / orders 257 / catalog 252 / subscriptions 230 / case 141 / search 129 —
+~1.6k); **settings 120 + branding 169 + handoff 49 + branding_assets 19**; **P6b's
+prod-only webhooks** (412, not on the hero path); then **P6 acceptance** (hero
+19/19 + the brand-aware assertion). The CRM screens follow the pattern P6b
+established (`RawForm` → parse → gate → ownership → one write → audit) plus the
+**v1.6 two-step confirm** (`crm-danger-form` → `confirm=yes`; the route must refuse
+without it — `test_routes_crm.py` pins both directions).
 
 ---
 
