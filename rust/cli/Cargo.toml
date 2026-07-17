@@ -1,0 +1,23 @@
+[package]
+name = "bss-cli"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "The `bss` binary — the terminal-first, LLM-native cockpit. Rust port of the Python Typer app in cli/. Slice 1: the clap root + .env bootstrap + telemetry root span + the clock command group (the thin-command pattern-setter)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "bss"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+
+bss-clock = { workspace = true }
+bss-telemetry = { workspace = true }

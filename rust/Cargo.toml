@@ -7,7 +7,7 @@
 #   cli/      ← bss bin (Typer/Rich/REPL equivalent)         — P7
 [workspace]
 resolver = "2"
-members = ["crates/*", "services/*", "portals/*", "conformance"]
+members = ["crates/*", "services/*", "portals/*", "cli", "conformance"]
 
 [workspace.package]
 edition = "2021"
@@ -66,6 +66,10 @@ tower-http = { version = "0.5", features = ["fs"] }
 # LLM-output post-processors + chat-HTML renderer ported in P6a — matches the
 # P5b note that `postprocess::*` needs fancy-regex.
 fancy-regex = "0.13"
+# CLI arg parsing (Typer equivalent). `derive` for the command tree; lands with
+# the P7 `bss` binary. reedline (the REPL line editor) is added when the REPL
+# slice lands, not here.
+clap = { version = "4", features = ["derive"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
 tracing-opentelemetry = "0.28"
