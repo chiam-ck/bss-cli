@@ -26,6 +26,7 @@ pub mod clients;
 pub mod config;
 pub mod guards;
 pub mod routes;
+pub mod sessions;
 pub mod templating;
 pub mod views;
 
