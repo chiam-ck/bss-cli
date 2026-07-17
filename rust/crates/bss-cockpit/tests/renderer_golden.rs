@@ -290,3 +290,103 @@ fn table_renderers_render_byte_identical_to_the_oracle() {
         "pr_get_min",
     );
 }
+
+#[test]
+fn customer_360_renders_byte_identical_to_the_oracle() {
+    use bss_cockpit::renderers::customer::{render_customer_360, Customer360Ctx};
+    use std::collections::HashMap;
+
+    let want = golden("customer");
+    let chk = |got: String, name: &str| assert_ascii_eq(&got, want[name].as_str().unwrap(), name);
+    let arr = |v: Value| v.as_array().cloned().unwrap_or_default();
+
+    chk(
+        render_customer_360(
+            &serde_json::json!({"id": "CUST-001", "name": "Ada Lovelace"}),
+            &Customer360Ctx::default(),
+        ),
+        "min",
+    );
+
+    // ── the works: kyc badge, both contact shapes, blocked marker, bundle %,
+    //    a case with a child ticket, a collapsed closed case, interactions ────
+    let subs = arr(serde_json::json!([
+        {"id": "SUB-001", "offeringId": "PLAN_M", "state": "active", "msisdn": "91234567",
+         "balances": [{"type": "data", "used": 5127, "total": 10240}]},
+        {"id": "SUB-002", "offeringId": "PLAN_S", "state": "blocked", "msisdn": "98765432"},
+    ]));
+    let cases = arr(serde_json::json!([
+        {"id": "CASE-1", "subject": "Billing dispute over roaming charges last month",
+         "state": "open", "priority": "P1"},
+        {"id": "CASE-2", "subject": "Closed one", "state": "closed", "priority": "P3"},
+    ]));
+    let interactions = arr(serde_json::json!([
+        {"createdAt": "2026-07-01T10:00:00+00:00", "channel": "portal-chat",
+         "summary": "Asked about balance"},
+        {"createdAt": "2026-07-02T10:00:00+00:00", "channel": "cockpit", "action": "Agent note"},
+    ]));
+    let mut tickets_by_case = HashMap::new();
+    tickets_by_case.insert(
+        "CASE-1".to_string(),
+        arr(serde_json::json!([
+            {"id": "TKT-1", "ticketType": "billing", "priority": "P1", "state": "open"}
+        ])),
+    );
+    chk(
+        render_customer_360(
+            &serde_json::json!({
+                "id": "CUST-002", "name": "Grace Hopper", "status": "active",
+                "createdAt": "2026-01-15T09:00:00+00:00", "kycStatus": "verified",
+                "contactMedium": [
+                    {"mediumType": "email", "characteristic": {"emailAddress": "g@navy.mil"}},
+                    {"mediumType": "mobile", "value": "91234567"},
+                ],
+            }),
+            &Customer360Ctx {
+                subscriptions: &subs,
+                cases: &cases,
+                tickets_by_case,
+                interactions: &interactions,
+                interactions_limit: None,
+            },
+        ),
+        "full",
+    );
+
+    // ── the kyc badge's three branches ──────────────────────────────────────
+    chk(
+        render_customer_360(
+            &serde_json::json!({"id": "CUST-003", "name": "X", "kyc_status": "pending"}),
+            &Customer360Ctx::default(),
+        ),
+        "kyc_pending",
+    );
+    // An unrecognised status renders NO badge at all (not a fallback string).
+    chk(
+        render_customer_360(
+            &serde_json::json!({"id": "CUST-004", "name": "X", "kycStatus": "weird"}),
+            &Customer360Ctx::default(),
+        ),
+        "kyc_unknown",
+    );
+
+    // ── > limit interactions → the "(+ N more)" tail ─────────────────────────
+    let many: Vec<Value> = (1..8)
+        .map(|i| {
+            serde_json::json!({
+                "createdAt": format!("2026-07-0{i}T10:00:00+00:00"),
+                "channel": "c", "summary": format!("s{i}")
+            })
+        })
+        .collect();
+    chk(
+        render_customer_360(
+            &serde_json::json!({"id": "CUST-005", "name": "X"}),
+            &Customer360Ctx {
+                interactions: &many,
+                ..Default::default()
+            },
+        ),
+        "interactions_overflow",
+    );
+}
