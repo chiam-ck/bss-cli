@@ -114,6 +114,18 @@ where
     F: FnOnce(Arc<Clients>) -> Fut,
     Fut: Future<Output = Result<(), ClientError>>,
 {
+    run_safely_code(move |c| async move { body(c).await.map(|()| ExitCode::SUCCESS) }).await
+}
+
+/// Like [`run_safely`] but the body returns its own [`ExitCode`] — for commands
+/// that exit non-zero on a *non-error* condition (e.g. `bss prov fault` when no
+/// matching injector exists). The `PolicyViolation` / other-error mapping is
+/// identical.
+pub async fn run_safely_code<F, Fut>(body: F) -> ExitCode
+where
+    F: FnOnce(Arc<Clients>) -> Fut,
+    Fut: Future<Output = Result<ExitCode, ClientError>>,
+{
     let clients = match Clients::from_env() {
         Ok(c) => Arc::new(c),
         Err(e) => {
@@ -121,9 +133,8 @@ where
             return ExitCode::from(1);
         }
     };
-    let result = bss_context::scope(cli_ctx(), body(clients)).await;
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
+    match bss_context::scope(cli_ctx(), body(clients)).await {
+        Ok(code) => code,
         Err(ClientError::Policy(p)) => {
             // Matches Python: `[red]POLICY_VIOLATION[/] [bold]{rule}[/]  {detail}`.
             eprintln!("POLICY_VIOLATION {}  {}", p.rule, p.message);
