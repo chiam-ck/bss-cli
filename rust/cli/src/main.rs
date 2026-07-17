@@ -42,6 +42,8 @@ enum Command {
     Clock(commands::clock::ClockArgs),
     /// Service order + service inventory (SOM).
     Som(commands::som::SomArgs),
+    /// Manage subscriptions + VAS.
+    Subscription(commands::subscription::SubscriptionArgs),
     /// Usage simulation (TMF635 mediation).
     Usage(commands::usage::UsageArgs),
 }
@@ -63,6 +65,7 @@ async fn main() -> ExitCode {
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
         Some(Command::Som(args)) => commands::som::run(args).await,
+        Some(Command::Subscription(args)) => commands::subscription::run(args).await,
         Some(Command::Usage(args)) => commands::usage::run(args).await,
         // `bss` with no subcommand → the REPL (canonical cockpit). Not yet ported;
         // a following slice lands it. Fail loudly rather than silently no-op.
