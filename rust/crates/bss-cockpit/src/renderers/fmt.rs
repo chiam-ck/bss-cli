@@ -86,6 +86,34 @@ pub fn truncate(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
+/// A JSON scalar as Python would interpolate it into an f-string (strings
+/// unquoted, `null` → empty).
+pub fn scalar_str(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
+/// Python's `d.get(a) or d.get(b) or default` chain: the first key whose value is
+/// **truthy**. `null`, `""` and a missing key all fall through — matching the `or`
+/// operator the renderers use everywhere to accept both key families.
+pub fn py_or(v: &serde_json::Value, keys: &[&str], default: &str) -> String {
+    for k in keys {
+        match v.get(*k) {
+            None | Some(serde_json::Value::Null) => continue,
+            Some(x) => {
+                let s = scalar_str(x);
+                if !s.is_empty() {
+                    return s;
+                }
+            }
+        }
+    }
+    default.to_string()
+}
+
 /// Python `repr()` of a string: single quotes unless the string contains a `'`
 /// and no `"`; escapes backslash, the quote, and `\n`/`\r`/`\t`.
 ///

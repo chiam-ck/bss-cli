@@ -13,6 +13,10 @@ use chrono::{TimeZone, Utc};
 use serde_json::Value;
 
 use bss_cockpit::renderers::subscription::{render_subscription, SubscriptionCtx};
+use bss_cockpit::renderers::tables::{
+    render_case, render_msisdn_count, render_msisdn_list, render_port_request_get,
+    render_port_request_list, render_prov_tasks, render_ticket,
+};
 
 fn golden(name: &str) -> Value {
     let raw = std::fs::read_to_string(format!(
@@ -164,5 +168,125 @@ fn subscription_renders_byte_identical_to_the_oracle() {
             ..Default::default()
         },
         "unparseable_renewal",
+    );
+}
+
+#[test]
+fn table_renderers_render_byte_identical_to_the_oracle() {
+    let want = golden("tables");
+    let chk = |got: String, name: &str| assert_ascii_eq(&got, want[name].as_str().unwrap(), name);
+    let arr = |v: Value| v.as_array().cloned().unwrap_or_default();
+
+    // ── ticket: the case id comes off relatedEntity; empties hit the defaults ──
+    chk(
+        render_ticket(&serde_json::json!({
+            "id": "TKT-101", "ticketType": "fault", "state": "open", "priority": "P2",
+            "subject": "No data", "assignedAgent": "AG-1",
+            "relatedEntity": [{"entityType": "case", "id": "CASE-042"}],
+        })),
+        "ticket_basic",
+    );
+    chk(render_ticket(&serde_json::json!({})), "ticket_empty");
+
+    // ── prov ────────────────────────────────────────────────────────────────
+    chk(render_prov_tasks(&[]), "prov_empty");
+    chk(
+        render_prov_tasks(&arr(serde_json::json!([
+            {"id": "PTK-1", "serviceId": "SVC-1", "taskType": "hlr_create_subscriber",
+             "state": "completed", "attempts": 1, "maxAttempts": 3},
+            {"id": "PTK-2", "serviceId": "SVC-1", "taskType": "esim_download",
+             "state": "stuck", "attempts": 3, "maxAttempts": 3},
+        ]))),
+        "prov_tasks",
+    );
+
+    // ── inventory: both key families for the reserved/assigned columns ───────
+    chk(render_msisdn_list(&[]), "msisdn_empty");
+    chk(
+        render_msisdn_list(&arr(serde_json::json!([
+            {"msisdn": "91234567", "status": "available"},
+            {"msisdn": "91234568", "status": "assigned",
+             "assigned_to_subscription_id": "SUB-001",
+             "reserved_at": "2026-07-01T10:00:00+00:00"},
+        ]))),
+        "msisdn_list",
+    );
+    chk(
+        render_msisdn_count(&serde_json::json!({
+            "available": 940, "reserved": 5, "assigned": 50, "ported_out": 5, "total": 1000
+        })),
+        "msisdn_count",
+    );
+    // The prefix widens the title, shortening the rule.
+    chk(
+        render_msisdn_count(&serde_json::json!({"prefix": "9123", "available": 10, "total": 10})),
+        "msisdn_count_prefix",
+    );
+
+    // ── case ────────────────────────────────────────────────────────────────
+    chk(
+        render_case(
+            &serde_json::json!({
+                "id": "CASE-042", "subject": "Billing dispute", "state": "open",
+                "priority": "P1", "customerId": "CUST-001",
+                "createdAt": "2026-07-01T10:00:00+00:00", "openedBy": "agent-1",
+            }),
+            &arr(serde_json::json!([
+                {"id": "TKT-101", "ticketType": "billing", "state": "open",
+                 "priority": "P1", "assignedAgent": "AG-1"},
+                {"id": "TKT-102", "ticketType": "fault", "state": "resolved", "priority": "P3"},
+            ])),
+            &arr(serde_json::json!([
+                {"authorId": "agent-1", "createdAt": "2026-07-01T11:00:00+00:00",
+                 "body": "Called customer, awaiting docs."},
+            ])),
+        ),
+        "case_full",
+    );
+    chk(
+        render_case(
+            &serde_json::json!({"id": "CASE-043", "subject": "", "state": "open", "priority": "P3"}),
+            &[],
+            &[],
+        ),
+        "case_empty",
+    );
+    // `{subject!r}` — an apostrophe flips the repr to DOUBLE quotes.
+    chk(
+        render_case(
+            &serde_json::json!({"id": "CASE-044", "subject": "Customer's line dead",
+                                "state": "open", "priority": "P1"}),
+            &[],
+            &[],
+        ),
+        "case_apostrophe",
+    );
+
+    // ── port_request ────────────────────────────────────────────────────────
+    chk(render_port_request_list(&[]), "pr_empty");
+    chk(
+        render_port_request_list(&arr(serde_json::json!([
+            {"id": "PR-1", "direction": "in", "donorMsisdn": "91234567",
+             "donorCarrier": "SuperLongCarrierNameHere", "state": "requested",
+             "requestedPortDate": "2026-08-01"},
+            {"id": "PR-2", "direction": "out", "donor_msisdn": "98765432",
+             "donor_carrier": "M1", "state": "completed"},
+        ]))),
+        "pr_list",
+    );
+    chk(
+        render_port_request_get(&serde_json::json!({
+            "id": "PR-1", "direction": "in", "donorMsisdn": "91234567",
+            "donorCarrier": "Singtel", "targetSubscriptionId": "SUB-001",
+            "requestedPortDate": "2026-08-01", "state": "rejected",
+            "rejectionReason": "NRIC mismatch",
+            "createdAt": "2026-07-01T10:00:00+00:00", "updatedAt": "2026-07-02T10:00:00+00:00",
+        })),
+        "pr_get",
+    );
+    // No rejection reason → the row is omitted entirely.
+    chk(
+        render_port_request_get(&serde_json::json!({"id": "PR-9"})),
+        "pr_get_min",
     );
 }

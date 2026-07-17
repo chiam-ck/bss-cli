@@ -3,3 +3,4 @@
 pub mod boxes;
 pub mod fmt;
 pub mod subscription;
+pub mod tables;
