@@ -487,3 +487,95 @@ fn order_tree_renders_byte_identical_to_the_oracle() {
         "two_so",
     );
 }
+
+#[test]
+fn catalog_renders_byte_identical_to_the_oracle() {
+    use bss_cockpit::renderers::catalog::{render_catalog, render_catalog_show, render_vas_list};
+
+    let want = golden("catalog");
+    let chk = |got: String, name: &str| assert_ascii_eq(&got, want[name].as_str().unwrap(), name);
+
+    fn plan(
+        pid: &str,
+        name: &str,
+        price: f64,
+        data: i64,
+        voice: i64,
+        sms: i64,
+        roam: Option<i64>,
+    ) -> Value {
+        let mut a = vec![
+            serde_json::json!({"allowanceType": "data", "quantity": data, "unit": "mb"}),
+            serde_json::json!({"allowanceType": "voice_minutes", "quantity": voice, "unit": "min"}),
+            serde_json::json!({"allowanceType": "sms", "quantity": sms, "unit": "sms"}),
+        ];
+        if let Some(r) = roam {
+            a.push(
+                serde_json::json!({"allowanceType": "data_roaming", "quantity": r, "unit": "mb"}),
+            );
+        }
+        serde_json::json!({
+            "id": pid, "name": name, "bundleAllowance": a,
+            "productOfferingPrice": [
+                {"price": {"taxIncludedAmount": {"value": price, "unit": "SGD"}}}
+            ],
+        })
+    }
+
+    // Deliberately out of price order — the renderer sorts cheapest-first.
+    let plans = vec![
+        plan("PLAN_L", "Large", 38.0, 51200, -1, -1, Some(2048)),
+        plan("PLAN_S", "Small", 12.0, 5120, 100, 100, Some(0)),
+        plan("PLAN_M", "Medium", 22.0, 20480, 500, -1, Some(1024)),
+    ];
+
+    chk(render_catalog(&[]), "empty");
+    chk(render_catalog(&plans), "three_plans");
+
+    // PLAN_M retired → the ★ falls back to the median by price.
+    let no_m: Vec<Value> = plans
+        .iter()
+        .filter(|p| p["id"] != "PLAN_M")
+        .cloned()
+        .collect();
+    chk(render_catalog(&no_m), "no_plan_m");
+
+    // isSellable=false and lifecycleStatus!=active are filtered out.
+    let mut with_junk = plans.clone();
+    let mut hidden = plan("PLAN_X", "Hidden", 5.0, 1, 1, 1, None);
+    hidden["isSellable"] = Value::Bool(false);
+    let mut retired = plan("PLAN_Y", "Retired", 6.0, 1, 1, 1, None);
+    retired["lifecycleStatus"] = Value::String("retired".to_string());
+    with_junk.push(hidden);
+    with_junk.push(retired);
+    chk(render_catalog(&with_junk), "filters_unsellable");
+
+    // ── single-plan card ────────────────────────────────────────────────────
+    chk(render_catalog_show(&plans[2]), "show_m");
+    // PLAN_S has 0 roaming → the row is suppressed... actually 0 mb renders
+    // "0 mb" (not "—"), so the row SHOWS. The golden is the authority.
+    chk(render_catalog_show(&plans[1]), "show_s_no_roaming");
+    chk(
+        render_catalog_show(&serde_json::json!({"id": "PLAN_Z"})),
+        "show_min",
+    );
+
+    // ── VAS table: columns size to content ──────────────────────────────────
+    chk(render_vas_list(&[]), "vas_empty");
+    chk(
+        render_vas_list(&[
+            serde_json::json!({"id": "VAS_DATA_1GB", "name": "1GB Top-up", "currency": "SGD",
+                               "priceAmount": 6, "allowanceQuantity": 1024,
+                               "allowanceUnit": "mb", "expiryHours": 720}),
+            // No expiryHours → the dash.
+            serde_json::json!({"id": "VAS_DATA_5GB", "name": "5GB Top-up", "currency": "SGD",
+                               "priceAmount": 20, "allowanceQuantity": 5120,
+                               "allowanceUnit": "mb"}),
+            // -1 quantity → "unlimited min".
+            serde_json::json!({"id": "VAS_VOICE", "name": "Voice", "currency": "SGD",
+                               "priceAmount": 3, "allowanceQuantity": -1,
+                               "allowanceUnit": "min", "expiryHours": 24}),
+        ]),
+        "vas_list",
+    );
+}
