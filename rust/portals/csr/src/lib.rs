@@ -28,6 +28,7 @@ pub mod guards;
 pub mod routes;
 pub mod sessions;
 pub mod templating;
+pub mod turn;
 pub mod views;
 
 use std::sync::Arc;
