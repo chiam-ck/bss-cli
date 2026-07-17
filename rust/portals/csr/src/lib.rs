@@ -16,10 +16,11 @@
 //! the existing Jinja templates, static mounts, `/health`), [`views`] (the shared
 //! snake_case/camelCase-lenient payload helpers every screen reads through), the
 //! ASCII renderers (in `bss-cockpit`), the cockpit chat thread + SSE + `/confirm`,
-//! and the [`customers`] CRM screen.
+//! and the full v1.6 CRM surface: [`customers`], [`cases`], [`orders`],
+//! [`catalog`], [`subscriptions`], and [`search`]. The v1.6.1 two-step confirm is
+//! test-pinned across all ten destructive verbs in `tests/routes_crm.rs`.
 //!
-//! **Remaining:** the rest of the CRM screens (cases / orders / catalog /
-//! subscriptions / search), settings + branding + handoff.
+//! **Remaining:** settings + branding + handoff.
 #![forbid(unsafe_code)]
 
 pub mod bubble;
@@ -33,6 +34,7 @@ pub mod guards;
 pub mod inflight;
 pub mod orders;
 pub mod routes;
+pub mod search;
 pub mod sessions;
 pub mod subscriptions;
 pub mod templating;
@@ -182,6 +184,9 @@ pub fn build_router(state: AppState) -> Router {
             "/subscriptions/:subscription_id/terminate",
             post(subscriptions::terminate),
         )
+        // Search — customer lookup + jump into a pinned cockpit session (v1.6).
+        .route("/search", get(search::search))
+        .route("/search/start_session", post(search::start_session))
         .nest_service("/static", ServeDir::new(templating::local_static_dir()))
         .nest_service(
             "/portal-ui/static",

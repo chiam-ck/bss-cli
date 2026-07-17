@@ -86,7 +86,7 @@ fn sse_frames(frames: Vec<Vec<u8>>) -> Response {
 }
 
 #[allow(clippy::result_large_err)]
-fn store(state: &AppState) -> Result<Arc<bss_cockpit::ConversationStore>, Response> {
+pub(crate) fn store(state: &AppState) -> Result<Arc<bss_cockpit::ConversationStore>, Response> {
     state.store.clone().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -753,7 +753,7 @@ async fn run_turn(
 
 /// The tenant for a freshly-opened conversation — `BSS_TENANT_DEFAULT`, the same
 /// source the orchestrator uses.
-fn tenant() -> String {
+pub(crate) fn tenant() -> String {
     bss_orchestrator::Settings::from_env().tenant_default
 }
 
