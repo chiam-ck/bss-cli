@@ -30,6 +30,7 @@ sqlx = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 fancy-regex = { workspace = true }
+indexmap = { version = "2", features = ["serde"] }
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }
