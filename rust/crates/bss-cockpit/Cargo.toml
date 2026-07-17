@@ -20,11 +20,12 @@ serde_json = { workspace = true }
 sqlx = { workspace = true }
 chrono = { workspace = true }
 qrcode = { workspace = true }
+fancy-regex = { workspace = true }
 tracing = { workspace = true }
 indexmap = { version = "2", features = ["serde"] }
 toml = "0.8"
 rand = { workspace = true }
-fancy-regex = { workspace = true }
+
 
 bss-clock = { workspace = true }
 bss-db = { workspace = true }

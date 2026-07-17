@@ -1,0 +1,42 @@
+{
+  "banner": {
+    "cleaned": "",
+    "modified": true
+  },
+  "banner_step": {
+    "cleaned": "",
+    "modified": true
+  },
+  "narrated_call": {
+    "cleaned": "",
+    "modified": true
+  },
+  "bare_call": {
+    "cleaned": "Calling now.",
+    "modified": true
+  },
+  "clean_prose": {
+    "cleaned": "Your balance is 2GB. Nothing to strip here.",
+    "modified": false
+  },
+  "legit_confirm": {
+    "cleaned": "The handbook says destructive actions need /confirm to authorise.",
+    "modified": false
+  },
+  "empty": {
+    "cleaned": "",
+    "modified": false
+  },
+  "backticked": {
+    "cleaned": "",
+    "modified": true
+  },
+  "narration_midsent": {
+    "cleaned": "All set. I'll call to check.",
+    "modified": true
+  },
+  "multiline": {
+    "cleaned": "First para.\n\nSecond para.",
+    "modified": true
+  }
+}

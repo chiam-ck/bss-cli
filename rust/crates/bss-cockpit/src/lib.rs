@@ -25,7 +25,7 @@ pub mod postprocess;
 pub mod prompts;
 pub mod renderers;
 
-pub use chrome_filter::{is_cockpit_chrome, ASSISTANT_CHROME_PREFIXES};
+pub use chrome_filter::{is_cockpit_chrome, strip_fake_propose, ASSISTANT_CHROME_PREFIXES};
 pub use config::{
     current, reset_cache, CockpitConfig, CockpitSettings, ConfigError, OPERATOR_ACTOR,
 };
