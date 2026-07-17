@@ -23,6 +23,7 @@ pub mod config;
 pub mod conversation;
 pub mod postprocess;
 pub mod prompts;
+pub mod renderers;
 
 pub use chrome_filter::{is_cockpit_chrome, ASSISTANT_CHROME_PREFIXES};
 pub use config::{
