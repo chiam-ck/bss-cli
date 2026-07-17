@@ -54,15 +54,17 @@ async fn post(path: &str, body: &str) -> (StatusCode, String) {
     (status, location)
 }
 
-/// The customer- and case-screen entries of the oracle's `_CONFIRM_GATED` table.
-/// The remaining entries (orders / subscriptions / catalog) land with their
-/// screens. Each tuple is `(path, extra_form_fields)` — the confirm test appends
+/// The customer-, case- and order-screen entries of the oracle's `_CONFIRM_GATED`
+/// table. The remaining entries (subscriptions / catalog) land with their screens.
+/// Each tuple is `(path, extra_form_fields)` — the confirm test appends
 /// `confirm=yes` to the extras.
-const CONFIRM_GATED: [(&str, &str); 4] = [
+const CONFIRM_GATED: [(&str, &str); 6] = [
     ("/customers/CUST-001/close", ""),
     ("/customers/CUST-001/contact/CM-1/remove", ""),
     ("/case/CASE-042/close", "resolution_code=no_fault_found"),
     ("/case/CASE-042/ticket/TKT-101/cancel", ""),
+    ("/orders/ORD-014/submit", ""),
+    ("/orders/ORD-014/cancel", ""),
 ];
 
 #[tokio::test]

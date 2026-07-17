@@ -30,6 +30,7 @@ pub mod config;
 pub mod customers;
 pub mod guards;
 pub mod inflight;
+pub mod orders;
 pub mod routes;
 pub mod sessions;
 pub mod templating;
@@ -134,6 +135,14 @@ pub fn build_router(state: AppState) -> Router {
             "/case/:case_id/ticket/:ticket_id/cancel",
             post(cases::ticket_cancel),
         )
+        // Orders — queue + create/jump + COM/SOM detail + submit/cancel (v1.6).
+        // Static segments (create/jump) registered before the `:order_id` param.
+        .route("/orders", get(orders::orders_list))
+        .route("/orders/create", post(orders::create_order))
+        .route("/orders/jump", get(orders::orders_jump))
+        .route("/orders/:order_id", get(orders::order_detail))
+        .route("/orders/:order_id/submit", post(orders::submit_order))
+        .route("/orders/:order_id/cancel", post(orders::cancel_order))
         .nest_service("/static", ServeDir::new(templating::local_static_dir()))
         .nest_service(
             "/portal-ui/static",

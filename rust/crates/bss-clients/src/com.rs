@@ -54,9 +54,37 @@ impl ComClient {
     /// a customer's orders, newest first (`customerId` sent only when present).
     /// Backs `order.list`.
     pub async fn list_orders(&self, customer_id: Option<&str>) -> Result<Value, ClientError> {
-        let mut path = "/tmf-api/productOrderingManagement/v4/productOrder".to_string();
+        self.list_orders_paged(customer_id, None, None, None).await
+    }
+
+    /// [`Self::list_orders`] with the v1.6 cross-customer queue filters. Without
+    /// `customer_id` the endpoint returns orders across all customers, newest
+    /// first; `state`/`limit`/`offset` filter and page. Each param is sent only
+    /// when present, mirroring Python's `if … is not None`.
+    pub async fn list_orders_paged(
+        &self,
+        customer_id: Option<&str>,
+        state: Option<&str>,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> Result<Value, ClientError> {
+        let mut params: Vec<String> = Vec::new();
         if let Some(c) = customer_id.filter(|s| !s.is_empty()) {
-            path.push_str(&format!("?customerId={c}"));
+            params.push(format!("customerId={c}"));
+        }
+        if let Some(s) = state.filter(|s| !s.is_empty()) {
+            params.push(format!("state={s}"));
+        }
+        if let Some(l) = limit {
+            params.push(format!("limit={l}"));
+        }
+        if let Some(o) = offset {
+            params.push(format!("offset={o}"));
+        }
+        let mut path = "/tmf-api/productOrderingManagement/v4/productOrder".to_string();
+        if !params.is_empty() {
+            path.push('?');
+            path.push_str(&params.join("&"));
         }
         let resp = self.inner.request(Method::GET, &path, None, None).await?;
         resp.json()
