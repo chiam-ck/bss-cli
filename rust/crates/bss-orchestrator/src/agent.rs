@@ -60,8 +60,11 @@ impl Default for AgentConfig {
     }
 }
 
-/// Run one turn to completion, collecting the [`AgentEvent`] sequence. (A true
-/// streaming variant lands with the SSE portal wiring in P6.)
+/// Run one turn to completion, collecting the [`AgentEvent`] sequence.
+///
+/// A convenience wrapper over [`astream_once_to`] for callers that want the
+/// whole turn at once (the CLI, tests, the fixture-parity harness). The SSE
+/// portal route uses the streaming form.
 pub async fn astream_once<M: ChatModel>(
     model: &mut M,
     registry: &ToolRegistry,
@@ -69,7 +72,46 @@ pub async fn astream_once<M: ChatModel>(
     config: &AgentConfig,
 ) -> Vec<AgentEvent> {
     let mut events: Vec<AgentEvent> = Vec::new();
-    events.push(AgentEvent::PromptReceived {
+    {
+        let mut sink = |e: AgentEvent| {
+            events.push(e);
+            true
+        };
+        astream_once_to(model, registry, prompt, config, &mut sink).await;
+    }
+    events
+}
+
+/// Run one turn, handing each [`AgentEvent`] to `sink` **as it happens** — the
+/// streaming form the SSE chat route consumes (Python's `astream_once` is an
+/// async generator; this is its Rust shape).
+///
+/// `sink` returns `false` when the consumer has gone away (e.g. the SSE receiver
+/// was dropped because the browser disconnected), which ends the turn early.
+/// That mirrors the `GeneratorExit` Python raises into the generator when the
+/// `async for` body returns.
+///
+/// Note the three points where the Python *consumer* returns early — ownership
+/// violation, other error, and final message — are all already terminal in the
+/// loop itself, so the sink form emits exactly the same sequence as the
+/// collecting form; no tool call can execute "past" a consumer's early return.
+pub async fn astream_once_to<M: ChatModel>(
+    model: &mut M,
+    registry: &ToolRegistry,
+    prompt: &str,
+    config: &AgentConfig,
+    sink: &mut dyn FnMut(AgentEvent) -> bool,
+) {
+    /// Emit one event, bailing out of the turn if the consumer has gone away.
+    macro_rules! emit {
+        ($ev:expr) => {
+            if !sink($ev) {
+                return;
+            }
+        };
+    }
+
+    emit!(AgentEvent::PromptReceived {
         prompt: prompt.to_string(),
     });
 
@@ -115,7 +157,7 @@ pub async fn astream_once<M: ChatModel>(
         }
 
         for tc in &turn.tool_calls {
-            events.push(AgentEvent::ToolCallStarted {
+            emit!(AgentEvent::ToolCallStarted {
                 name: tc.name.clone(),
                 args: tc.args.clone(),
                 call_id: tc.id.clone(),
@@ -128,7 +170,7 @@ pub async fn astream_once<M: ChatModel>(
                 tc.id.clone(),
                 result_full.clone(),
             ));
-            events.push(AgentEvent::ToolCallCompleted {
+            emit!(AgentEvent::ToolCallCompleted {
                 name: tc.name.clone(),
                 call_id: tc.id.clone(),
                 result: truncate(&result_full),
@@ -140,7 +182,7 @@ pub async fn astream_once<M: ChatModel>(
             if is_failure_result(&result_full, is_error) {
                 consecutive_failures += 1;
                 if consecutive_failures >= MAX_CONSECUTIVE_TOOL_FAILURES {
-                    events.push(AgentEvent::Error {
+                    emit!(AgentEvent::Error {
                         message: format!(
                             "agent_loop_bailout: {MAX_CONSECUTIVE_TOOL_FAILURES} \
                              consecutive tool failures (last tool: {:?}). The agent \
@@ -148,7 +190,7 @@ pub async fn astream_once<M: ChatModel>(
                             tc.name
                         ),
                     });
-                    return events;
+                    return;
                 }
             } else {
                 consecutive_failures = 0;
@@ -157,7 +199,7 @@ pub async fn astream_once<M: ChatModel>(
             // Identical-call stuck bail.
             let args_sig = tool_args_sig(&tc.args);
             if stuck.record(&tc.name, &args_sig, &result_full) {
-                events.push(AgentEvent::Error {
+                emit!(AgentEvent::Error {
                     message: format!(
                         "agent_loop_bailout: {MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS} \
                          identical calls to {:?} returned the identical result. The \
@@ -166,12 +208,12 @@ pub async fn astream_once<M: ChatModel>(
                         tc.name
                     ),
                 });
-                return events;
+                return;
             }
         }
     }
 
-    events.push(AgentEvent::TurnUsage {
+    emit!(AgentEvent::TurnUsage {
         prompt_tok: usage_in,
         completion_tok: usage_out,
         model: if usage_model.is_empty() {
@@ -180,8 +222,7 @@ pub async fn astream_once<M: ChatModel>(
             usage_model
         },
     });
-    events.push(AgentEvent::FinalMessage { text: last_ai_text });
-    events
+    emit!(AgentEvent::FinalMessage { text: last_ai_text });
 }
 
 /// Execute one tool call, applying destructive gating. Returns `(observation,

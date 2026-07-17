@@ -29,7 +29,7 @@ pub mod prompts;
 pub mod safety;
 pub mod tools;
 
-pub use agent::{astream_once, AgentConfig};
+pub use agent::{astream_once, astream_once_to, AgentConfig};
 pub use chat_caps::{CapLimits, CapStatus, ChatCaps};
 pub use chat_model::{AiTurn, ChatMessage, ChatModel, MockChatModel, Role, ToolCall, Usage};
 pub use config::Settings;

@@ -6,7 +6,9 @@
 //! All cases run in one test because the clock is a process-global (freeze once).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use bss_orchestrator::{astream_once, default_registry, AgentConfig, AgentEvent, MockChatModel};
+use bss_orchestrator::{
+    astream_once, astream_once_to, default_registry, AgentConfig, AgentEvent, MockChatModel,
+};
 use chrono::TimeZone;
 
 const FIXTURE: &str = r#"{
@@ -153,6 +155,67 @@ async fn react_loop_transcripts() {
         .as_str()
         .unwrap()
         .contains("identical calls"));
+
+    bss_clock::reset_for_tests();
+}
+
+/// The streaming form (`astream_once_to`) is what the SSE chat route consumes.
+/// Two properties matter: it emits the *same* sequence as the collecting form,
+/// and a sink that returns `false` (the SSE receiver was dropped — browser gone)
+/// ends the turn immediately. The latter is the Rust shape of the `GeneratorExit`
+/// Python raises into the generator when the `async for` body returns.
+#[tokio::test]
+async fn streaming_sink_matches_collect_and_stops_early() {
+    let fixed = chrono::Utc.with_ymd_and_hms(2026, 7, 13, 12, 0, 0).unwrap();
+    bss_clock::freeze(Some(fixed));
+
+    let config = || AgentConfig {
+        allow_destructive: false,
+        model_name: "mock".to_string(),
+        ..Default::default()
+    };
+
+    // ── Parity: sink form emits exactly the collecting form's sequence ──────
+    let collected = run("what time is it?", false).await;
+
+    let mut model = MockChatModel::from_json(FIXTURE).expect("parse fixture");
+    let registry = default_registry();
+    let mut streamed: Vec<AgentEvent> = Vec::new();
+    {
+        let mut sink = |e: AgentEvent| {
+            streamed.push(e);
+            true
+        };
+        astream_once_to(
+            &mut model,
+            &registry,
+            "what time is it?",
+            &config(),
+            &mut sink,
+        )
+        .await;
+    }
+    assert_eq!(streamed, collected, "sink form must not drift from collect");
+
+    // ── Early stop: sink says "consumer gone" after the first event ─────────
+    let mut model = MockChatModel::from_json(FIXTURE).expect("parse fixture");
+    let mut seen: Vec<AgentEvent> = Vec::new();
+    {
+        let mut sink = |e: AgentEvent| {
+            seen.push(e);
+            false // consumer went away
+        };
+        astream_once_to(
+            &mut model,
+            &registry,
+            "what time is it?",
+            &config(),
+            &mut sink,
+        )
+        .await;
+    }
+    assert_eq!(seen.len(), 1, "a refusing sink ends the turn at once");
+    assert_eq!(kinds(&seen), vec!["prompt_received"]);
 
     bss_clock::reset_for_tests();
 }
