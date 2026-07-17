@@ -399,6 +399,32 @@ impl CatalogClient {
             .await
     }
 
+    /// `GET /tmf-api/promotionManagement/v4/promotion?limit&offset` — every
+    /// promotion, most-recent first. `state` filters when present; `limit`/`offset`
+    /// are always sent (Python defaults 50/0). Backs the catalog screen's promo list.
+    pub async fn list_promotions(
+        &self,
+        state: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Value, ClientError> {
+        let mut params = format!("limit={limit}&offset={offset}");
+        if let Some(s) = state.filter(|s| !s.is_empty()) {
+            params.push_str(&format!("&state={}", encode(s)));
+        }
+        let path = format!("{PROMO_PATH}?{params}");
+        self.send(Method::GET, &path, None).await
+    }
+
+    /// `POST /admin/catalog/offering/{id}/retire` (no body) — sets
+    /// `lifecycle_status='retired'` + `is_sellable=false`, stamping `valid_to=now()`
+    /// on any still-open window. A 422 (already retired / not found) maps to
+    /// [`ClientError::Policy`]. Backs the catalog screen's retire action.
+    pub async fn admin_retire_offering(&self, offering_id: &str) -> Result<Value, ClientError> {
+        let path = format!("/admin/catalog/offering/{offering_id}/retire");
+        self.send(Method::POST, &path, None).await
+    }
+
     async fn send(
         &self,
         method: Method,

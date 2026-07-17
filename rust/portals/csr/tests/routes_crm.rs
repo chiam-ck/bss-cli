@@ -54,17 +54,22 @@ async fn post(path: &str, body: &str) -> (StatusCode, String) {
     (status, location)
 }
 
-/// The customer-, case- and order-screen entries of the oracle's `_CONFIRM_GATED`
-/// table. The remaining entries (subscriptions / catalog) land with their screens.
-/// Each tuple is `(path, extra_form_fields)` — the confirm test appends
+/// The customer-, case-, order- and catalog-screen entries of the oracle's
+/// `_CONFIRM_GATED` table. The remaining entries (subscriptions) land with that
+/// screen. Each tuple is `(path, extra_form_fields)` — the confirm test appends
 /// `confirm=yes` to the extras.
-const CONFIRM_GATED: [(&str, &str); 6] = [
+///
+/// Note `/catalog/PLAN_M/retire` refuses with its OWN copy ("Check the confirm
+/// box…"), not the shared `CONFIRM_REQUIRED` string — the gate is what's pinned,
+/// so the test asserts `err=` is present rather than a specific message.
+const CONFIRM_GATED: [(&str, &str); 7] = [
     ("/customers/CUST-001/close", ""),
     ("/customers/CUST-001/contact/CM-1/remove", ""),
     ("/case/CASE-042/close", "resolution_code=no_fault_found"),
     ("/case/CASE-042/ticket/TKT-101/cancel", ""),
     ("/orders/ORD-014/submit", ""),
     ("/orders/ORD-014/cancel", ""),
+    ("/catalog/PLAN_M/retire", ""),
 ];
 
 #[tokio::test]
@@ -73,9 +78,12 @@ async fn destructive_posts_refuse_without_confirm() {
         let (status, location) = post(path, data).await;
         assert_eq!(status, StatusCode::SEE_OTHER, "{path}");
         assert!(location.contains("err="), "{path}: {location}");
-        // The refusal is the gate's own message, not a downstream failure.
+        // The refusal is the gate's own copy, not a downstream failure. Most
+        // screens share `CONFIRM_REQUIRED` ("…expanded confirm step"); the catalog
+        // retire uses its own checkbox wording. Either is a gate refusal — what
+        // must NOT appear is a service-error flash (that would mean it executed).
         assert!(
-            location.contains("expanded+confirm+step"),
+            location.contains("expanded+confirm+step") || location.contains("confirm+box"),
             "{path}: {location}"
         );
     }

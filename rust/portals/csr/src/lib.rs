@@ -24,6 +24,7 @@
 
 pub mod bubble;
 pub mod cases;
+pub mod catalog;
 pub mod clients;
 pub mod cockpit;
 pub mod config;
@@ -143,6 +144,17 @@ pub fn build_router(state: AppState) -> Router {
         .route("/orders/:order_id", get(orders::order_detail))
         .route("/orders/:order_id/submit", post(orders::submit_order))
         .route("/orders/:order_id/cancel", post(orders::cancel_order))
+        // Catalog — plans/VAS/promos index + admin CRUD + offering detail (v1.6).
+        // Static `offering` before the `:offering_id` param.
+        .route("/catalog", get(catalog::catalog_index))
+        .route("/catalog/offering", post(catalog::add_offering))
+        .route("/catalog/:offering_id", get(catalog::offering_detail))
+        .route("/catalog/:offering_id/price", post(catalog::add_price))
+        .route("/catalog/:offering_id/window", post(catalog::set_window))
+        .route(
+            "/catalog/:offering_id/retire",
+            post(catalog::retire_offering),
+        )
         .nest_service("/static", ServeDir::new(templating::local_static_dir()))
         .nest_service(
             "/portal-ui/static",
