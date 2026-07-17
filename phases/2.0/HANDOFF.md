@@ -19,13 +19,24 @@ end-to-end (a live OpenRouter turn drove the loop against the running Rust servi
 Deferred to P6 (route-coupled): `chat_caps` + `ownership::record_violation` —
 **both landed in P6b s14**.
 
-**➡️ Phase 6 — the portals — 🚧 IN PROGRESS (code complete; acceptance remains).**
-Self-serve 9001 + cockpit 9002 link the P5 library crates, add the CRM screens +
-chat routes, and are the first acceptance target for the 4 standing hero failures.
-Decomposition: **P6a** shared crates ✅ → **P6b** self-serve ✅ → **P6c**
-csr/cockpit ✅ (all seven CRM screens + settings/branding/handoff + the s5a config
-writers, `bf20585`) → **P6 acceptance** ⬅️ *next* (hero 19/19 + the brand-aware
-assertion). See `03-PHASES.md` §Phase 6 + PROGRESS §Phase 6.
+**Phase 6 — the portals — ✅ CODE COMPLETE (acceptance deferred to a tech-vm
+session).** Self-serve 9001 + cockpit 9002. **P6a** shared crates ✅ → **P6b**
+self-serve ✅ → **P6c** csr/cockpit ✅ (all seven CRM screens +
+settings/branding/handoff + the s5a config writers, `bf20585`). P6 acceptance (hero
+19/19) needs the running Rust stack on the tech-vm — the brand-aware assertion is
+fixed (`08de66c`), the other two standing failures (`/auth/check-email` 400, Jaeger
+`spanCount`) wait for the live run. See PROGRESS §Phase 6.
+
+**➡️ Phase 7 — CLI + REPL + scenario engine — 🚧 IN PROGRESS.** The `bss` binary.
+Done: the skeleton (clap root + `.env` bootstrap + telemetry root span), the CLI
+runtime (`Clients::from_env` default-token bundle + `run_safely`/`run_safely_code`
+with the CLI context scope + PolicyViolation→exit-2 mapping), and **7 command
+groups** (catalog, clock, order, prov, som, subscription, usage — commits
+`9939975`…`02d6100`). ⬅️ *next*: the remaining thin groups (case, ticket, payment,
+promo, branding, trace, admin×3, external-calls), the two flagged decisions
+(`customer create --card` tokenizer plumbing; `inventory` rich.Table format), then
+`bss ask`, the reedline REPL, the scenario engine, and onboard/seed/admin wiring.
+See `03-PHASES.md` §Phase 7 + PROGRESS §Phase 7.
 
 - **P6a — the shared crates — ✅ DONE (all 4 slices).**
   - `bss-branding` (read path + THEMES + marks + css + assets + logo helper;

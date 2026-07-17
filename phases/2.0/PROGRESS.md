@@ -42,7 +42,67 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
-## Phase 6 — portals (self-serve, csr) — 🚧 IN PROGRESS
+## Phase 7 — CLI + REPL + scenario engine — 🚧 IN PROGRESS (started 2026-07-18)
+
+The `bss` binary: a clap command tree (~19 groups, mostly thin `bss-clients`
+calls), `bss ask` (single-shot LLM), the reedline REPL (the canonical operator
+cockpit), and the scenario engine (the acceptance harness's own driver). Exit:
+`bss scenario run-all --tag hero` by the *Rust* runner matches the Python runner
+on the all-Rust stack. `trace.*` / `knowledge.*` land here (they need the
+Jaeger/Audit/PgPool handles the P6 portal bundle omitted).
+
+**s1 — the skeleton (`9939975`).** The clap root, the `.env` bootstrap (walks up
+to the repo `.env` so `bss` works without a sourced shell — the REPL needs
+`BSS_DB_URL` + the cockpit token as process env), the telemetry root span (the CLI
+is the root of every `bss <cmd>` trace), and the `clock` group. `main` owns one
+Tokio runtime (init_telemetry's OTLP exporter needs rt-tokio; the client-backed
+groups are async) — the Python sync-Typer + asyncio.run-per-command becomes one
+process-wide runtime. `clock now` smoke-matches the oracle ISO format.
+
+**s2 — the runtime + catalog (`87f4c9b`).** `Clients::from_env` (the default-token
+bundle, `TokenAuthProvider` over `BSS_API_TOKEN`) + `run_safely` (runs each body in
+`bss_context::scope` with channel="cli"/actor="cli-user", maps `PolicyViolation` →
+red banner + exit 2, other errors → exit 1). First client-backed group. `catalog
+vas` keeps the CLI's OWN row format (not the golden `render_vas_list`, which backs
+the LLM tool surface), pinned byte-for-byte against the Python f-string.
+
+**s3–s6 — som, usage, subscription, order, prov (`92be141`, `ef9a8dd`, `1f3d9aa`,
+`02d6100`).** Seven groups total now: catalog, clock, order, prov, som,
+subscription, usage. `list`/`show` reuse the golden renderers; the row-format and
+`*-show` JSON-dump commands are hand-ported to match the Python f-strings (widths,
+`None`/`True`/`False` rendering, the double-space in the subscription list row).
+`run_safely_code` added for `prov fault` (exit 2 on a non-error "no injector" path).
+
+**Owed client gaps closed while porting (all real — no earlier caller needed them):**
+`mediation::submit_usage` had dropped Python's `source`/`raw_cdr_ref` (the LLM tool
+never set them; `bss usage simulate` stamps `source="cli"`) → added
+`submit_usage_full`, key order preserved (D9). Earlier P6c gaps (paged list_*,
+transition_case/update_case_priority, list_promotions/admin_retire_offering, the
+ticket FSM maps on CrmClient, mediation on the portal bundle) also landed.
+
+**Faithful seams pinned:** the `quote_plus` redirect encoder (P6c), the `{trigger!r}`
+single-quote copy, `datetime.fromisoformat().isoformat()` normalisation, and the
+usage quantity parser (1GB→1024mb etc.) — each captured from the live oracle.
+
+**Remaining P7 — command groups + two flagged decisions + the big pieces:**
+- Clean thin groups still to port: **case** (97), **ticket** (168), **payment**
+  (188), **promo** (218), **branding** (106), **trace** (181), **admin** (153),
+  **admin-catalog** (240), **admin-knowledge** (182), **external-calls** (245).
+- **Decision — `customer create --card`:** needs `local_tokenize_card` (private in
+  `bss_orchestrator::tools::payment`) + `create_payment_method`'s exp fields; either
+  make the tokenizer `pub` or replicate the small sandbox tokenizer. Flagged.
+- **Decision — `inventory` list output:** the Python CLI draws a `rich.Table`
+  (box-drawing), NOT the golden `render_msisdn_list`. Byte-matching rich's table is
+  impractical; either accept a simpler table as a documented seam or reproduce it.
+  Flagged.
+- **`bss ask`** (single-shot LLM dispatch) + **the reedline REPL** (the canonical
+  cockpit — `bss` with no subcommand; the biggest remaining piece) + the **scenario
+  engine** (ports against recorded Python-runner runs) + **onboard** (666, the
+  compound signup flow) + **bss-seed** / **bss-admin** CLI wiring.
+
+---
+
+## Phase 6 — portals (self-serve, csr) — ✅ CODE COMPLETE (acceptance deferred)
 
 The first phase to **cut over deployable containers again** since P4 — the two
 portals (self-serve 9001, cockpit/csr 9002) that link the P5 library crates
