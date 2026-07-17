@@ -9,3 +9,4 @@ pub mod fmt;
 pub mod order;
 pub mod subscription;
 pub mod tables;
+pub mod trace;

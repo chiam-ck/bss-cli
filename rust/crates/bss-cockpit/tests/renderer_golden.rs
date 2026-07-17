@@ -663,3 +663,102 @@ fn esim_card_matches_the_oracle_outside_the_qr_block() {
         "empty",
     );
 }
+
+#[test]
+fn trace_swimlane_renders_byte_identical_to_the_oracle() {
+    use bss_cockpit::renderers::trace::{render_swimlane, SwimlaneOpts};
+
+    let want = golden("trace");
+    let chk = |got: String, name: &str| assert_ascii_eq(&got, want[name].as_str().unwrap(), name);
+
+    let trace = serde_json::json!({
+        "traceID": "abcdef0123456789aaaa",
+        "processes": {
+            "p1": {"serviceName": "com"},
+            "p2": {"serviceName": "som"},
+            "p3": {"serviceName": "postgres"},
+        },
+        "spans": [
+            // A manual span (gets the *), carrying a v0.9 identity tag.
+            {"spanID": "s1", "processID": "p1",
+             "operationName": "com.order.complete_to_subscription",
+             "startTime": 1000, "duration": 4000,
+             "tags": [{"key": "bss.service.identity", "value": "operator_cockpit"}]},
+            {"spanID": "s2", "processID": "p2", "operationName": "som.decompose",
+             "startTime": 1500, "duration": 2000,
+             "references": [{"refType": "CHILD_OF", "spanID": "s1"}], "tags": []},
+            // A SQL span — hidden unless show_sql.
+            {"spanID": "s3", "processID": "p3", "operationName": "SELECT service",
+             "startTime": 1600, "duration": 200,
+             "references": [{"refType": "CHILD_OF", "spanID": "s2"}], "tags": []},
+            // An error span — the whole line wraps in red ANSI.
+            {"spanID": "s4", "processID": "p2", "operationName": "boom",
+             "startTime": 3000, "duration": 500,
+             "references": [{"refType": "CHILD_OF", "spanID": "s1"}],
+             "tags": [{"key": "error", "value": true}]},
+        ],
+    });
+
+    // Default: SQL hidden (with the "N SQL spans hidden" tail), depth indent,
+    // the identity column present because one span carries the tag.
+    chk(
+        render_swimlane(
+            &trace,
+            &SwimlaneOpts {
+                width: Some(120),
+                ..Default::default()
+            },
+        ),
+        "default",
+    );
+    chk(
+        render_swimlane(
+            &trace,
+            &SwimlaneOpts {
+                width: Some(120),
+                show_sql: true,
+                ..Default::default()
+            },
+        ),
+        "show_sql",
+    );
+    chk(
+        render_swimlane(
+            &trace,
+            &SwimlaneOpts {
+                width: Some(120),
+                only_service: Some("som"),
+                ..Default::default()
+            },
+        ),
+        "only_som",
+    );
+    chk(
+        render_swimlane(&serde_json::json!({}), &SwimlaneOpts::default()),
+        "empty",
+    );
+
+    // No span carries an identity tag → the whole column is hidden, so pre-v0.9
+    // traces stay clean.
+    let mut no_ident = trace.clone();
+    for s in no_ident["spans"].as_array_mut().unwrap() {
+        let kept: Vec<Value> = s["tags"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|t| t.get("key").and_then(Value::as_str) != Some("bss.service.identity"))
+            .cloned()
+            .collect();
+        s["tags"] = Value::Array(kept);
+    }
+    chk(
+        render_swimlane(
+            &no_ident,
+            &SwimlaneOpts {
+                width: Some(120),
+                ..Default::default()
+            },
+        ),
+        "no_ident",
+    );
+}
