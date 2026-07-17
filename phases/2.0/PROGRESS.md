@@ -235,14 +235,47 @@ COMPLETE (45 golden cases).**
   (a truthy `1` does not mark an error); the v0.9 identity column hides entirely
   when no span is tagged, so pre-v0.9 traces stay clean.
 
-**Remaining in P6 (~2.4k LOC + acceptance):** the **CRM screens** (customers 355 /
-cases 260 / orders 257 / catalog 252 / subscriptions 230 / case 141 / search 129 —
-~1.6k); **settings 120 + branding 169 + handoff 49 + branding_assets 19**; **P6b's
-prod-only webhooks** (412, not on the hero path); then **P6 acceptance** (hero
-19/19 + the brand-aware assertion). The CRM screens follow the pattern P6b
-established (`RawForm` → parse → gate → ownership → one write → audit) plus the
-**v1.6 two-step confirm** (`crm-danger-form` → `confirm=yes`; the route must refuse
-without it — `test_routes_crm.py` pins both directions).
+**P6c CRM screens + settings/branding/handoff — ✅ PORTED END TO END (2026-07-18).**
+All seven CRM route modules (`customers`, `cases`+`case`, `orders`, `catalog`,
+`subscriptions`, `search`) plus `handoff`, `settings`, `branding` are ported. The
+v1.6.1 two-step confirm is pinned in **both directions across all ten** of the
+oracle's `_CONFIRM_GATED` entries in `rust/portals/csr/tests/routes_crm.rs` — a
+bare POST bounces with a gate-refusal flash and never touches a client; `confirm=yes`
+falls through to the policy layer. Commits `ca645d7`…`bf20585` (s4a–s4f + s5a/s5b).
+
+**Owed client gaps closed while porting (all real — no earlier caller needed them,
+not port artefacts):** `CrmClient::list_customers`/`list_cases` and
+`ComClient::list_orders` had silently dropped Python's `limit`/`offset` paging →
+added `*_paged` wrappers (defaults-wrapper shape). `CrmClient::transition_case` /
+`update_case_priority` and `CatalogClient::list_promotions` /
+`admin_retire_offering` were **entirely absent** → added. The ticket FSM trigger
+maps (`_TICKET_STATE_TO_TRIGGER` + in-progress-by-source) moved from
+`tools/ticket.rs` onto `CrmClient` so the cockpit workbench and the tool share one
+copy (Python keeps them on the client for exactly this reason). `CockpitClients`
+gained the `mediation` field the subscription usage panel needs.
+
+**s5a — the config writers.** The five `write_*` helpers that the read-side
+`config.rs` explicitly deferred to P6 now land in `bss-cockpit`
+(`write_operator_md`/`write_settings_toml`/`write_branding_settings`/
+`write_branding_logo`/`remove_branding_logo`). The v1.8 doctrine property is
+test-pinned: a `[branding]` save preserves operator comments in every OTHER
+settings.toml section (needs a `toml_edit` round-trip — new direct dep, already
+transitively present). Logo writes are magic-byte sniffed (PNG/JPEG/WebP, never
+SVG), 256KB byte-capped, fixed filenames, stale-sibling cleanup.
+
+**Oracle-captured seams (pinned, not assumed):** the `quote_plus` redirect encoder
+(space→`+`, `/`→`%2F`, UTF-8 per byte — NOT the self-serve `next=` encoder); the
+`{trigger!r}` single-quote transition-error copy; `datetime.fromisoformat()
+.isoformat()` normalisation (datetime-local gains `:00`, date-only→midnight, bad
+input carries the verbatim `Invalid isoformat string: '…'`). The catalog retire
+keeps its own gate copy ("Check the confirm box…"), so the confirm test accepts
+either wording while still forbidding a service-error flash.
+
+**Remaining in P6:** **P6 acceptance** (hero 19/19 + the brand-aware assertion).
+**P6b's prod-only webhooks** (Resend/Didit, 412 LOC) stay deferred — not on the
+hero path. `trace.*`/`knowledge.*` remain absent from the cockpit tool registry
+(need Jaeger/Audit/PgPool handles the portal bundle doesn't carry; they land with
+the CLI/REPL wiring in P7).
 
 ---
 

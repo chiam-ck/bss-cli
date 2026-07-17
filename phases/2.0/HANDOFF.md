@@ -19,11 +19,13 @@ end-to-end (a live OpenRouter turn drove the loop against the running Rust servi
 Deferred to P6 (route-coupled): `chat_caps` + `ownership::record_violation` —
 **both landed in P6b s14**.
 
-**➡️ Phase 6 — the portals — 🚧 IN PROGRESS.** Self-serve 9001 + cockpit 9002 link the
-P5 library crates, add the CRM screens + chat routes, and are the first acceptance
-target for the 4 standing hero failures. Decomposition: **P6a** shared crates ✅ →
-**P6b** self-serve ✅ (feature-complete) → **P6c** csr ⬅️ *next*. See
-`03-PHASES.md` §Phase 6 + PROGRESS §Phase 6.
+**➡️ Phase 6 — the portals — 🚧 IN PROGRESS (code complete; acceptance remains).**
+Self-serve 9001 + cockpit 9002 link the P5 library crates, add the CRM screens +
+chat routes, and are the first acceptance target for the 4 standing hero failures.
+Decomposition: **P6a** shared crates ✅ → **P6b** self-serve ✅ → **P6c**
+csr/cockpit ✅ (all seven CRM screens + settings/branding/handoff + the s5a config
+writers, `bf20585`) → **P6 acceptance** ⬅️ *next* (hero 19/19 + the brand-aware
+assertion). See `03-PHASES.md` §Phase 6 + PROGRESS §Phase 6.
 
 - **P6a — the shared crates — ✅ DONE (all 4 slices).**
   - `bss-branding` (read path + THEMES + marks + css + assets + logo helper;
@@ -353,26 +355,23 @@ fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: P6c cockpit, then P6 acceptance
+## What to do next: P6 acceptance
 
-Phases 4 and 5 are done. **P6a (shared crates) is done; P6b self-serve is
-feature-complete (s1–s14)** — only the prod-only webhooks remain, and they're not
-on the hero path. See [`03-PHASES.md`](03-PHASES.md) §Phase 6 and PROGRESS §Phase 6.
+Phases 4 and 5 are done. **P6a (shared crates), P6b self-serve, and P6c csr/cockpit
+are all done.** Only the prod-only webhooks remain deferred (not on the hero path).
+See [`03-PHASES.md`](03-PHASES.md) §Phase 6 and PROGRESS §Phase 6.
 
-- **P6c — csr/cockpit (9002) — 🚧 the cockpit is DONE; the CRM screens remain.**
-  Landed: the crate skeleton + `views` (the `field` doctrine rule) + the
-  `read_autonomy_mode` seam P5c missed; **the whole renderer family** (10 modules,
-  45 byte-golden cases) + `dispatch` + `strip_fake_propose` — the P5b debt is now
-  fully paid; and **`cockpit.py` end to end** (guards, sessions index, turn
-  planning, the bubble override chain, tool-row HTML, the v1.6.1 `Inflight`
-  registry, and all 8 routes), live-smoked against the shared `cockpit` schema
-  with a real OpenRouter turn.
-  **Still owed:** the CRM screens (customers / cases / orders / catalog /
-  subscriptions / case / search, ~1.6k LOC) — direct `bss-clients` reads/writes,
-  section-degrading, with the **v1.6 two-step confirm** on destructive/money-moving
-  verbs (`crm-danger-form` → `confirm=yes`; the route must refuse without it,
-  `test_routes_crm.py` pins both directions) — plus settings/branding/handoff
-  (~360 LOC). They follow the P6b sensitive-write pattern.
+- **P6c — csr/cockpit (9002) — ✅ DONE (`bf20585`).** The renderer family (10
+  modules, 45 byte-golden cases — the P5b debt paid), `cockpit.py` end to end, all
+  seven CRM screens (customers / cases+case / orders / catalog / subscriptions /
+  search), settings + branding + handoff, and the s5a `bss_cockpit` config writers.
+  The v1.6.1 two-step confirm is pinned in both directions across **all ten** of the
+  oracle's `_CONFIRM_GATED` entries (`rust/portals/csr/tests/routes_crm.rs`). Full
+  workspace: clippy clean, 117 test groups green.
+  **Client gaps closed while porting** (all real, not artefacts): paged
+  `list_customers`/`list_cases`/`list_orders`; the absent `transition_case` /
+  `update_case_priority` / `list_promotions` / `admin_retire_offering`; the ticket
+  FSM maps moved onto `CrmClient`; the `mediation` field on `CockpitClients`.
   **Deferred to P7 on purpose:** `trace.*` / `knowledge.*` are absent from the
   cockpit's tool registry — they need a Jaeger/Audit/PgPool handle the portal
   bundle doesn't carry, and land with the CLI wiring where the registry is built
