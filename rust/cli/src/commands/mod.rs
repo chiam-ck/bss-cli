@@ -8,3 +8,14 @@
 
 pub mod catalog;
 pub mod clock;
+pub mod som;
+pub mod usage;
+
+use serde_json::Value;
+
+/// Indented JSON for the `*-show` debug commands. Python `rprint`s a rich
+/// pretty-repr of the dict; we emit indented JSON — the exact glyphs differ but the
+/// content is identical (these are human debug dumps, not golden renderers).
+pub(crate) fn pretty(v: &Value) -> String {
+    serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string())
+}

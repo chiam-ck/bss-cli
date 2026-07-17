@@ -86,12 +86,48 @@ impl MediationClient {
         unit: &str,
         roaming_indicator: bool,
     ) -> Result<Value, ClientError> {
+        self.submit_usage_full(
+            msisdn,
+            event_type,
+            event_time,
+            quantity,
+            unit,
+            None,
+            None,
+            roaming_indicator,
+        )
+        .await
+    }
+
+    /// [`Self::submit_usage`] with the optional `source` / `raw_cdr_ref` audit
+    /// fields (each sent only when present, mirroring Python's `if … is not None`).
+    /// `bss usage simulate` sets `source="cli"`; the LLM tool leaves it unset. Key
+    /// insertion order matches Python (source before rawCdrRef before
+    /// roamingIndicator) — wire-visible under serde's `preserve_order` (D9).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn submit_usage_full(
+        &self,
+        msisdn: &str,
+        event_type: &str,
+        event_time: &str,
+        quantity: i64,
+        unit: &str,
+        source: Option<&str>,
+        raw_cdr_ref: Option<&str>,
+        roaming_indicator: bool,
+    ) -> Result<Value, ClientError> {
         let mut m = serde_json::Map::new();
         m.insert("msisdn".to_string(), json!(msisdn));
         m.insert("eventType".to_string(), json!(event_type));
         m.insert("eventTime".to_string(), json!(event_time));
         m.insert("quantity".to_string(), json!(quantity));
         m.insert("unit".to_string(), json!(unit));
+        if let Some(s) = source {
+            m.insert("source".to_string(), json!(s));
+        }
+        if let Some(r) = raw_cdr_ref {
+            m.insert("rawCdrRef".to_string(), json!(r));
+        }
         if roaming_indicator {
             m.insert("roamingIndicator".to_string(), json!(true));
         }

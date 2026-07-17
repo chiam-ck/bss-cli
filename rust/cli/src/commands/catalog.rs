@@ -86,16 +86,8 @@ fn scalar(v: &Value) -> String {
 
 async fn show(c: Arc<Clients>, offering_id: String) -> Result<(), bss_clients::ClientError> {
     let offering = c.catalog.get_offering(&offering_id).await?;
-    // Python `rprint`s the dict (rich pretty-repr); we emit indented JSON — a
-    // human-facing debug dump, not a golden-pinned renderer, so the exact glyphs
-    // differ but the content is identical.
-    println!("{}", to_pretty(&offering));
+    println!("{}", super::pretty(&offering));
     Ok(())
-}
-
-/// Indented JSON, or the compact form if (impossibly) serialization fails.
-fn to_pretty(v: &Value) -> String {
-    serde_json::to_string_pretty(v).unwrap_or_else(|_| v.to_string())
 }
 
 #[cfg(test)]

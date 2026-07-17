@@ -40,6 +40,10 @@ enum Command {
     Catalog(commands::catalog::CatalogArgs),
     /// Time helpers (v0.1 = wall clock).
     Clock(commands::clock::ClockArgs),
+    /// Service order + service inventory (SOM).
+    Som(commands::som::SomArgs),
+    /// Usage simulation (TMF635 mediation).
+    Usage(commands::usage::UsageArgs),
 }
 
 // A Tokio runtime is required: `init_telemetry`'s OTLP batch exporter runs on
@@ -58,6 +62,8 @@ async fn main() -> ExitCode {
     match cli.command {
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
+        Some(Command::Som(args)) => commands::som::run(args).await,
+        Some(Command::Usage(args)) => commands::usage::run(args).await,
         // `bss` with no subcommand → the REPL (canonical cockpit). Not yet ported;
         // a following slice lands it. Fail loudly rather than silently no-op.
         None => {
