@@ -26,9 +26,11 @@ pub mod bubble;
 pub mod clients;
 pub mod config;
 pub mod guards;
+pub mod inflight;
 pub mod routes;
 pub mod sessions;
 pub mod templating;
+pub mod tool_row;
 pub mod turn;
 pub mod views;
 
