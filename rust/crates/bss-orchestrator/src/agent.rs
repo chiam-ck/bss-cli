@@ -104,12 +104,14 @@ pub async fn astream_once<M: ChatModel>(
 /// violation, other error, and final message — are all already terminal in the
 /// loop itself, so the sink form emits exactly the same sequence as the
 /// collecting form; no tool call can execute "past" a consumer's early return.
+// `+ Send` so the whole turn can run in a spawned task — the SSE route drives it
+// from `tokio::spawn` while the response streams.
 pub async fn astream_once_to<M: ChatModel>(
     model: &mut M,
     registry: &ToolRegistry,
     prompt: &str,
     config: &AgentConfig,
-    sink: &mut dyn FnMut(AgentEvent) -> bool,
+    sink: &mut (dyn FnMut(AgentEvent) -> bool + Send),
 ) {
     /// Emit one event, bailing out of the turn if the consumer has gone away.
     macro_rules! emit {

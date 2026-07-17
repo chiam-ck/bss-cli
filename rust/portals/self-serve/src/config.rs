@@ -34,6 +34,9 @@ pub struct Settings {
     pub crm_url: String,
     pub payment_url: String,
     pub provisioning_url: String,
+    /// Only the chat tool registry needs this (`usage.history_mine`); the portal's
+    /// own routes never call mediation directly.
+    pub mediation_url: String,
 
     pub port: u16,
     pub session_ttl: i64,
@@ -71,6 +74,7 @@ impl Settings {
             crm_url: env_or("BSS_CRM_URL", "http://crm:8000"),
             payment_url: env_or("BSS_PAYMENT_URL", "http://payment:8000"),
             provisioning_url: env_or("BSS_PROVISIONING_URL", "http://provisioning:8000"),
+            mediation_url: env_or("BSS_MEDIATION_URL", "http://mediation:8000"),
             port: env_int("BSS_PORTAL_SELF_SERVE_PORT", 9001) as u16,
             session_ttl: env_int("BSS_PORTAL_SELF_SERVE_SESSION_TTL", 600),
             db_url: env_or("BSS_DB_URL", ""),

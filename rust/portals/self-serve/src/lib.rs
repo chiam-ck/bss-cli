@@ -15,6 +15,7 @@
 pub mod account_reads;
 pub mod account_writes;
 pub mod auth;
+pub mod chat;
 pub mod chat_session;
 pub mod clients;
 pub mod config;
@@ -40,11 +41,13 @@ use std::sync::Arc;
 
 use axum::routing::{get, post};
 use axum::Router;
+use bss_orchestrator::{ChatCaps, ToolRegistry};
 use bss_portal_auth::EmailAdapter;
 use minijinja::Environment;
 use sqlx::PgPool;
 use tower_http::services::ServeDir;
 
+use chat_session::{ChatConversationStore, ChatTurnStore};
 use clients::PortalClients;
 use config::Settings;
 use signup_session::SessionStore;
@@ -67,6 +70,16 @@ pub struct AppState {
     pub signup_store: Arc<SessionStore>,
     /// KYC verification adapter selected at boot (`prebaked` in dev/scenario).
     pub kyc_adapter: kyc::KycAdapter,
+    /// One running chat thread per customer (1h idle TTL).
+    pub chat_conversations: Arc<ChatConversationStore>,
+    /// One in-flight chat turn per SSE stream (30m TTL).
+    pub chat_turns: Arc<ChatTurnStore>,
+    /// Per-identity hourly-rate + monthly-cost caps on the chat surface.
+    pub chat_caps: Arc<ChatCaps>,
+    /// The `customer_self_serve` tool surface the chat agent may reach. `None`
+    /// without a perimeter token; the chat route then errors the turn rather than
+    /// running with an empty surface.
+    pub chat_registry: Option<Arc<ToolRegistry>>,
 }
 
 fn repo_root() -> PathBuf {
@@ -175,6 +188,12 @@ pub fn build_router(state: AppState) -> Router {
             get(account_writes::top_up_form).post(account_writes::top_up_submit),
         )
         .route("/top-up/success", get(account_writes::top_up_success))
+        // The only orchestrator-mediated routes in this portal (v0.11 doctrine).
+        .route("/chat", get(chat::chat_page))
+        .route("/chat/widget", get(chat::chat_widget))
+        .route("/chat/message", post(chat::chat_message))
+        .route("/chat/reset", post(chat::chat_reset))
+        .route("/chat/events/:session_id", get(chat::chat_events))
         .route("/api/session/:session_id", get(signup::session_status))
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
@@ -218,15 +237,65 @@ pub fn build_state() -> AppState {
     let email_adapter = select_email_adapter();
     let signup_ttl = settings.session_ttl.max(0) as u64;
     let kyc_adapter = kyc::KycAdapter::from_provider(&settings.kyc_provider);
+    let chat_registry = build_chat_registry(&settings).map(Arc::new);
+    let orch = bss_orchestrator::Settings::from_env();
     AppState {
         env: templating::build_environment(),
-        settings: Arc::new(settings),
         clients,
         db: None,
         email_adapter,
         signup_store: Arc::new(SessionStore::new(signup_ttl)),
         kyc_adapter,
+        chat_conversations: Arc::new(ChatConversationStore::default()),
+        chat_turns: Arc::new(ChatTurnStore::default()),
+        // The pool is attached by `build_state_with_db`; without it the monthly
+        // cost cap fails closed (by design — see `chat_caps`).
+        chat_caps: Arc::new(ChatCaps::new(
+            None,
+            orch.cap_limits(),
+            orch.llm_model.clone(),
+        )),
+        chat_registry,
+        settings: Arc::new(settings),
     }
+}
+
+/// Build the `customer_self_serve` tool surface for the chat agent: the three
+/// public catalog reads + the ownership-bound `*.mine` / `*_for_me` wrappers.
+///
+/// This is the chat agent's own client bundle, deliberately separate from the
+/// portal's `PortalClients` — it mirrors Python, where the orchestrator holds its
+/// own `get_clients()` distinct from the portal's. `None` when the perimeter token
+/// is absent.
+fn build_chat_registry(settings: &Settings) -> Option<ToolRegistry> {
+    use bss_clients::{
+        AuthProvider, CatalogClient, CrmClient, MediationClient, PaymentClient, SubscriptionClient,
+        TokenAuthProvider,
+    };
+
+    let token = std::env::var("BSS_PORTAL_SELF_SERVE_API_TOKEN")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .or_else(|| {
+            std::env::var("BSS_API_TOKEN")
+                .ok()
+                .filter(|v| !v.is_empty())
+        })?;
+    let auth: Arc<dyn AuthProvider> = Arc::new(TokenAuthProvider::new(token).ok()?);
+
+    let mut registry = ToolRegistry::new();
+    bss_orchestrator::tools::catalog::register_catalog_tools(
+        &mut registry,
+        CatalogClient::new(settings.catalog_url.clone(), auth.clone()).ok()?,
+    );
+    bss_orchestrator::tools::mine::register_customer_self_serve_tools(
+        &mut registry,
+        SubscriptionClient::new(settings.subscription_url.clone(), auth.clone()).ok()?,
+        CrmClient::new(settings.crm_url.clone(), auth.clone()).ok()?,
+        PaymentClient::new(settings.payment_url.clone(), auth.clone()).ok()?,
+        MediationClient::new(settings.mediation_url.clone(), auth.clone()).ok()?,
+    );
+    Some(registry)
 }
 
 /// Select the email adapter from `BSS_PORTAL_EMAIL_PROVIDER` (legacy
@@ -258,7 +327,17 @@ pub async fn build_state_with_db() -> AppState {
     let mut state = build_state();
     if !state.settings.db_url.is_empty() {
         match bss_db::connect(&state.settings.db_url).await {
-            Ok(pool) => state.db = Some(pool),
+            Ok(pool) => {
+                // chat_caps reads/writes `audit.chat_usage` on the same Postgres —
+                // reuse the pool rather than opening a second one.
+                let orch = bss_orchestrator::Settings::from_env();
+                state.chat_caps = Arc::new(ChatCaps::new(
+                    Some(pool.clone()),
+                    orch.cap_limits(),
+                    orch.llm_model.clone(),
+                ));
+                state.db = Some(pool);
+            }
             Err(e) => tracing::warn!(error = %e, "portal.db.connect_failed"),
         }
     } else {

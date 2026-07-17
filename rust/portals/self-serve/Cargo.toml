@@ -21,6 +21,8 @@ path = "src/lib.rs"
 [dependencies]
 axum = { workspace = true }
 tokio = { workspace = true }
+futures-util = { workspace = true }
+fancy-regex = { workspace = true }
 tower-http = { workspace = true }
 minijinja = { workspace = true }
 serde = { workspace = true }
@@ -38,6 +40,7 @@ bss-clock = { workspace = true }
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }
 bss-db = { workspace = true }
+bss-orchestrator = { workspace = true }
 bss-models = { workspace = true }
 bss-portal-auth = { workspace = true }
 bss-portal-ui = { workspace = true }
