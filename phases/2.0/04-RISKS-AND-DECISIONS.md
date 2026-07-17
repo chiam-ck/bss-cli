@@ -50,6 +50,33 @@ deliberately.
 user-visible payoff until late. The Phase 4 bilingual resting point is the pressure valve:
 a coherent, shippable, half-migrated system where the project can pause indefinitely.
 
+### Resolved seam — the eSIM ASCII QR is not byte-identical (2026-07-15, P6c s2)
+
+**Decided: accept the divergence.** `render_esim_activation` draws an ASCII QR of the
+LPA string. python-qrcode and Rust's `qrcode` crate encode the *same* payload into
+**different matrices**: they segment the string into QR modes differently (so the
+bitstream → codewords → modules differ) **and** they choose different mask patterns.
+Forcing the mask is not sufficient — verified by driving the `qrcode` crate's canvas
+API directly with mask 7 (python's pick) and still getting a different matrix, which
+proves the divergence is in the data encoding, not just masking.
+
+Both outputs are **valid QR codes that scan to the identical LPA string**, and both
+libraries select the same *version* for a given payload, so the block's dimensions —
+and hence the card's line count and frame — are unchanged. The divergence is confined
+to which cells inside the square are dark.
+
+The alternative was reimplementing python-qrcode's segmentation optimizer + its
+`lost_point` mask-penalty scoring on top of the `qrcode` crate's canvas — a few
+hundred lines of brittle mimicry of another library's internals, needing its own
+golden corpus to trust, to make a scannable square render identical pixels.
+
+**How the test reflects it:** `esim_card_matches_the_oracle_outside_the_qr_block`
+asserts **byte equality on every non-QR line** (frame, labels, the last-4 redaction,
+the LPA text) and asserts the QR block's **functional** contract only (same line
+count, same width, only block glyphs). No assertion claims parity the port doesn't
+have. This is the one place in the port where "byte-identical to the oracle" is
+knowingly not the standard — everywhere else it still is.
+
 ## 2. Open decisions (need a human call)
 
 **D1 — Go/no-go framing: what is the port *for*?** The plan assumes whole-system properties

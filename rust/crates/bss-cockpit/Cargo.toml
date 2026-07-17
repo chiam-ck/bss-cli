@@ -19,6 +19,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 chrono = { workspace = true }
+qrcode = { workspace = true }
 tracing = { workspace = true }
 indexmap = { version = "2", features = ["serde"] }
 toml = "0.8"

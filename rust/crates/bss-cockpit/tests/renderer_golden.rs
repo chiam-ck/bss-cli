@@ -579,3 +579,87 @@ fn catalog_renders_byte_identical_to_the_oracle() {
         "vas_list",
     );
 }
+
+/// The eSIM card, split by what we can honestly claim.
+///
+/// **Everything outside the QR block is byte-golden.** The QR block itself is a
+/// documented parity seam: python-qrcode and Rust's `qrcode` crate encode the same
+/// LPA payload into different matrices (different mode segmentation AND a
+/// different mask), so the dark cells differ. Both are valid QR codes scanning to
+/// the identical LPA string, and both pick the same *version*, so the block's
+/// dimensions — and therefore the card's shape — are unchanged.
+///
+/// So: assert byte equality on every non-QR line, and assert the QR block's
+/// FUNCTIONAL contract (same line count, same width, only block glyphs). No
+/// assertion here claims parity the port does not have.
+#[test]
+fn esim_card_matches_the_oracle_outside_the_qr_block() {
+    use bss_cockpit::renderers::esim::render_esim_activation;
+
+    let want = golden("esim");
+    let activation = serde_json::json!({
+        "iccid": "8965000000000000001", "imsi": "525001234567890",
+        "msisdn": "91234567", "activationCode": "LPA:1$smdp.example.com$ABC-123-XYZ",
+        "status": "prepared",
+    });
+
+    // A QR line is one whose content is only block glyphs / spaces / frame.
+    fn is_qr_line(line: &str) -> bool {
+        let body: String = line.chars().filter(|c| !matches!(c, '│' | ' ')).collect();
+        !body.is_empty() && body.chars().all(|c| matches!(c, '█' | '▀' | '▄'))
+    }
+
+    let check = |got: &str, name: &str| {
+        let want_s = want[name].as_str().unwrap();
+        let g: Vec<&str> = got.lines().collect();
+        let w: Vec<&str> = want_s.lines().collect();
+        assert_eq!(
+            g.len(),
+            w.len(),
+            "case {name}: card line count must match the oracle\n--- rust ---\n{got}\n--- oracle ---\n{want_s}"
+        );
+        for (i, (gl, wl)) in g.iter().zip(w.iter()).enumerate() {
+            if is_qr_line(wl) {
+                // Functional contract only — the dark cells legitimately differ.
+                assert!(
+                    is_qr_line(gl),
+                    "case {name} line {i}: expected a QR row, got {gl:?}"
+                );
+                assert_eq!(
+                    gl.chars().count(),
+                    wl.chars().count(),
+                    "case {name} line {i}: QR row width must match (same QR version)"
+                );
+            } else {
+                assert_eq!(
+                    gl, wl,
+                    "\ncase {name}: non-QR line {i} must be byte-identical\n  rust  : {gl:?}\n  oracle: {wl:?}\n"
+                );
+            }
+        }
+    };
+
+    // Redaction is the security-relevant bit: never past last-4 by default.
+    check(&render_esim_activation(&activation, false), "redacted");
+    check(&render_esim_activation(&activation, true), "show_full");
+
+    let mut activated = activation.clone();
+    activated["status"] = Value::String("activated".to_string());
+    check(&render_esim_activation(&activated, false), "activated");
+
+    // An unrecognised status falls back to `● <UPPER>`.
+    let mut weird = activation.clone();
+    weird["status"] = Value::String("weird".to_string());
+    check(&render_esim_activation(&weird, false), "odd_status");
+
+    // A bare (non-"LPA:") code gets the `LPA:1$` prefix.
+    let mut bare = activation.clone();
+    bare["activationCode"] = Value::String("smdp.x$Y".to_string());
+    check(&render_esim_activation(&bare, false), "bare_code");
+
+    // Empty payload → the placeholder QR + dashes, not a panic.
+    check(
+        &render_esim_activation(&serde_json::json!({}), false),
+        "empty",
+    );
+}

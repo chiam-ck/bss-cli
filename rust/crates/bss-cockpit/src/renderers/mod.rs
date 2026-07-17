@@ -3,6 +3,7 @@
 pub mod boxes;
 pub mod catalog;
 pub mod customer;
+pub mod esim;
 pub mod fmt;
 pub mod order;
 pub mod subscription;
