@@ -8,6 +8,7 @@
 
 pub mod catalog;
 pub mod clock;
+pub mod order;
 pub mod som;
 pub mod subscription;
 pub mod usage;

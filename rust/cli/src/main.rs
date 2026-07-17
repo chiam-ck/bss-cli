@@ -40,6 +40,8 @@ enum Command {
     Catalog(commands::catalog::CatalogArgs),
     /// Time helpers (v0.1 = wall clock).
     Clock(commands::clock::ClockArgs),
+    /// Manage commercial orders (TMF622).
+    Order(commands::order::OrderArgs),
     /// Service order + service inventory (SOM).
     Som(commands::som::SomArgs),
     /// Manage subscriptions + VAS.
@@ -64,6 +66,7 @@ async fn main() -> ExitCode {
     match cli.command {
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
+        Some(Command::Order(args)) => commands::order::run(args).await,
         Some(Command::Som(args)) => commands::som::run(args).await,
         Some(Command::Subscription(args)) => commands::subscription::run(args).await,
         Some(Command::Usage(args)) => commands::usage::run(args).await,
