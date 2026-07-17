@@ -124,11 +124,81 @@ regression). **29 golden cases green.**
   RFS list twice.** v0.1's decomposition is 1 CFS → 2 RFS so it never bites, but
   it is reproduced faithfully — "fixing" it would be a behaviour change (R5).
 
-**Remaining in P6c:** the `catalog` / `esim` / `trace` renderers + `dispatch`
-(`esim` needs QR-matrix parity with the Python `qrcode` lib); `chrome_filter::
-strip_fake_propose`; `cockpit.py` (1,212 LOC — chat thread, SSE, `/confirm`, slash
-commands); the CRM screens (customers / cases / orders / catalog / subscriptions /
-search); settings + branding + handoff.
+**s2 (e–h) — the rest of the renderer family.** `order` (the SOM decomposition
+tree — the RFS loop is nested *inside* the CFS loop in the oracle, so two CFS
+nodes render the RFS list twice; v0.1 is 1 CFS → 2 RFS so it never bites, and
+"fixing" it would be a behaviour change — R5), `catalog` (the `%g`-vs-`str()`
+split in one function; `inf`-sinking stable sort; `expiryHours: 0` is falsy → the
+dash), `esim`, and `dispatch`.
+
+**⚠️ `dispatch` is the single rendering rule.** Its 18-tool set was diffed exactly
+against the Python `RENDERER_DISPATCH` keys and is now **inventory-locked** — a
+tool silently dropping out downgrades to raw JSON on both surfaces with nothing
+failing. One deliberate divergence: Python wraps the renderer in
+`except Exception: return None`; the Rust renderers are total over `Value`, so
+there is no exception to catch and a panic would be a **bug, not a fallback** —
+left un-caught so it surfaces in tests.
+
+**⚠️ RESOLVED SEAM — the eSIM ASCII QR is NOT byte-identical (human call).** See
+`04-RISKS-AND-DECISIONS.md` §"Resolved seam". python-qrcode and the Rust `qrcode`
+crate encode the same LPA payload into different matrices — different **mode
+segmentation** *and* a different mask. Forcing the mask is not enough (proven by
+driving the crate's canvas with mask 7, python's pick, and still diverging), which
+locates it in the data encoding. Both are valid QRs scanning to the identical
+string; both pick the same *version*, so the card's dimensions are unchanged. The
+test asserts **byte equality on every non-QR line** and the QR block on its
+**functional** contract only. **This is the one place in the port where
+byte-identical is knowingly not the standard.**
+
+### Phase 6c slice 3 — the cockpit routes (a–c) — 🚧 IN PROGRESS (2026-07-15)
+
+**s3a `guards`.** The pure, rule-bound guard logic from `cockpit.py`.
+**⚠️ THE FINDING: the cockpit has its OWN destructive list.**
+`_DESTRUCTIVE_PREFIXES` (33 prefix entries) is **not**
+`bss_orchestrator.safety.DESTRUCTIVE_TOOLS` (11 exact entries); they overlap only
+partially, and CLAUDE.md names safety's as *"the destructive list"*. It isn't
+drift, quite — the two have different jobs: **safety's decides what the loop
+blocks; the cockpit's decides what gets staged as a `/confirm` proposal.** A
+broader staging list is harmless. The direction that *would* hurt is a tool the
+loop blocks but the cockpit can't stage — the operator hits
+`DESTRUCTIVE_OPERATION_BLOCKED` with **no `/confirm` prompt to authorise it**.
+That set is empty *only because* `admin.force_state` /
+`admin.reset_operational_data` aren't in the `operator_cockpit` profile — an
+invariant of the **profile**, not the code, so it is now a **test** that fires if
+someone adds `admin.*` rather than stranding an operator at runtime. Also ported:
+the tool-recap suppressor (a `<pre>` bubble, or **2+** canonical `Header:` lines —
+one is legitimate commentary, hence the threshold) and the v0.20 citation guard.
+
+**s3b `sessions`.** The index's bucketing/humanising/title logic, clock injected.
+The buckets are **midnight-anchored, not rolling**: 23:59 yesterday is "Yesterday"
+despite being <24h ago, and 8 days back is "Older" despite being inside a rolling
+week. A rolling implementation passes casual testing and drifts at the edges —
+both sides of every cut are pinned, as are `%b %d` zero-padding (`Apr 03`) and the
+80-vs-81 truncation boundary.
+
+**s3c `turn`.** The transcript-block parser + `plan_turn()` — where the turn's
+*correctness* lives (does the LLM run, on what prompt, destructive or not),
+extracted from the SSE plumbing and tested. Pinned: an **answered** user message
+replays instead of re-running (page reloads are free) while a **trailing tool row
+is not an answer** (interrupted turn → still drives); the **last** user block is
+the prompt; and **`/confirm` is a `startswith` guard** — *"should I type /confirm
+now?"* must NOT authorise, or an LLM echoing the word could self-authorise a
+destructive turn. The v0.13.1 interceptor authorises even with no stashed pending
+row (models leak tool-call markup as text, so nothing gets stashed while the
+operator's intent stands) — one turn only; the policy layer stays the server gate.
+
+**⚠️ Carried into the SSE slice: the cockpit turn is DETACHED (v1.6.1).** It runs
+in a task that persists its results *no matter what the socket does*, and a
+reconnect attaches as an **observer** (`_INFLIGHT`) instead of re-driving. This is
+**semantically opposite** to the P6b self-serve chat, where a dropped receiver
+*cancels* the turn — so `astream_once_to`'s `false`-means-stop sink must **not** be
+pattern-matched here.
+
+**Remaining in P6c:** the `trace` renderer; `chrome_filter::strip_fake_propose`;
+the rest of `cockpit.py` (thread page, `_render_tool_row_as_pre`, focus snapshot,
+the ~440-line SSE turn driver + `_INFLIGHT`); the CRM screens (customers / cases /
+orders / catalog / subscriptions / case / search, ~1.6k LOC); settings + branding +
+handoff (~360 LOC). Then **P6b's prod-only webhooks** and **P6 acceptance**.
 
 ---
 
