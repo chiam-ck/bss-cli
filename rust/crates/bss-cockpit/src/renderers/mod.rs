@@ -3,5 +3,6 @@
 pub mod boxes;
 pub mod customer;
 pub mod fmt;
+pub mod order;
 pub mod subscription;
 pub mod tables;

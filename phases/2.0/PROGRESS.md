@@ -64,6 +64,74 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6c slices 1–2 — cockpit skeleton + the ASCII renderers — 🚧 IN PROGRESS (2026-07-15)
+
+**s1 — skeleton + the two foundations.** The `portals/csr` crate: config (no auth
+settings — v0.13 retired the CSR login), branding-aware MiniJinja templating
+reusing the existing Jinja templates via the same two-dir ChoiceLoader as
+self-serve, the static mounts, `/health`, and the **`operator_cockpit` named-token**
+client bundle (so `audit.domain_event.service_identity` distinguishes cockpit
+traffic). No inbound token middleware, by doctrine (DECISIONS 2026-05-01). Plus:
+
+- **`views.rs`** — the CLAUDE.md rule *"read payload keys through `field`"* made
+  concrete: BSS mixes TMF camelCase with snake_case DTOs, and hardcoding one family
+  blanks fields silently (the v0.13 case page did exactly that). Golden-checked;
+  the subtle cases all matter — `False`/`0` are **real values** while `None`/`""`
+  are skipped, `fmt_dt` degrades a non-ISO string to its first 16 chars rather than
+  erroring, `flatten_case`'s ticket count prefers the id list *unless empty*.
+- **`bss-orchestrator::autonomy`** — `read_autonomy_mode()` was **not ported in
+  P5c**. It's a doctrine-guarded single seam and the cockpit boot is its consumer,
+  so it lands here. Fail-closed tested: a typo refuses the boot; `"true"` is not a
+  sneaky alias for `batched`.
+- **Boot-order papercut fixed** (noted in P6b s5): the cockpit inits telemetry
+  **before** state construction, matching Python's lifespan, so store/client boot
+  warnings are visible rather than emitted into a void. **self-serve's `main.rs`
+  still has the old order — an owed follow-up.**
+
+**s2 (a–d) — the ASCII renderers**, paying down the P5b debt. All **byte-golden**
+against the oracle (fixtures captured from the *live* Python renderers; the ASCII
+is fed to the LLM as well as the operator, so one shifted column is a real
+regression). **29 golden cases green.**
+
+- **s2a `boxes`** — `state_dot` / `progress_bar` / `box` / `double_box` /
+  `format_msisdn` / `format_iccid`. The seam is **character-vs-byte width**:
+  Python's `len()`/slicing/`ljust()` count *characters*, Rust's `len()` counts
+  *bytes*, and every framed line carries `●`/`—`/`█`. Pinned by tests asserting
+  every row is exactly `width` chars and a 200-rune line truncates on the char
+  boundary. **Capturing goldens caught my hand-written expected strings being
+  wrong** (mis-counted the top border) — the oracle is the authority, not a
+  reading of the format string.
+- **s2b `fmt` + `subscription`** — the flagship view, plus the Python format
+  primitives the family depends on. Three things Rust silently gets wrong:
+  **`round()` is banker's** (`round(2.5)==2`; Rust's `f64::round` gives 3 — a
+  bundle on exactly `x.5%` renders a percent off); **`str.title()`** treats any
+  non-alpha as a word boundary so `data_roaming` → `Data_Roaming`; padding counts
+  chars. Also faithful: `not total` catches `0.0`, `timedelta.days` **floors**
+  toward −∞, an unparseable date passes through raw.
+- **s2c `tables`** — ticket / prov / inventory / case / port_request. case's title
+  is `{subject!r:<40}` → an apostrophe flips the repr to **double** quotes (the
+  same repr seam as the P6b s14d audit text); ticket's case id comes from the
+  **last** matching `relatedEntity` (no `break`); port_request omits the
+  rejection-reason row entirely when absent.
+- **s2d `customer`** — the 360. **`_bundle_pct` truncates (`int(...)`) while the
+  subscription renderer's balance rows use banker's `round()`** — two percent
+  calculations, two rounding rules, one package. Reproduced rather than tidied into
+  agreement (R5). Likewise `contact_line` lets a later medium of the same type
+  overwrite an earlier one, deliberately unlike `bss_csr.views.flatten_customer`'s
+  `if not email` guard.
+- **`order`** — the SOM decomposition tree (the trickiest layout). **The RFS loop
+  is nested inside the CFS loop in the oracle, so two CFS nodes would render the
+  RFS list twice.** v0.1's decomposition is 1 CFS → 2 RFS so it never bites, but
+  it is reproduced faithfully — "fixing" it would be a behaviour change (R5).
+
+**Remaining in P6c:** the `catalog` / `esim` / `trace` renderers + `dispatch`
+(`esim` needs QR-matrix parity with the Python `qrcode` lib); `chrome_filter::
+strip_fake_propose`; `cockpit.py` (1,212 LOC — chat thread, SSE, `/confirm`, slash
+commands); the CRM screens (customers / cases / orders / catalog / subscriptions /
+search); settings + branding + handoff.
+
+---
+
 ### Phase 6b slice 14 — chat SSE (a–e) — ✅ PORTED (2026-07-15)
 
 **P6b self-serve is now feature-complete.** The last customer-facing feature, in

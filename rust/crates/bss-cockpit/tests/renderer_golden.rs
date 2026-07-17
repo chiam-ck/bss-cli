@@ -390,3 +390,100 @@ fn customer_360_renders_byte_identical_to_the_oracle() {
         "interactions_overflow",
     );
 }
+
+#[test]
+fn order_tree_renders_byte_identical_to_the_oracle() {
+    use bss_cockpit::renderers::order::{render_order, OrderCtx};
+    use std::collections::HashMap;
+
+    let want = golden("order");
+    let chk = |got: String, name: &str| assert_ascii_eq(&got, want[name].as_str().unwrap(), name);
+    let arr = |v: Value| v.as_array().cloned().unwrap_or_default();
+
+    // Header + summary, no decomposition.
+    chk(
+        render_order(
+            &serde_json::json!({
+                "id": "ORD-014", "state": "completed", "customerId": "CUST-001",
+                "items": [{"offeringId": "PLAN_M"}],
+                "orderDate": "2026-07-01T10:00:00+00:00",
+                "completedDate": "2026-07-01T10:00:04+00:00",
+            }),
+            &OrderCtx::default(),
+        ),
+        "bare",
+    );
+
+    // ── the full SOM tree: CFS → 2 RFS → tasks, a ⚠ failed task with an
+    //    attempts suffix, a task duration, and the → subscription tail ────────
+    let sos = arr(serde_json::json!([{"id": "SO-022", "state": "completed"}]));
+    let mut services_by_so = HashMap::new();
+    services_by_so.insert(
+        "SO-022".to_string(),
+        arr(serde_json::json!([
+            {"id": "SVC-101", "serviceType": "CFS", "name": "MobileBroadband", "state": "completed"},
+            {"id": "SVC-102", "serviceType": "RFS", "name": "Data", "state": "completed"},
+            {"id": "SVC-103", "serviceType": "RFS", "name": "Voice", "state": "completed"},
+        ])),
+    );
+    let mut tasks_by_service = HashMap::new();
+    tasks_by_service.insert(
+        "SVC-102".to_string(),
+        arr(serde_json::json!([
+            {"id": "PTK-001", "taskType": "hlr.activate", "state": "completed",
+             "startedAt": "2026-07-01T10:00:00+00:00",
+             "completedAt": "2026-07-01T10:00:01.300000+00:00"},
+            {"id": "PTK-003", "taskType": "ocs.allocate_quota", "state": "failed", "attempts": 2},
+        ])),
+    );
+    tasks_by_service.insert(
+        "SVC-103".to_string(),
+        arr(serde_json::json!([
+            {"id": "PTK-004", "taskType": "hlr.subscribe", "state": "completed"}
+        ])),
+    );
+    chk(
+        render_order(
+            &serde_json::json!({
+                "id": "ORD-014", "state": "completed", "customerId": "CUST-001",
+                "items": [{"offeringId": "PLAN_M"}],
+                "orderDate": "2026-07-01T10:00:00+00:00",
+                "completedDate": "2026-07-01T10:00:04+00:00",
+            }),
+            &OrderCtx {
+                service_orders: &sos,
+                services_by_so,
+                tasks_by_service,
+                subscription_id: Some("SUB-007".to_string()),
+            },
+        ),
+        "full_tree",
+    );
+
+    // A service order with nothing attached gets the placeholder row.
+    chk(
+        render_order(
+            &serde_json::json!({"id": "ORD-015", "state": "in_progress"}),
+            &OrderCtx {
+                service_orders: &arr(serde_json::json!([{"id": "SO-023", "state": "pending"}])),
+                ..Default::default()
+            },
+        ),
+        "no_services",
+    );
+
+    // Two SOs → the first uses ├─ / │, the last └─ / spaces.
+    chk(
+        render_order(
+            &serde_json::json!({"id": "ORD-016", "state": "in_progress"}),
+            &OrderCtx {
+                service_orders: &arr(serde_json::json!([
+                    {"id": "SO-1", "state": "completed"},
+                    {"id": "SO-2", "state": "failed"},
+                ])),
+                ..Default::default()
+            },
+        ),
+        "two_so",
+    );
+}
