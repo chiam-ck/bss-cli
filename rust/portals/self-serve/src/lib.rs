@@ -15,6 +15,7 @@
 pub mod account_reads;
 pub mod account_writes;
 pub mod auth;
+pub mod chat_session;
 pub mod clients;
 pub mod config;
 pub mod dashboard;
