@@ -64,34 +64,122 @@ is to make that assertion **brand-aware** (assert the configured `brand_name`, o
 the structural `"self-serve"`/`"Sign in"`/`"Browse plans"` parts), not to change
 portal behaviour. Tracked as the branding half of the P6 acceptance task.
 
+### Phase 6b slice 14 — chat SSE (a–e) — ✅ PORTED (2026-07-15)
+
+**P6b self-serve is now feature-complete.** The last customer-facing feature, in
+five sub-slices, each committed + gated:
+
+**s14a — `chat_caps`** (`orchestrator/bss_orchestrator/chat_caps.py` →
+`bss-orchestrator/src/chat_caps.rs`). Hourly sliding window (in-memory,
+per-customer + per-ip), monthly cost cap over `audit.chat_usage`, token×rate cost
+accounting. Two deliberate port shapes:
+- The cap **decision** is factored out of the IO as a pure `decide()`, so the
+  rules (hourly-first ordering, month/year rollover `retry_at`) unit-test with no
+  database — same shape as `build_attest_body` (s6).
+- The **pool is injected**, not lazily self-created. Python builds its own
+  `AsyncEngine` because the orchestrator library has no handle on the portal's
+  engine; in-process in Rust the portal already owns a `PgPool` against the same
+  Postgres. Same DB, same SQL, same semantics.
+- Fail-closed preserved + tested (no pool / DB error → `cap_check_failed`, never
+  allowed). `record_ip_request` ported for parity though it has **no caller in the
+  oracle either** — vestigial, documented (cf. the `tok_FAIL_` branches, s7).
+- Cost math golden-checked against the running oracle: **65 / 100 / 0 / 1 / 1000**
+  cents + period `202604`, including both warning event names.
+
+**s14b — `astream_once_to`.** P5c left `astream_once` as collect-to-`Vec` with a
+note that "a true streaming variant lands with the SSE portal wiring in P6". The
+loop now emits through a `&mut (dyn FnMut(AgentEvent) -> bool + Send)` sink;
+`astream_once` is a thin collecting wrapper, so **every existing caller and test is
+untouched**. The sink's `bool` is the Rust shape of Python's `GeneratorExit`.
+*Worth recording:* the three points where the Python **consumer** returns early
+(ownership violation, error, final message) are all **already terminal in the loop
+itself**, so the sink form emits exactly the collecting form's sequence — no tool
+call can execute "past" an early return. Pinned both ways by test.
+
+**s14c — conversation + turn stores** (`chat_session.py`). Python hands out the
+live object and the SSE handler mutates it in place (`conv.append`, `turn.done =
+True`) → `Arc<Mutex<..>>` values, so the handler gets the same aliased state, not a
+copy. **`transcript_text()` is a frozen contract** (SHA-256'd into
+`crm.case.chat_transcript_hash`): golden-checked three ways against the oracle and
+**pinned by digest** (`cad2a20c…57a2`) so the join/trailing-newline rules can't
+drift silently.
+
+**s14d — the ownership trip-wire, finally wired.** Closes the P5c deferral. Until
+now `assert_owned_output` was exported but **never called** — the Rust customer
+chat would have had **no output-ownership enforcement at all**, a security
+regression vs the oracle. Now wired exactly where Python has it (after the stuck
+bail; gated on actor-bound && `!is_error` && name). Needed `record_violation`
+(best-effort CRM interaction → server-side `audit.domain_event`) and an **owed
+client fix**: `log_interaction_full` — the 3-arg port hardcoded
+`direction="inbound"` because its one caller wanted the defaults, and
+`record_violation` needs `outbound`. Same pattern as `attest_kyc` (s6): the 3-arg
+form is now a defaults wrapper, zero churn.
+- **Golden-checking caught a real bug:** Python's `{tool_name!r}` is a repr →
+  **single** quotes; Rust's `{:?}` emits **double** quotes, which would have
+  silently drifted the permanent audit text. Fixed via `py_repr_str`.
+- Pinned: summary/body wording, `py_repr` across 7 value shapes, the interaction
+  wire body incl. key order (D9), and **char-wise** (not byte-wise) transcript
+  truncation — Python's `s[:1000]` counts characters and a byte slice would panic
+  mid-codepoint.
+
+**s14e — the routes.** `/chat`, `/chat/widget`, `POST /chat/message`, `POST
+/chat/reset`, `GET /chat/events/:session_id`. `AppState` gains
+`chat_conversations` / `chat_turns` / `chat_caps` / `chat_registry`. The registry
+is the chat agent's **own** client bundle (3 public catalog reads + the `*.mine`
+wrappers), separate from `PortalClients` — mirroring Python, where the orchestrator
+holds its own `get_clients()`. New `BSS_MEDIATION_URL` (`usage.history_mine`).
+SSE streams the pre-encoded `bss_portal_ui` frames as **raw bytes** rather than
+through axum's `Sse` type, which would double-encode what `format_frame` already
+built. The v0.13.1 escalation-hallucination detector verified against the **real**
+oracle regex (all 9 first-person-active claims trip; all 5 past-tense/third-person
+recaps don't — a customer asking "what's my case ID" must not be false-positived).
+
+**Live-smoked** against the tech-vm stack (the axum-0.7 `:param` lesson from s9 —
+unit tests cannot see route registration):
+- all 5 routes registered; unauth → 303 login, **not** 404
+- unknown session → 404; cross-customer → 403 + the warn log, and the SSE host
+  correctly **absent** from the non-owner's page render
+- cap check hit the real `audit.chat_usage` and allowed (no fail-closed trip)
+- **a real OpenRouter turn streamed live** → `live` → tool pill → bubble → `done`,
+  proving progressive streaming (not batched-at-end)
+- cost accounting wrote a real `audit.chat_usage` row that **sits alongside rows
+  the Python portal wrote on 2026-07-12** — same table, same shape
+- the **v1.5.1 fallback-rate path fired live**: the deployed model
+  (`gemma-4-31b-it`) is in neither the rate table nor the configured-model
+  fallback, so it took the conservative ceiling. The Python oracle does the
+  identical thing — an observation about the stack's config, **not a port bug**,
+  and not ours to "fix" under the behaviour freeze (R5).
+
+Tool calls failed in the smoke because BSS services are docker-internal
+(`http://crm:8000`) and not host-exposed from this dev box — the known limitation;
+they land in the P6 hero-suite acceptance. The graceful degradation
+(`chat.prompt_context_load_failed` → `(loading)` placeholders, turn continues) is
+itself correct behaviour and was observed working.
+
+**Verified:** workspace `clippy -D warnings` clean; **111 test groups green**.
+
+**P6b self-serve status.** The entire portal is ported (s1–s14). The only
+remaining piece is the **prod-only webhooks** (`/webhooks/resend`,
+`/webhooks/didit`) — Resend + Didit are deferred throughout this port (sandbox runs
+logging-email + prebaked-KYC, so they are never hit, and they're not on the hero
+path). Signature verification is ready in `bss-webhooks` (P6a); they land with
+their DB stores when the prod providers do. **Next: P6c (cockpit) + P6 acceptance.**
+
+---
+
 ### Phase 6b slice 13 — session-status JSON API + P6b remaining-work note — ✅ PORTED (2026-07-14)
 
 `GET /api/session/:session_id` — the read-only JSON projection of the in-memory
 signup session that the **scenario runner's HTTP step** polls (`done` + the
 resulting ids). Public (no session), matching the Python route.
 
-**P6b self-serve status.** The entire customer-facing **account + signup surface**
-is now ported and route-smoked (s1–s13): public pages, auth/login, step-up,
-signup funnel (create→KYC→COF→order→poll→confirmation), dashboard, profile
+**P6b self-serve status (as of this slice).** The entire customer-facing **account
++ signup surface** is ported and route-smoked (s1–s13): public pages, auth/login,
+step-up, signup funnel (create→KYC→COF→order→poll→confirmation), dashboard, profile
 (+cross-schema email change), payment-methods, plan-change, cancel, top-up,
-billing, eSIM, msisdn picker, activation, session-status API. **Two pieces remain
-before the P6b tag:**
-
-1. **Chat SSE** (`/chat`, `/chat/events/:id`, `/chat/message`, `/chat/reset`) —
-   the orchestrator-mediated customer chat. `bss_orchestrator::astream_once` +
-   ownership + `customer_self_serve` profile are ported (P5c), but the portal
-   still needs the **SSE streaming route** + two unported subsystems:
-   `bss_orchestrator.chat_caps` (per-identity cost/turn caps) and the
-   `ChatConversationStore` (per-customer history). A dedicated slice — the last
-   real customer feature.
-2. **Webhooks** (`/webhooks/resend`, `/webhooks/didit`) — **prod-only** receivers
-   for Resend (email delivery) + Didit (KYC), both deferred throughout this port
-   (sandbox runs logging-email + prebaked-KYC, so these are never hit). Signature
-   verification is ready in `bss-webhooks` (P6a); they land with their DB stores
-   when the prod providers do. Not on the sandbox hero path.
-
-Everything the **hero scenarios** exercise on the sandbox stack is ported except
-the chat SSE flow. P6c (cockpit) + P6 acceptance follow.
+billing, eSIM, msisdn picker, activation, session-status API. Two pieces remained
+at s13: **chat SSE** (→ landed in s14) and the **prod-only webhooks** (still
+outstanding; see the s14 entry above for the current status).
 
 ---
 

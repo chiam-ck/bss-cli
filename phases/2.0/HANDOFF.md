@@ -16,13 +16,14 @@ the Rust portals/CLI link them. **P5c is DONE** — all 110 tools + the hand-rol
 ReAct loop + guard stack + `MockChatModel` fixture player + the v0.12 ownership trip-
 wire + verbatim prompts + the `OpenRouterChatModel` production client. Validated
 end-to-end (a live OpenRouter turn drove the loop against the running Rust services).
-Deferred to P6 (route-coupled): `chat_caps` + `ownership::record_violation`.
+Deferred to P6 (route-coupled): `chat_caps` + `ownership::record_violation` —
+**both landed in P6b s14**.
 
 **➡️ Phase 6 — the portals — 🚧 IN PROGRESS.** Self-serve 9001 + cockpit 9002 link the
-P5 library crates, add the CRM screens + chat routes (wiring `chat_caps` + the
-ownership `record_violation` + `build_customer_chat_prompt`), and are the first
-acceptance target for the 4 standing hero failures. Decomposition: **P6a** shared
-crates → **P6b** self-serve → **P6c** csr. See `03-PHASES.md` §Phase 6 + PROGRESS §Phase 6.
+P5 library crates, add the CRM screens + chat routes, and are the first acceptance
+target for the 4 standing hero failures. Decomposition: **P6a** shared crates ✅ →
+**P6b** self-serve ✅ (feature-complete) → **P6c** csr ⬅️ *next*. See
+`03-PHASES.md` §Phase 6 + PROGRESS §Phase 6.
 
 - **P6a — the shared crates — ✅ DONE (all 4 slices).**
   - `bss-branding` (read path + THEMES + marks + css + assets + logo helper;
@@ -38,8 +39,8 @@ crates → **P6b** self-serve → **P6c** csr. See `03-PHASES.md` §Phase 6 + PR
   - `bss-webhooks` (signature verify svix/stripe/didit_hmac + redaction +
     idempotency) — confirmed parity; used by the prod-only webhook receivers.
 
-- **P6b — self-serve (9001) — 🚧 ~90% (s1–s13 done, chat SSE remains).** The entire
-  customer-facing **account + signup surface** is ported and route-smoked:
+- **P6b — self-serve (9001) — ✅ FEATURE-COMPLETE (s1–s14).** The entire
+  customer-facing surface is ported and route-smoked:
   - **s1–s4:** app skeleton + public surface, `/plans` (first catalog read),
     session middleware + DB session layer + security allowlist, auth/login
     (OTP + magic-link) end-to-end.
@@ -50,15 +51,28 @@ crates → **P6b** self-serve → **P6c** csr. See `03-PHASES.md` §Phase 6 + PR
     payment-methods (list/add/remove/set-default, mock), subscription writes
     (plan-change/cancel/top-up, all step-up-gated) + billing history & eSIM reads,
     `GET /api/session/:session_id` (scenario-runner poll surface).
+  - **s14 (a–e): chat SSE** — `chat_caps` (fail-closed; pure `decide()`; injected
+    pool), `astream_once_to` (the streaming form P5c deferred; sink returns `false`
+    = consumer gone), the conversation/turn stores (`transcript_text` pinned **by
+    SHA-256** — it lands in `crm.case.chat_transcript_hash`), the **ownership
+    trip-wire finally wired into the loop** (it was exported but never called —
+    the Rust chat had *no* output-ownership enforcement), and the 5 routes.
+    Live-smoked: a real OpenRouter turn streamed `live` → tool pill → bubble →
+    `done`, and cost accounting wrote an `audit.chat_usage` row **alongside rows
+    the Python portal wrote** — same table, same shape.
   - **Reusable sensitive-write pattern** established: `RawForm` → `parse_form` →
     `require_linked_customer` → `check_step_up` → ownership check → one bss-clients
     write → `audit` → redirect/re-render (helpers `pub(crate)` in `profile.rs`).
-  - **Two pieces remain before the P6b tag:** (1) **chat SSE** — the last real
-    customer feature; the orchestrator side is ported (P5c) but the portal needs
-    the SSE streaming route + `chat_caps` (per-identity cost/turn caps) +
-    `ChatConversationStore` (per-customer history). (2) **webhooks**
-    (`/webhooks/resend`, `/webhooks/didit`) — **prod-only**, deferred throughout
-    (sandbox runs logging-email + prebaked-KYC), never on the hero path.
+  - **One piece remains before the P6b tag:** the **webhooks** (`/webhooks/resend`,
+    `/webhooks/didit`) — **prod-only**, deferred throughout (sandbox runs
+    logging-email + prebaked-KYC), never on the hero path. Signature verification
+    is ready in `bss-webhooks`; they land with their DB stores when the prod
+    providers do.
+  - **⚠️ The live stack's LLM model is in no rate table.** `gemma-4-31b-it` is in
+    neither `MODEL_RATES_USD_PER_M_TOK` nor the configured-model fallback, so chat
+    cap accounting always takes the conservative `FALLBACK_RATE` ceiling. **Python
+    does the identical thing** — an oracle config observation, not a port bug, and
+    not ours to change under the behaviour freeze.
   - **⚠️ axum is 0.7, NOT 0.8** — path params are `:param`, not `{param}`. Registering
     `/signup/{plan_id}` made the whole funnel 404; only the live smoke caught it (unit
     tests can't see route-registration syntax). Live-smoke every new route.
@@ -71,10 +85,9 @@ crates → **P6b** self-serve → **P6c** csr. See `03-PHASES.md` §Phase 6 + PR
   not change portal behaviour. (Confirmed by the human.)
 - Remaining 2 standing failures: `/auth/check-email` 400, Jaeger `spanCount`.
 
-**Next:** finish P6b with the **chat SSE** slice (port `chat_caps` + the conversation
-store, then the axum SSE route + `AgentOwnershipViolation`→generic reply +
-cap-trip→templated SSE), then **P6c** (cockpit 9002 + CRM screens), then **P6
-acceptance** (hero 19/19, incl. making the branding assertion brand-aware).
+**Next:** **P6c** (cockpit 9002 + CRM screens), then **P6 acceptance** (hero 19/19,
+incl. making the branding assertion brand-aware). P6b's only remainder is the
+prod-only webhooks.
 
 <details><summary>P5c slice history (1–16) — all ✅</summary>
 
@@ -340,27 +353,21 @@ fields yet). The lapin/sqlx event-plane wiring (relay + safe consumer) landed in
 - **Commit/tag/push only when the human asks.** `main` in the Python sense is the
   oracle; ship on `2.0`.
 
-## What to do next: finish P6b (chat SSE), then P6c cockpit, then P6 acceptance
+## What to do next: P6c cockpit, then P6 acceptance
 
-Phases 4 and 5 are done. **P6a (shared crates) is done; P6b self-serve is ~90% —
-only the chat SSE flow remains.** See [`03-PHASES.md`](03-PHASES.md) §Phase 6 and
-PROGRESS §Phase 6.
+Phases 4 and 5 are done. **P6a (shared crates) is done; P6b self-serve is
+feature-complete (s1–s14)** — only the prod-only webhooks remain, and they're not
+on the hero path. See [`03-PHASES.md`](03-PHASES.md) §Phase 6 and PROGRESS §Phase 6.
 
-- **P6b last slice — chat SSE** (`portals/self-serve/bss_self_serve/routes/chat.py`,
-  ~578 LOC → `rust/portals/self-serve/src/chat.rs`): `/chat`, `/chat/widget`,
-  `/chat/message`, `/chat/reset`, `/chat/events/:session_id`. The orchestrator side
-  is already ported (P5c: `astream_once`, `AgentEvent`, `AgentOwnershipViolation`,
-  `OWNERSHIP_PATHS`, `OpenRouterChatModel`, the `CUSTOMER_SELF_SERVE` profile). Still
-  to port: **`bss_orchestrator.chat_caps`** (`check_caps`/`record_chat_turn` —
-  per-identity cost/turn caps) and the **`ChatConversationStore`** (per-customer
-  history), then the axum SSE route itself. `AgentOwnershipViolation` → generic
-  safety reply; cap-trip → templated SSE frame. **Don't** add the ITERATIVE FLOW
-  block to the customer chat prompt (doctrine guard).
 - **P6c — csr/cockpit (9002) + CRM screens** (~65 endpoints): links the same P5
   library crates; adds the Customers/Cases/Orders/Catalog/Subscription screens
   (direct `bss-clients` reads/writes, section-degrading) with the v1.6 two-step
-  confirm on destructive/money-moving verbs, plus the cockpit chat (wiring
-  `chat_caps` + ownership `record_violation` + `build_cockpit_prompt`).
+  confirm on destructive/money-moving verbs, plus the cockpit chat
+  (`build_cockpit_prompt` + the `/confirm` pending-destructive contract + the P5b
+  `Conversation` store). `chat_caps`, `record_violation` and the streaming
+  `astream_once_to` all landed in P6b s14 — P6c **consumes** them rather than
+  porting them. Still deferred from P5b and owed here: the cockpit **ASCII
+  renderers** + `strip_fake_propose`/`postprocess::*`.
 - **P6 acceptance** — hero suite to **19/19**: close the 3 real standing failures
   (`/auth/check-email` 400, Jaeger `spanCount`, and whatever the portal port surfaces)
   and make the **branding-text assertion brand-aware** (it's a stale string, not a
