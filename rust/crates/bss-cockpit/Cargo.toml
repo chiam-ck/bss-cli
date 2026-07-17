@@ -24,10 +24,14 @@ fancy-regex = { workspace = true }
 tracing = { workspace = true }
 indexmap = { version = "2", features = ["serde"] }
 toml = "0.8"
+# Comment-preserving TOML editor for the branding writer — operator comments in
+# other settings.toml sections must survive a `[branding]` save (v1.8 doctrine).
+toml_edit = "0.22"
 rand = { workspace = true }
 
 
 bss-clock = { workspace = true }
+bss-branding = { workspace = true }
 bss-db = { workspace = true }
 
 [dev-dependencies]

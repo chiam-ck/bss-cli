@@ -27,7 +27,9 @@ pub mod renderers;
 
 pub use chrome_filter::{is_cockpit_chrome, strip_fake_propose, ASSISTANT_CHROME_PREFIXES};
 pub use config::{
-    current, reset_cache, CockpitConfig, CockpitSettings, ConfigError, OPERATOR_ACTOR,
+    current, remove_branding_logo, reset_cache, write_branding_logo, write_branding_settings,
+    write_operator_md, write_settings_toml, CockpitConfig, CockpitSettings, ConfigError,
+    WriteError, OPERATOR_ACTOR,
 };
 pub use conversation::{
     Conversation, ConversationError, ConversationMessage, ConversationStore, ConversationSummary,

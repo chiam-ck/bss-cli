@@ -540,6 +540,7 @@ dependencies = [
 name = "bss-cockpit"
 version = "0.1.0"
 dependencies = [
+ "bss-branding",
  "bss-clock",
  "bss-db",
  "chrono",
@@ -552,6 +553,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "toml",
+ "toml_edit 0.22.27",
  "tracing",
 ]
 
