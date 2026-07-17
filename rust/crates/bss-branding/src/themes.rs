@@ -17,7 +17,9 @@ use indexmap::IndexMap;
 
 /// One complete dark palette. Field names mirror the CSS custom properties in
 /// `portal_base.css` (`bg_elev` → `--bg-elev`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+// `Serialize` so the cockpit `/settings/branding` page can hand a palette straight
+// to its template (theme swatches + the live preview).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ThemePalette {
     pub id: &'static str,
     pub label: &'static str,

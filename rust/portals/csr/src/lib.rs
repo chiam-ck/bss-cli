@@ -12,17 +12,18 @@
 //! **`BSSApiTokenMiddleware` is deliberately NOT on this portal's inbound HTTP.**
 //! Outbound calls carry the cockpit's named token via [`clients`].
 //!
-//! **Done:** the app skeleton (config, branding-aware MiniJinja templating over
-//! the existing Jinja templates, static mounts, `/health`), [`views`] (the shared
-//! snake_case/camelCase-lenient payload helpers every screen reads through), the
-//! ASCII renderers (in `bss-cockpit`), the cockpit chat thread + SSE + `/confirm`,
-//! and the full v1.6 CRM surface: [`customers`], [`cases`], [`orders`],
-//! [`catalog`], [`subscriptions`], and [`search`]. The v1.6.1 two-step confirm is
-//! test-pinned across all ten destructive verbs in `tests/routes_crm.rs`.
-//!
-//! **Remaining:** settings + branding + handoff.
+//! The portal is fully ported. It carries the app skeleton (config, branding-aware
+//! MiniJinja templating over the existing Jinja templates, static mounts,
+//! `/health`), the shared [`views`] payload helpers, the ASCII renderers (in
+//! `bss-cockpit`), the cockpit chat thread with its SSE + `/confirm` flow, the full
+//! v1.6 CRM surface across [`customers`], [`cases`], [`orders`], [`catalog`],
+//! [`subscriptions`] and [`search`] (the v1.6.1 two-step confirm test-pinned over
+//! all ten destructive verbs in `tests/routes_crm.rs`), the [`handoff`] "Ask the
+//! agent" seam, and the operator [`settings`] + [`branding`] editors backed by the
+//! `bss_cockpit` config writers.
 #![forbid(unsafe_code)]
 
+pub mod branding;
 pub mod bubble;
 pub mod cases;
 pub mod catalog;
@@ -31,11 +32,13 @@ pub mod cockpit;
 pub mod config;
 pub mod customers;
 pub mod guards;
+pub mod handoff;
 pub mod inflight;
 pub mod orders;
 pub mod routes;
 pub mod search;
 pub mod sessions;
+pub mod settings;
 pub mod subscriptions;
 pub mod templating;
 pub mod tool_row;
@@ -187,6 +190,30 @@ pub fn build_router(state: AppState) -> Router {
         // Search — customer lookup + jump into a pinned cockpit session (v1.6).
         .route("/search", get(search::search))
         .route("/search/start_session", post(search::start_session))
+        // Handoff — "Ask the agent" from any CRM screen (v1.6).
+        .route("/cockpit/handoff", post(handoff::cockpit_handoff))
+        // Settings — OPERATOR.md + settings.toml editors (v0.13 PR8).
+        .route("/settings", get(settings::settings_page))
+        .route("/settings/operator", post(settings::save_operator_md))
+        .route("/settings/config", post(settings::save_config_toml))
+        // Branding — brand name / theme / mark / logo (v1.8). Static segments
+        // before nothing here (all fixed), but ordered for readability.
+        .route(
+            "/settings/branding",
+            get(branding::branding_page).post(branding::branding_save),
+        )
+        .route(
+            "/settings/branding/logo",
+            post(branding::branding_logo_upload),
+        )
+        .route(
+            "/settings/branding/logo/delete",
+            post(branding::branding_logo_delete),
+        )
+        .route(
+            "/settings/branding/preview",
+            get(branding::branding_preview),
+        )
         .nest_service("/static", ServeDir::new(templating::local_static_dir()))
         .nest_service(
             "/portal-ui/static",

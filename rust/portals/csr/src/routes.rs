@@ -71,9 +71,20 @@ pub fn write_result(
 /// Render `template` with `ctx`, or a 500 when the template errors. Mirrors the
 /// self-serve portal's helper.
 pub fn render(state: &AppState, template: &str, ctx: Value) -> Response {
+    render_with_status(state, template, ctx, StatusCode::OK)
+}
+
+/// [`render`] with an explicit status — the settings/branding error pages
+/// re-render the form with a 400 and the operator's unsaved input echoed back.
+pub fn render_with_status(
+    state: &AppState,
+    template: &str,
+    ctx: Value,
+    status: StatusCode,
+) -> Response {
     match state.env.get_template(template) {
         Ok(tpl) => match tpl.render(ctx) {
-            Ok(html) => Html(html).into_response(),
+            Ok(html) => (status, Html(html)).into_response(),
             Err(e) => {
                 tracing::error!(template = %template, error = %e, "cockpit.template.render_failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "template render failed").into_response()
