@@ -92,8 +92,10 @@ impl Clients {
 }
 
 /// The CLI request context: `actor="cli-user"`, `channel="cli"`, a fresh
-/// request id. Mirrors `use_cli_context()`.
-fn cli_ctx() -> RequestCtx {
+/// request id. Mirrors `use_cli_context()`. `pub(crate)` so the `trace` group — which
+/// builds its own ad-hoc Jaeger/Audit clients rather than the shared bundle — can scope
+/// its audit reads under the same context.
+pub(crate) fn cli_ctx() -> RequestCtx {
     RequestCtx {
         request_id: new_request_id(),
         actor: "cli-user".to_string(),

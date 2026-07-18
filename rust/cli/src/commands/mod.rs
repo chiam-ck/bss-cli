@@ -21,6 +21,7 @@ pub mod prov;
 pub mod som;
 pub mod subscription;
 pub mod ticket;
+pub mod trace;
 pub mod usage;
 
 use rust_decimal::Decimal;

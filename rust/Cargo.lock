@@ -575,6 +575,7 @@ dependencies = [
  "bss-telemetry",
  "chrono",
  "clap",
+ "reqwest",
  "rust_decimal",
  "serde_json",
  "tokio",

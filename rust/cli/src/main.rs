@@ -20,6 +20,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod commands;
+mod jaeger;
 mod runtime;
 
 /// `bss` — BSS-CLI, terminal-first, LLM-native telco BSS.
@@ -64,6 +65,8 @@ enum Command {
     Subscription(commands::subscription::SubscriptionArgs),
     /// Manage trouble tickets (TMF621).
     Ticket(commands::ticket::TicketArgs),
+    /// Query Jaeger traces + audit events.
+    Trace(commands::trace::TraceArgs),
     /// Usage simulation (TMF635 mediation).
     Usage(commands::usage::UsageArgs),
 }
@@ -96,6 +99,7 @@ async fn main() -> ExitCode {
         Some(Command::Som(args)) => commands::som::run(args).await,
         Some(Command::Subscription(args)) => commands::subscription::run(args).await,
         Some(Command::Ticket(args)) => commands::ticket::run(args).await,
+        Some(Command::Trace(args)) => commands::trace::run(args).await,
         Some(Command::Usage(args)) => commands::usage::run(args).await,
         // `bss` with no subcommand → the REPL (canonical cockpit). Not yet ported;
         // a following slice lands it. Fail loudly rather than silently no-op.
