@@ -28,6 +28,7 @@ bss-db = { workspace = true }
 bss-clock = { workspace = true }
 bss-cockpit = { workspace = true }
 bss-context = { workspace = true }
+bss-knowledge = { workspace = true }
 bss-orchestrator = { workspace = true }
 bss-telemetry = { workspace = true }
 

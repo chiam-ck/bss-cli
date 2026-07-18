@@ -123,7 +123,7 @@ adds the `AdminClient` (single reset_operational_data POST, 30s timeout) + a
 seven-service fan-out with Python's except-ladder error mapping and the
 `typer.prompt("Type 'reset' to confirm")` gate.
 
-**s15 — external-calls (`<pending>`).** The first CLI group that talks to Postgres
+**s15 — external-calls (`d4e4f53`).** The first CLI group that talks to Postgres
 directly rather than through a service HTTP client — the forensic `external_call`
 log is cross-provider triage data with no owning service. Wires `bss-db` (the shared
 `connect()` pool) + `sqlx` into the CLI crate for the first time. Read-only browser:
@@ -135,15 +135,24 @@ are the documented seam — cell values (`✓`/`✗`, `%m-%d %H:%M:%S`, `type:id
 `[:40]` error) match Python. Verified end-to-end against live Postgres (23 rows;
 provider/failures/aggregate/since/month-to-date all correct).
 
-Groups now live (18): catalog, clock, order, prov, som, subscription, usage, case,
-ticket, payment, promo, inventory, admin (catalog + reset), branding, customer, trace,
-external-calls.
+**s16 — admin knowledge (`<pending>`).** The last thin command group. Mounts as the
+third `admin` subcommand (alongside catalog + reset) — `reindex` (walk `INDEXED_PATHS`,
+chunk on headings, upsert `knowledge.doc_chunk` via `bss_knowledge::Indexer`), `search`
+(Tier-0 FTS debug over `search_fts`, the same shape the cockpit's `knowledge.search`
+returns), `list` (paginated `doc_chunk` browse — raw sqlx, `LEFT(content_hash, 8)`).
+Reuses the s15 `bss-db`/`sqlx` wiring; `BSS_DB_URL`-unset + missing-`pyproject.toml`
+repo-root map to Python's exit 1. The reindex summary line (`✓ reindex complete
+files=… added=…`) matches byte-for-byte; the two `rich.Table` outputs are the seam
+(the `‹…›` ts_headline match markers are dropped so the snippet cell shows the same
+visible words rich would render). Verified end-to-end against live Postgres (reindex
+26 files, kind-filtered search + list, no-hits path).
 
-**Remaining P7 — command groups + the big pieces:**
-- DB-backed group still to port: **admin knowledge** (182, `reindex`/`search`/`list` —
-  needs `bss-knowledge` + a DB session; mounts as the third `admin` subcommand). The
-  `bss-db`/`sqlx` CLI wiring landed in s15, so this now only owes the `bss-knowledge`
-  FTS surface.
+Groups now live (19 — every command group ported): catalog, clock, order, prov, som,
+subscription, usage, case, ticket, payment, promo, inventory, admin (catalog + reset +
+knowledge), branding, customer, trace, external-calls. **The `bss <subcommand>` surface
+is complete.**
+
+**Remaining P7 — the big pieces (no thin groups left):**
 - **`bss ask`** (single-shot LLM dispatch) + **the reedline REPL** (the canonical
   cockpit — `bss` with no subcommand; the biggest remaining piece) + the **scenario
   engine** (ports against recorded Python-runner runs) + **onboard** (666, the

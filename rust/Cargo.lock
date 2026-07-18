@@ -572,6 +572,7 @@ dependencies = [
  "bss-cockpit",
  "bss-context",
  "bss-db",
+ "bss-knowledge",
  "bss-orchestrator",
  "bss-telemetry",
  "chrono",

@@ -2,8 +2,8 @@
 //!
 //! The Python `admin` app mounts three things: `catalog` (offering/price management),
 //! `reset` (the cross-service operational-data wipe), and `knowledge` (FTS
-//! reindex/search — deferred, needs the `bss-knowledge` crate + a DB session, lands in
-//! its own slice). This module carries `catalog` + `reset`.
+//! reindex/search over `bss-knowledge`). This module wires all three; the leaf logic
+//! lives in `admin_catalog` / `admin_knowledge`.
 
 use std::io::Write as _;
 use std::process::ExitCode;
@@ -28,6 +28,8 @@ pub struct AdminArgs {
 enum AdminCommand {
     /// Operator catalog management (offerings, prices, windows, migrations).
     Catalog(super::admin_catalog::AdminCatalogArgs),
+    /// Doc-corpus indexer + FTS search debug surface (v0.20+).
+    Knowledge(super::admin_knowledge::KnowledgeArgs),
     /// Wipe operational data across every BSS service (reference data survives).
     Reset {
         /// Skip interactive confirmation.
@@ -39,6 +41,7 @@ enum AdminCommand {
 pub async fn run(args: AdminArgs) -> ExitCode {
     match args.command {
         AdminCommand::Catalog(a) => super::admin_catalog::run(a).await,
+        AdminCommand::Knowledge(a) => super::admin_knowledge::run(a).await,
         AdminCommand::Reset { yes } => reset(yes).await,
     }
 }
