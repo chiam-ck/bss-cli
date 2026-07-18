@@ -506,7 +506,10 @@ pub async fn cancel_submit(
     Extension(portal): Extension<PortalSession>,
     Path(sub_id): Path<String>,
     headers: HeaderMap,
-    RawForm(body): RawForm,
+    // `Bytes`, not `RawForm`: the cancel POST is legitimately bodyless (the step-up
+    // grant rides in a cookie, no form fields), and `RawForm` 415s a request with no
+    // `Content-Type`. The Python route tolerated it; `Bytes` reads any/empty body.
+    body: axum::body::Bytes,
 ) -> Response {
     let form = parse_form(&body);
     let customer_id = match require_linked_customer(&portal, "/") {
