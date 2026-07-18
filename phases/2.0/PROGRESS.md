@@ -181,11 +181,52 @@ piece. Two commits:
   span covers the command; precise `bss-orchestrator`-service attribution for
   `bss trace for-ask` is deferred with the broader tracing-parity pass).
 
+**s18a — move cockpit `bubble` + `guards` into `bss-cockpit` (`60e6afa`).** The REPL's
+turn driver needs the same assistant-bubble finalization + destructive/recap guards the
+browser cockpit uses; they lived in `portals/csr/src/{bubble,guards}.rs`, CSR-private.
+Relocated both into the shared `bss-cockpit` crate (mirrors s17a). No cycle —
+`bss-cockpit` can't depend on `bss-orchestrator`, and `guards` carries its own
+cockpit-specific `is_destructive` (the 11-prefix list, NOT safety's 33). The one
+cross-crate guard test moved to `portals/csr/tests/cockpit_guards.rs`. Pure relocation,
+workspace green. **The REPL's foundations are now all shared: `build_agent_registry`,
+`astream_once`, `finalize_bubble`/`BubbleCtx`/`DestructiveCall`/`is_destructive`,
+`ConversationStore`, `build_cockpit_prompt`, `renderers::dispatch::render_tool_result`.**
+
 **Remaining P7 — the big pieces:**
-- **The reedline REPL** (the canonical cockpit — `bss` with no subcommand; the biggest
-  remaining piece; reuses `build_agent_registry` + `astream_once`) + the **scenario
-  engine** (ports against recorded Python-runner runs) + **onboard** (666, the
-  compound signup flow) + **bss-seed** / **bss-admin** CLI wiring.
+- **The reedline REPL** (`cli/bss_cli/repl.py`, 1301 lines — the canonical cockpit,
+  `bss` with no subcommand). Foundations all landed (s17+s18a). Detailed continuation
+  plan (best started in a fresh context — the turn driver is the CLI's most
+  safety-critical file):
+  - **s18b — reedline scaffold + turn driver.** Add `reedline` (workspace + CLI dep;
+    reserved in the workspace Cargo.toml comment). `run_repl`: `_bootstrap_store_and_config`
+    (require `BSS_DB_URL`; `read_autonomy_mode()` fail-closed; `ConversationStore::new`;
+    `bss_cockpit::current(None)` for `operator_md` + `model`; `actor = OPERATOR_ACTOR`),
+    resolve the initial `Conversation` (`resume` session_id / `open` force_new / resume
+    most-recent-active via `list_for` else `open`), the banner (`_render_banner` — ANSI
+    seam), and the reedline read loop (EOF/Ctrl-C → break, `/`-prefix → slash, else
+    turn). The **turn driver** models the CSR `cockpit.rs` `run_turn` sink but prints to
+    the terminal: prior_transcript BEFORE append_user_turn; `consume_pending_destructive`
+    → allow_this_turn; `build_cockpit_prompt`; run `astream_once` over the
+    `operator_cockpit`-filtered registry inside a `bss_context::scope` with
+    `actor=OPERATOR_ACTOR`, `channel="cli"`, `service_identity="operator_cockpit"` (NB:
+    the REPL attributes to the human operator, NOT `channel="llm"` like `bss ask` —
+    CLAUDE.md v0.5 rule); collect captured/last_proposal/executed/tool_rows (render cards
+    via `render_tool_result`, print on completed; `FinalMessage` →
+    `strip_reasoning_leakage(strip_channel_markup(text))`); persist tool turns; on error
+    print + persist `(error: …)`. Then `finalize_bubble(&raw, &BubbleCtx{…})` for the
+    text, print yellow warnings on `outcome.anti_mimicry_stall` /
+    `.knowledge_hallucination`, `append_assistant_turn`, stage
+    `set_pending_destructive` + print "Pending /confirm for …" when `last_proposal`, and
+    (unless a card already showed) print the `bss ai` panel. `/confirm` drives a turn
+    with the synthetic prompt "(operator typed /confirm — proceed with the prior
+    destructive proposal now; call the tool)".
+  - **s18c — session slash commands:** `/help /exit /quit /sessions /new /switch /reset
+    /focus`.
+  - **s18d — `/360 /ports /config /operator` + the `_maybe_intent_match` list-intent
+    intercept** (deterministic tool dispatch that skips the LLM for clean "list X" /
+    "show X" prompts — `_drive_intent_turn`).
+- The **scenario engine** (ports against recorded Python-runner runs) + **onboard** (666,
+  the compound signup flow) + **bss-seed** / **bss-admin** CLI wiring.
 - **Cockpit knowledge wiring** (small follow-up): rebuild the cockpit registry in
   `build_state_with_db` with `knowledge_pool = Some(pool)` when `BSS_KNOWLEDGE_ENABLED`,
   so the browser cockpit gains `knowledge.*` too (currently CLI-only).
