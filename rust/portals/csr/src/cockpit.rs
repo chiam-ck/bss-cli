@@ -685,12 +685,20 @@ async fn run_turn(
             }
         };
 
-        astream_once_to(
-            &mut model,
-            &registry,
-            &drive.user_message,
-            &config,
-            &mut sink,
+        // Scope the agent's downstream bss-clients calls to the cockpit origin so
+        // CRM's interaction log attributes them to `channel=portal-csr` (the ToolCtx
+        // channel above drives the agent internals; the HTTP header reads
+        // `bss_context::current()`, which — in this spawned task — is otherwise unset).
+        let turn_ctx = bss_context::RequestCtx {
+            request_id: bss_context::new_request_id(),
+            actor: OPERATOR_ACTOR.to_string(),
+            channel: "portal-csr".to_string(),
+            service_identity: "operator_cockpit".to_string(),
+            ..Default::default()
+        };
+        bss_context::scope(
+            turn_ctx,
+            astream_once_to(&mut model, &registry, &drive.user_message, &config, &mut sink),
         )
         .await;
     }

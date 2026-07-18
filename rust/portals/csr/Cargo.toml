@@ -35,6 +35,7 @@ indexmap = { version = "2", features = ["serde"] }
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }
+bss-context = { workspace = true }
 bss-clock = { workspace = true }
 bss-cockpit = { workspace = true }
 bss-db = { workspace = true }

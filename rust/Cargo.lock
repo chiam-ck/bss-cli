@@ -2763,6 +2763,7 @@ dependencies = [
  "bss-clients",
  "bss-clock",
  "bss-cockpit",
+ "bss-context",
  "bss-db",
  "bss-models",
  "bss-orchestrator",
