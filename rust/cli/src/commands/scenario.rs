@@ -11,7 +11,10 @@ use std::process::ExitCode;
 use clap::{Args, Subcommand};
 use glob::glob;
 
-use crate::scenarios::load_scenario;
+use crate::runtime::build_agent_registry;
+use crate::scenarios::reporting::{render_result, render_summary};
+use crate::scenarios::schema::LlmMode;
+use crate::scenarios::{load_scenario, run_scenario, ScenarioResult};
 
 #[derive(Args)]
 pub struct ScenarioArgs {
@@ -62,13 +65,113 @@ pub async fn run(args: ScenarioArgs) -> ExitCode {
     match args.command {
         ScenarioCommand::Validate { paths } => validate(&paths),
         ScenarioCommand::List { directory } => list(&directory),
-        ScenarioCommand::Run { .. } | ScenarioCommand::RunAll { .. } => {
-            eprintln!(
-                "scenario run/run-all is not wired yet — this slice ships validate + list; \
-                 the executor lands in the next slice."
-            );
-            ExitCode::from(2)
+        ScenarioCommand::Run {
+            path,
+            no_llm,
+            via_llm,
+        } => run_one(&path, no_llm, via_llm).await,
+        ScenarioCommand::RunAll {
+            directory,
+            no_llm,
+            tag,
+        } => run_all(&directory, no_llm, tag.as_deref()).await,
+    }
+}
+
+/// Resolve the mutually-exclusive LLM flags to a mode. `--no-llm` + `--via-llm`
+/// together is an error (exit 2), matching Python.
+fn resolve_mode(no_llm: bool, via_llm: bool) -> Result<LlmMode, ()> {
+    match (no_llm, via_llm) {
+        (true, true) => Err(()),
+        (true, false) => Ok(LlmMode::Disabled),
+        (false, true) => Ok(LlmMode::Forced),
+        (false, false) => Ok(LlmMode::Auto),
+    }
+}
+
+/// `bss scenario run <path>` — execute one scenario; exit 1 if it fails.
+async fn run_one(path: &Path, no_llm: bool, via_llm: bool) -> ExitCode {
+    let Ok(mode) = resolve_mode(no_llm, via_llm) else {
+        eprintln!("--no-llm and --via-llm are mutually exclusive.");
+        return ExitCode::from(2);
+    };
+    let scenario = match load_scenario(path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("invalid scenario {}", path.display());
+            eprintln!("  {e}");
+            return ExitCode::from(2);
         }
+    };
+    let registry = match build_agent_registry().await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("client setup failed: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let result = run_scenario(&scenario, mode, &registry).await;
+    render_result(&result);
+    if result.ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+/// `bss scenario run-all <dir>` — run every scenario (alphabetical), print a summary,
+/// exit 1 if any fail. `--tag` filters to scenarios carrying that tag.
+async fn run_all(directory: &Path, no_llm: bool, tag: Option<&str>) -> ExitCode {
+    if !directory.is_dir() {
+        eprintln!("not a directory: {}", directory.display());
+        return ExitCode::from(2);
+    }
+    let mode = if no_llm {
+        LlmMode::Disabled
+    } else {
+        LlmMode::Auto
+    };
+    let files = scenario_files(directory);
+    if files.is_empty() {
+        println!("no YAML files in {}", directory.display());
+        return ExitCode::SUCCESS;
+    }
+    let registry = match build_agent_registry().await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("client setup failed: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let mut results: Vec<ScenarioResult> = Vec::new();
+    for path in files {
+        let scenario = match load_scenario(&path) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("invalid scenario {}: {e}", path.display());
+                return ExitCode::from(2);
+            }
+        };
+        if let Some(t) = tag {
+            if !scenario.tags.iter().any(|x| x == t) {
+                continue;
+            }
+        }
+        let result = run_scenario(&scenario, mode, &registry).await;
+        render_result(&result);
+        results.push(result);
+    }
+
+    if results.is_empty() {
+        println!("no scenarios matched tag={tag:?}");
+        return ExitCode::SUCCESS;
+    }
+    render_summary(&results);
+    if results.iter().any(|r| !r.ok) {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
     }
 }
 

@@ -5,14 +5,20 @@
 //! deterministic tool call, `ask:` → LLM). Captures flow through the `ScenarioContext`
 //! so later steps can reference `{{ variables }}`.
 //!
-//! **This slice (validate/list):** the schema + [`load_scenario`]. The runner
-//! (`run` / `run-all`), context interpolation, action/assert/http/file executors, and
-//! reporting land in the following slices.
+//! **This slice:** the schema + [`load_scenario`], plus the deterministic runner
+//! (`action:` / `assert:` steps, setup reset/freeze, teardown unfreeze, captures) and
+//! the report. `ask:` / `http:` / `file:` executors land in the following slices.
 
+pub mod actions;
+pub mod assertions;
+pub mod context;
+pub mod reporting;
+pub mod runner;
 pub mod schema;
 
 use std::path::Path;
 
+pub use runner::{run_scenario, ScenarioResult};
 pub use schema::Scenario;
 
 /// Parse + validate a YAML scenario file. Port of `runner.load_scenario`: the
