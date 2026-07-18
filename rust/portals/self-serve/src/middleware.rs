@@ -81,8 +81,31 @@ pub async fn session_layer(
         }
     }
 
+    // Origin channel context (Python's session middleware `set_context`): every
+    // downstream `bss-clients` call this request drives carries
+    // `X-BSS-Channel: portal-self-serve` + the actor (verified email, else
+    // `portal-anon`), so CRM's interaction log attributes writes to the portal.
+    let actor = portal
+        .identity
+        .as_ref()
+        .map(|i| i.email.clone())
+        .unwrap_or_else(|| "portal-anon".to_string());
+    let request_id = req
+        .headers()
+        .get(bss_context::HDR_REQUEST_ID)
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(bss_context::new_request_id);
+    let ctx = bss_context::RequestCtx {
+        request_id,
+        actor,
+        channel: "portal-self-serve".to_string(),
+        ..Default::default()
+    };
+
     req.extensions_mut().insert(portal);
-    let mut resp = next.run(req).await;
+    let mut resp = bss_context::scope(ctx, next.run(req)).await;
 
     if let Some(new_id) = rotated_id {
         if let Ok(value) = HeaderValue::from_str(&build_session_cookie(&new_id, None)) {

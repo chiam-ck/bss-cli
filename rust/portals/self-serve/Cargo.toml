@@ -39,6 +39,7 @@ bss-clock = { workspace = true }
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }
+bss-context = { workspace = true }
 bss-db = { workspace = true }
 bss-orchestrator = { workspace = true }
 bss-models = { workspace = true }
