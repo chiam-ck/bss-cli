@@ -6,9 +6,9 @@
 //! the scenario without masking the primary error). Never panics — failures are packed
 //! into [`ScenarioResult`].
 //!
-//! **This slice:** setup (reset/freeze), `action:` / `assert:` / `http:` / `file:`
-//! steps, teardown (unfreeze), captures, and the operator-facing report. `ask:` steps
-//! report a clear "not wired yet" failure until the LLM-executor slice lands.
+//! All five step types are wired: `action:` / `assert:` / `http:` / `file:` / `ask:`
+//! (the last via the LLM executor). The scenario-only `audit.*` / `portal.*` action
+//! verbs are the remaining follow-up (a plumbing concern, not a step type).
 
 use std::time::Instant;
 
@@ -52,7 +52,7 @@ fn ms_since(t0: Instant) -> f64 {
 /// Execute `scenario` end-to-end. Never raises — packages failures into the result.
 pub async fn run_scenario(
     scenario: &Scenario,
-    _mode: LlmMode,
+    mode: LlmMode,
     registry: &ToolRegistry,
 ) -> ScenarioResult {
     let t0 = Instant::now();
@@ -65,10 +65,15 @@ pub async fn run_scenario(
         channel: "scenario".to_string(),
         ..Default::default()
     };
-    bss_context::scope(ctx, run_inner(scenario, registry, t0)).await
+    bss_context::scope(ctx, run_inner(scenario, registry, mode, t0)).await
 }
 
-async fn run_inner(scenario: &Scenario, registry: &ToolRegistry, t0: Instant) -> ScenarioResult {
+async fn run_inner(
+    scenario: &Scenario,
+    registry: &ToolRegistry,
+    mode: LlmMode,
+    t0: Instant,
+) -> ScenarioResult {
     let tenant = Settings::from_env().tenant_default;
     let actions = Actions::new(
         registry.clone(),
@@ -112,7 +117,7 @@ async fn run_inner(scenario: &Scenario, registry: &ToolRegistry, t0: Instant) ->
 
     // Steps — short-circuit on first failure, teardown still runs.
     for step in &scenario.steps {
-        let step_result = run_step(step, &actions, &mut context).await;
+        let step_result = run_step(step, &actions, &mut context, registry, mode).await;
         let failed = !step_result.ok;
         result.steps.push(step_result);
         if failed {
@@ -166,21 +171,83 @@ async fn run_teardown(
     Ok(())
 }
 
-async fn run_step(step: &Step, actions: &Actions, ctx: &mut ScenarioContext) -> StepResult {
+async fn run_step(
+    step: &Step,
+    actions: &Actions,
+    ctx: &mut ScenarioContext,
+    registry: &ToolRegistry,
+    mode: LlmMode,
+) -> StepResult {
     match step {
         Step::Action(_) => run_action(step, actions, ctx).await,
         Step::Assert(_) => run_assert(step, actions, ctx).await,
         Step::Http(s) => super::http_step::run_http_step(s, ctx).await,
         Step::File(s) => super::file_step::run_file_step(s, ctx).await,
-        Step::Ask(_) => StepResult {
-            name: step.name().to_string(),
-            kind: step.kind(),
-            ok: false,
-            duration_ms: 0.0,
-            captured: IndexMap::new(),
-            error: Some(
-                "ask: steps are not wired yet — they land with the LLM executor slice".to_string(),
-            ),
+        Step::Ask(s) => run_ask(s, ctx, registry, mode).await,
+    }
+}
+
+/// Drive an `ask:` step through the LLM executor, then evaluate its LLM-specific
+/// expectations (tools-called include / not-called, `expect_final_state`). Port of
+/// `_run_ask`.
+async fn run_ask(
+    step: &super::schema::AskStep,
+    ctx: &mut ScenarioContext,
+    registry: &ToolRegistry,
+    mode: LlmMode,
+) -> StepResult {
+    let t0 = Instant::now();
+    let allow_llm = mode != LlmMode::Disabled;
+    let outcome = match super::llm_executor::execute_ask_step(step, ctx, registry, allow_llm).await
+    {
+        Ok(o) => o,
+        Err(e) => {
+            return StepResult {
+                name: step.name.clone(),
+                kind: "ask",
+                ok: false,
+                duration_ms: ms_since(t0),
+                captured: IndexMap::new(),
+                error: Some(e),
+            }
+        }
+    };
+
+    let mut failures: Vec<String> = Vec::new();
+    let missing: Vec<&String> = step
+        .expect_tools_called_include
+        .iter()
+        .filter(|t| !outcome.tools_called.contains(t))
+        .collect();
+    if !missing.is_empty() {
+        failures.push(format!("expected tools not called: {missing:?}"));
+    }
+    let forbidden: Vec<&String> = step
+        .expect_tools_not_called
+        .iter()
+        .filter(|t| outcome.tools_called.contains(t))
+        .collect();
+    if !forbidden.is_empty() {
+        failures.push(format!("forbidden tools called: {forbidden:?}"));
+    }
+    if !step.expect_final_state.is_empty() {
+        let probe = Value::Object(outcome.final_state_probe.clone());
+        let fs = super::assertions::evaluate_expect(&step.expect_final_state, &probe);
+        if !fs.ok {
+            failures.push(format!("final state mismatch: {}", fs.format()));
+        }
+    }
+
+    StepResult {
+        name: step.name.clone(),
+        kind: "ask",
+        ok: failures.is_empty(),
+        duration_ms: ms_since(t0),
+        captured: IndexMap::new(),
+        error: if failures.is_empty() {
+            None
+        } else {
+            Some(failures.join("\n"))
         },
     }
 }
