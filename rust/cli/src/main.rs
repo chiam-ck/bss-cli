@@ -42,6 +42,8 @@ enum Command {
     Catalog(commands::catalog::CatalogArgs),
     /// Time helpers (v0.1 = wall clock).
     Clock(commands::clock::ClockArgs),
+    /// Browse MSISDN + eSIM inventory pools (read-only).
+    Inventory(commands::inventory::InventoryArgs),
     /// Manage commercial orders (TMF622).
     Order(commands::order::OrderArgs),
     /// Payment methods + payment attempts.
@@ -77,6 +79,7 @@ async fn main() -> ExitCode {
         Some(Command::Case(args)) => commands::case::run(args).await,
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
+        Some(Command::Inventory(args)) => commands::inventory::run(args).await,
         Some(Command::Order(args)) => commands::order::run(args).await,
         Some(Command::Payment(args)) => commands::payment::run(args).await,
         Some(Command::Promo(args)) => commands::promo::run(args).await,

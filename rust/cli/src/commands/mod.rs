@@ -9,6 +9,7 @@
 pub mod case;
 pub mod catalog;
 pub mod clock;
+pub mod inventory;
 pub mod order;
 pub mod payment;
 pub mod promo;
