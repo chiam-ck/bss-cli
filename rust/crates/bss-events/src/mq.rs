@@ -37,22 +37,63 @@ fn normalize_vhost(mq_url: &str) -> String {
     }
 }
 
-/// A live channel onto the `bss.events` topic exchange. Holds the connection so
-/// the channel stays open for the lifetime of the value.
+/// A live channel onto the `bss.events` topic exchange, with self-healing
+/// reconnection.
+///
+/// lapin does **not** auto-recover a channel/connection that errors (unlike
+/// aio-pika's robust connection the Python services use): a transient broker blip
+/// leaves `self.channel` in a permanent error state, and every subsequent
+/// `basic_publish` returns `invalid channel state`. That once wedged the outbox
+/// relay for days (the P7 E2E incident). So the channel + connection live behind a
+/// mutex and [`MqChannel::healthy_channel`] recreates them on demand.
+///
+/// Reconnection covers the **publish** path (the relay + inline publishes, which is
+/// what wedged). A [`Consumer`] returned by [`declare_and_bind`]/[`bind_safe_consumer`]
+/// is bound to the channel live at setup time; if that channel later dies the
+/// consumer stream ends and the service's consume loop must re-invoke the bind to
+/// re-subscribe (consumer-loop re-subscription is tracked separately).
+///
+/// [`declare_and_bind`]: MqChannel::declare_and_bind
+/// [`bind_safe_consumer`]: MqChannel::bind_safe_consumer
 pub struct MqChannel {
+    mq_url: String,
+    inner: tokio::sync::Mutex<Inner>,
+}
+
+/// The recoverable connection + channel pair, guarded by [`MqChannel::inner`].
+struct Inner {
+    connection: Connection,
     channel: Channel,
-    _connection: Connection,
 }
 
 impl MqChannel {
     /// Connect to `mq_url`, open a channel, set prefetch to 5 (the services'
     /// `set_qos(prefetch_count=5)`), and declare the durable `bss.events` topic
-    /// exchange. Returns the channel handle.
+    /// exchange.
     pub async fn connect(mq_url: &str) -> Result<Self, lapin::Error> {
-        let props = ConnectionProperties::default()
+        let connection = Connection::connect(&normalize_vhost(mq_url), Self::conn_props()).await?;
+        let channel = Self::open_channel(&connection).await?;
+        Ok(MqChannel {
+            mq_url: mq_url.to_string(),
+            inner: tokio::sync::Mutex::new(Inner {
+                connection,
+                channel,
+            }),
+        })
+    }
+
+    /// The tokio-hosted connection properties (rebuilt per connect/reconnect —
+    /// `ConnectionProperties` isn't `Clone`).
+    fn conn_props() -> ConnectionProperties {
+        ConnectionProperties::default()
             .with_executor(tokio_executor_trait::Tokio::current())
-            .with_reactor(tokio_reactor_trait::Tokio);
-        let connection = Connection::connect(&normalize_vhost(mq_url), props).await?;
+            .with_reactor(tokio_reactor_trait::Tokio)
+    }
+
+    /// Open a fresh channel on `connection`: set prefetch to 5 and (idempotently)
+    /// re-declare the durable `bss.events` topic exchange. Used at connect and on
+    /// every reconnect.
+    async fn open_channel(connection: &Connection) -> Result<Channel, lapin::Error> {
         let channel = connection.create_channel().await?;
         channel.basic_qos(5, BasicQosOptions::default()).await?;
         channel
@@ -66,10 +107,28 @@ impl MqChannel {
                 FieldTable::default(),
             )
             .await?;
-        Ok(MqChannel {
-            channel,
-            _connection: connection,
-        })
+        Ok(channel)
+    }
+
+    /// A connected channel, recreating it (and reconnecting the connection if it too
+    /// dropped) when the current one has errored. Returns a cheap clone (lapin
+    /// `Channel` is `Arc`-backed) so the caller publishes without holding the lock.
+    /// The mutex serialises a reconnect so a burst of failing publishers triggers a
+    /// single reconnect, not one per caller.
+    async fn healthy_channel(&self) -> Result<Channel, lapin::Error> {
+        let mut inner = self.inner.lock().await;
+        if inner.channel.status().connected() {
+            return Ok(inner.channel.clone());
+        }
+        // Channel errored — reconnect the connection first if it's down too.
+        if !inner.connection.status().connected() {
+            inner.connection =
+                Connection::connect(&normalize_vhost(&self.mq_url), Self::conn_props()).await?;
+        }
+        let channel = Self::open_channel(&inner.connection).await?;
+        inner.channel = channel.clone();
+        tracing::info!("mq.channel.reconnected");
+        Ok(channel)
     }
 
     /// Publish `payload` as a persistent JSON message with routing key
@@ -81,7 +140,8 @@ impl MqChannel {
         payload: &Value,
     ) -> Result<(), lapin::Error> {
         let body = serde_json::to_vec(payload).unwrap_or_else(|_| b"{}".to_vec());
-        self.channel
+        self.healthy_channel()
+            .await?
             .basic_publish(
                 EXCHANGE_NAME,
                 routing_key,
@@ -106,7 +166,8 @@ impl MqChannel {
         routing_key: &str,
         consumer_tag: &str,
     ) -> Result<Consumer, lapin::Error> {
-        self.channel
+        let channel = self.healthy_channel().await?;
+        channel
             .queue_declare(
                 queue,
                 QueueDeclareOptions {
@@ -116,7 +177,7 @@ impl MqChannel {
                 FieldTable::default(),
             )
             .await?;
-        self.channel
+        channel
             .queue_bind(
                 queue,
                 EXCHANGE_NAME,
@@ -125,7 +186,7 @@ impl MqChannel {
                 FieldTable::default(),
             )
             .await?;
-        self.channel
+        channel
             .basic_consume(
                 queue,
                 consumer_tag,
@@ -133,11 +194,6 @@ impl MqChannel {
                 FieldTable::default(),
             )
             .await
-    }
-
-    /// Borrow the underlying channel (for ack/nack on deliveries).
-    pub fn channel(&self) -> &Channel {
-        &self.channel
     }
 
     /// Publish `payload` with an explicit AMQP `message_id` — the relay path (the
@@ -162,7 +218,8 @@ impl MqChannel {
         body: &[u8],
         message_id: &str,
     ) -> Result<(), lapin::Error> {
-        self.channel
+        self.healthy_channel()
+            .await?
             .basic_publish(
                 EXCHANGE_NAME,
                 routing_key,
@@ -181,7 +238,8 @@ impl MqChannel {
     /// Declare the shared retry (dead-letter) exchange — a durable direct
     /// exchange. Idempotent (port of `declare_retry_exchange`).
     pub async fn declare_retry_exchange(&self) -> Result<(), lapin::Error> {
-        self.channel
+        self.healthy_channel()
+            .await?
             .exchange_declare(
                 RETRY_EXCHANGE_NAME,
                 ExchangeKind::Direct,
@@ -208,6 +266,8 @@ impl MqChannel {
         consumer_tag: &str,
         retry_backoff_ms: u64,
     ) -> Result<Consumer, lapin::Error> {
+        let channel = self.healthy_channel().await?;
+
         // Main queue → retry exchange on failure.
         let mut main_args = FieldTable::default();
         main_args.insert(
@@ -218,7 +278,7 @@ impl MqChannel {
             "x-dead-letter-routing-key".into(),
             AMQPValue::LongString(LongString::from(queue_name)),
         );
-        self.channel
+        channel
             .queue_declare(
                 queue_name,
                 QueueDeclareOptions {
@@ -228,7 +288,7 @@ impl MqChannel {
                 main_args,
             )
             .await?;
-        self.channel
+        channel
             .queue_bind(
                 queue_name,
                 EXCHANGE_NAME,
@@ -253,7 +313,7 @@ impl MqChannel {
             "x-dead-letter-routing-key".into(),
             AMQPValue::LongString(LongString::from(routing_key)),
         );
-        self.channel
+        channel
             .queue_declare(
                 &retry_q,
                 QueueDeclareOptions {
@@ -263,7 +323,7 @@ impl MqChannel {
                 retry_args,
             )
             .await?;
-        self.channel
+        channel
             .queue_bind(
                 &retry_q,
                 RETRY_EXCHANGE_NAME,
@@ -274,7 +334,7 @@ impl MqChannel {
             .await?;
 
         // Parked queue: terminal resting place for poison messages.
-        self.channel
+        channel
             .queue_declare(
                 &parked_queue_name(queue_name),
                 QueueDeclareOptions {
@@ -285,7 +345,7 @@ impl MqChannel {
             )
             .await?;
 
-        self.channel
+        channel
             .basic_consume(
                 queue_name,
                 consumer_tag,
@@ -318,7 +378,8 @@ impl MqChannel {
             props = props.with_message_id(ShortString::from(id));
         }
         // Default (nameless) exchange routes by queue name.
-        self.channel
+        self.healthy_channel()
+            .await?
             .basic_publish("", &parked, BasicPublishOptions::default(), body, props)
             .await?
             .await?;
