@@ -57,3 +57,18 @@ services:
       context: rust
       dockerfile: services/crm/Dockerfile
     image: bss-crm:rust
+  # Portals (P6). Context is the repo root (not rust/) so the image can bundle the
+  # shared Jinja templates + static assets the Rust portals serve from disk, reused
+  # verbatim from the Python source tree. All other config (ports, env, volumes,
+  # network) comes from the base compose's portal definitions via the *bss-service
+  # anchor — this overlay only swaps the build + image.
+  portal-self-serve:
+    build:
+      context: .
+      dockerfile: rust/portals/self-serve/Dockerfile
+    image: bss-portal-self-serve:rust
+  portal-csr:
+    build:
+      context: .
+      dockerfile: rust/portals/csr/Dockerfile
+    image: bss-portal-csr:rust

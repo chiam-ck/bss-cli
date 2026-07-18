@@ -1,5 +1,9 @@
 .git
 .gitignore
+# Rust build artifacts — 9GB+; never in the build context (the Rust portal images
+# use this repo-root context to reach the shared Python asset trees they serve).
+rust/target/
+**/target/
 *.md
 phases/
 docs/
