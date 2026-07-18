@@ -84,17 +84,35 @@ ticket FSM maps on CrmClient, mediation on the portal bundle) also landed.
 single-quote copy, `datetime.fromisoformat().isoformat()` normalisation, and the
 usage quantity parser (1GB→1024mb etc.) — each captured from the live oracle.
 
-**Remaining P7 — command groups + two flagged decisions + the big pieces:**
-- Clean thin groups still to port: **case** (97), **ticket** (168), **payment**
-  (188), **promo** (218), **branding** (106), **trace** (181), **admin** (153),
-  **admin-catalog** (240), **admin-knowledge** (182), **external-calls** (245).
-- **Decision — `customer create --card`:** needs `local_tokenize_card` (private in
-  `bss_orchestrator::tools::payment`) + `create_payment_method`'s exp fields; either
-  make the tokenizer `pub` or replicate the small sandbox tokenizer. Flagged.
-- **Decision — `inventory` list output:** the Python CLI draws a `rich.Table`
-  (box-drawing), NOT the golden `render_msisdn_list`. Byte-matching rich's table is
-  impractical; either accept a simpler table as a documented seam or reproduce it.
-  Flagged.
+**s7–s11 — case+ticket, payment+promo, inventory, admin-catalog (`7acbfd9`,
+`2822466`, `8f54d4d`, `2ff8978`).** Six more groups + the `admin` parent (catalog
+only so far). Both flagged decisions resolved:
+- **`payment add-card` (tokenizer):** `bss_orchestrator::tools::payment::local_tokenize_card`
+  is now `pub` (returns the ValueError detail as a plain `String`; the write tool
+  maps it back to `ToolError::Other{kind:"ValueError"}`). The CLI imports it exactly
+  as Python does rather than duplicating sandbox logic — CLAUDE.md "CLI calls the
+  orchestrator, nothing more". Added `bss-orchestrator` + `rust_decimal` to the cli
+  crate (both needed by `ask`/REPL regardless).
+- **`inventory` list + `promo`/`admin catalog` show (rich.Table):** rendered as
+  simplified title+header+rows tables — the box-drawing chrome is a **documented CLI
+  seam**, but every cell value matches Python's extraction exactly (fallback chains,
+  `... or '—'`/`'NULL'`, Python list repr for `applicableOfferingIds`).
+- **New client methods (all real gaps):** `payment.cutover_invalidate_mock_tokens`,
+  `catalog.unassign_promotion` + `exhaust_promotion`. **`run_safely_promo`** runner
+  (promo uniquely maps `NotFound`→exit 2). Shared **`normalize_decimal`** (str(Decimal))
+  + **`parse_iso`** (`_parse_iso` seam) helpers in `commands/mod.rs`, unit-tested vs
+  the Python isoformat cases. `payment cutover` reproduces `typer.confirm`'s `[y/N]`.
+
+Groups now live: catalog, clock, order, prov, som, subscription, usage, case,
+ticket, payment, promo, inventory, admin (catalog).
+
+**Remaining P7 — command groups + the big pieces:**
+- Thin groups still to port: **branding** (106, config-layer via
+  `bss_cockpit::config::write_branding_settings` + `bss_branding` reads; rich
+  swatch/table is a presentation seam), **external-calls** (245, log reader),
+  **trace** (181, needs a ported `JaegerClient` + `AuditClient` + `render_swimlane`),
+  **admin reset** (needs a ported `AdminClient` + per-target fan-out), **admin
+  knowledge** (182, needs `bss-knowledge` + a DB session).
 - **`bss ask`** (single-shot LLM dispatch) + **the reedline REPL** (the canonical
   cockpit — `bss` with no subcommand; the biggest remaining piece) + the **scenario
   engine** (ports against recorded Python-runner runs) + **onboard** (666, the
