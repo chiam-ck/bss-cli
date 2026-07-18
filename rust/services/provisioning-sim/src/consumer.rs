@@ -19,7 +19,7 @@ use lapin::options::{BasicAckOptions, BasicRejectOptions};
 use serde_json::Value;
 
 use crate::esim::EsimProvider;
-use crate::worker::{process_task, TaskRequest};
+use crate::worker::{process_task, TaskRequest, INBOX_CONSUMER};
 
 const QUEUE: &str = "provisioning-sim.task.created";
 const ROUTING_KEY: &str = "provisioning.task.created";
@@ -41,8 +41,34 @@ pub async fn run(mq: Arc<MqChannel>, pool: PgPool, esim: EsimProvider) -> Result
             }
         };
 
+        // The relay stamps the outbox row's event_id as the AMQP message_id.
+        let message_id = delivery
+            .properties
+            .message_id()
+            .as_ref()
+            .map(|s| s.as_str().to_string());
+
+        // Inbox dedup pre-check. The consumer is serial (one delivery to completion
+        // before the next), so a plain read is race-free; the claim itself is
+        // written atomically with the task persist inside `process_task`. A claimed
+        // event_id is a relay redelivery to skip — this is what stops a duplicate
+        // publish from re-running the task and re-emitting `task.completed`.
+        if let Some(eid) = &message_id {
+            match already_processed(&pool, eid).await {
+                Ok(true) => {
+                    tracing::info!(event_id = %eid, "inbox.duplicate.skipped");
+                    ack(&delivery).await;
+                    continue;
+                }
+                Ok(false) => {}
+                // A dedup-read failure shouldn't drop the message — fall through and
+                // process (the atomic claim still guards the persist).
+                Err(e) => tracing::warn!(error = %e, "inbox.check.failed"),
+            }
+        }
+
         let outcome = match serde_json::from_slice::<Value>(&delivery.data) {
-            Ok(body) => handle(&body, &mq, &pool, esim).await,
+            Ok(body) => handle(&body, &mq, &pool, esim, message_id.as_deref()).await,
             Err(e) => {
                 tracing::warn!(error = %e, "mq.task_created.bad_json");
                 Ok(()) // unparseable → drop (ack), nothing to process
@@ -50,11 +76,7 @@ pub async fn run(mq: Arc<MqChannel>, pool: PgPool, esim: EsimProvider) -> Result
         };
 
         match outcome {
-            Ok(()) => {
-                if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
-                    tracing::warn!(error = %e, "mq.ack.failed");
-                }
-            }
+            Ok(()) => ack(&delivery).await,
             Err(e) => {
                 tracing::warn!(error = %e, "mq.task_created.handler_error");
                 // requeue=false → drop (the queue has no DLX), matching process().
@@ -74,6 +96,7 @@ async fn handle(
     mq: &Arc<MqChannel>,
     pool: &PgPool,
     esim: EsimProvider,
+    event_id: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     let (Some(service_id), Some(service_order_id), Some(task_type)) = (
         body.get("serviceId").and_then(Value::as_str),
@@ -110,6 +133,31 @@ async fn handle(
                 .cloned()
                 .unwrap_or_else(|| Value::Object(Default::default())),
         },
+        event_id,
     )
     .await
+}
+
+/// Ack a delivery, logging (but not propagating) an ack failure.
+async fn ack(delivery: &lapin::message::Delivery) {
+    if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
+        tracing::warn!(error = %e, "mq.ack.failed");
+    }
+}
+
+/// Has this `event_id` already been claimed by the provisioning consumer? A read
+/// (not a claim) — safe because the consumer is serial. Non-UUID ids (there should
+/// be none from the relay) are treated as not-processed.
+async fn already_processed(pool: &PgPool, event_id: &str) -> Result<bool, sqlx::Error> {
+    let Ok(uuid) = uuid::Uuid::parse_str(event_id) else {
+        return Ok(false);
+    };
+    let hit: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM provisioning.processed_event WHERE event_id = $1 AND consumer = $2",
+    )
+    .bind(uuid)
+    .bind(INBOX_CONSUMER)
+    .fetch_optional(pool)
+    .await?;
+    Ok(hit.is_some())
 }

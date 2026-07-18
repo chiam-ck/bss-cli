@@ -31,16 +31,28 @@ pub struct TaskRequest {
     pub payload: Value,
 }
 
+/// The inbox-dedup consumer identity — matches the `provisioning.task.created`
+/// consumer tag, so a claim is scoped to this consumer (mirrors `bind_consumer`).
+pub(crate) const INBOX_CONSUMER: &str = "provisioning-sim.task.created";
+
 /// Process a single provisioning task with fault injection. Errors are DB/MQ
 /// faults only; fault-injection "failures" are modelled as task states, not
 /// `Err`. `ctx` stamps the audit rows (consumer → `RequestCtx::default`, HTTP
 /// resolve/retry → the live request context).
+///
+/// `event_id` is the relay's AMQP `message_id` on the `task.created` delivery
+/// (`None` for the HTTP resolve/retry path, which is operator-initiated, not an
+/// event redelivery). When present it is claimed in the terminal persist
+/// transaction so a redelivery of the same event is skipped by the consumer's
+/// pre-check — closing the duplicate-re-run storm without holding a tx across the
+/// simulated-work sleep.
 pub async fn process_task(
     pool: &PgPool,
     mq: Option<&MqChannel>,
     esim: EsimProvider,
     ctx: &RequestCtx,
     req: TaskRequest,
+    event_id: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     let task_id = repo::task_next_id(pool).await?;
     let mut task = Task {
@@ -73,6 +85,7 @@ pub async fn process_task(
             &req.service_order_id,
             &req.commercial_order_id,
             false,
+            event_id,
         )
         .await?;
         tracing::info!(task_id = %task_id, task_type = %req.task_type, "task.stuck");
@@ -100,6 +113,7 @@ pub async fn process_task(
                     &req.service_order_id,
                     &req.commercial_order_id,
                     true,
+                    event_id,
                 )
                 .await?;
                 tracing::info!(task_id = %task_id, attempts = task.attempts, "task.failed.permanent");
@@ -155,6 +169,7 @@ pub async fn process_task(
                             &req.service_order_id,
                             &req.commercial_order_id,
                             true,
+                            event_id,
                         )
                         .await?;
                         return Ok(());
@@ -177,6 +192,7 @@ pub async fn process_task(
                         &req.service_order_id,
                         &req.commercial_order_id,
                         true,
+                        event_id,
                     )
                     .await?;
                     return Ok(());
@@ -196,6 +212,7 @@ pub async fn process_task(
             &req.service_order_id,
             &req.commercial_order_id,
             false,
+            event_id,
         )
         .await?;
         tracing::info!(task_id = %task_id, task_type = %req.task_type, attempts = task.attempts, "task.completed");
@@ -214,6 +231,7 @@ pub async fn process_task(
         &req.service_order_id,
         &req.commercial_order_id,
         true,
+        event_id,
     )
     .await?;
     Ok(())
@@ -234,6 +252,7 @@ async fn persist_and_publish(
     service_order_id: &str,
     commercial_order_id: &str,
     permanent: bool,
+    event_id: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     let payload = task_event_payload(task, service_order_id, commercial_order_id, permanent);
 
@@ -267,6 +286,20 @@ async fn persist_and_publish(
     .bind(published)
     .execute(&mut *tx)
     .await?;
+    // Inbox claim — committed atomically with the task/event rows so a crash can't
+    // leave an event claimed-but-unprocessed. `ON CONFLICT DO NOTHING` keeps the
+    // operator resolve/retry path (which passes `event_id = None`) and any race a
+    // no-op. The consumer's pre-check skips a claimed event before it reaches here.
+    if let Some(uuid) = event_id.and_then(|e| uuid::Uuid::parse_str(e).ok()) {
+        sqlx::query(
+            "INSERT INTO provisioning.processed_event (event_id, consumer, processed_at) \
+             VALUES ($1, $2, now()) ON CONFLICT (event_id, consumer) DO NOTHING",
+        )
+        .bind(uuid)
+        .bind(INBOX_CONSUMER)
+        .execute(&mut *tx)
+        .await?;
+    }
     tx.commit().await?;
     Ok(())
 }

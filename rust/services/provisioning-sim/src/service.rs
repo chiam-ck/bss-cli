@@ -162,6 +162,9 @@ async fn reprocess(
             task_type: task.task_type.clone(),
             payload,
         },
+        // Operator-initiated resolve/retry — not an event redelivery, so no inbox
+        // claim (a re-processed task should always run).
+        None,
     )
     .await?;
     Ok(())

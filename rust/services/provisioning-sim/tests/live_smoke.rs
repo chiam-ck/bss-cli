@@ -165,6 +165,7 @@ async fn worker_completes_task_inert() {
             task_type: "HLR_PROVISION".into(),
             payload: json!({ "msisdn": "90000042" }),
         },
+        None,
     )
     .await
     .expect("process_task (inert)");
