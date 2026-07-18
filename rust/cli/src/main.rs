@@ -44,6 +44,8 @@ enum Command {
     Case(commands::case::CaseArgs),
     /// Browse the product catalog (TMF620).
     Catalog(commands::catalog::CatalogArgs),
+    /// Manage customers (TMF629).
+    Customer(commands::customer::CustomerArgs),
     /// Time helpers (v0.1 = wall clock).
     Clock(commands::clock::ClockArgs),
     /// Browse MSISDN + eSIM inventory pools (read-only).
@@ -85,6 +87,7 @@ async fn main() -> ExitCode {
         Some(Command::Case(args)) => commands::case::run(args).await,
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
+        Some(Command::Customer(args)) => commands::customer::run(args).await,
         Some(Command::Inventory(args)) => commands::inventory::run(args).await,
         Some(Command::Order(args)) => commands::order::run(args).await,
         Some(Command::Payment(args)) => commands::payment::run(args).await,
