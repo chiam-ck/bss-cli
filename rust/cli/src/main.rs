@@ -23,6 +23,7 @@ mod commands;
 mod repl;
 mod repl_ui;
 mod runtime;
+mod scenarios;
 
 /// `bss` — BSS-CLI, terminal-first, LLM-native telco BSS.
 #[derive(Parser)]
@@ -64,6 +65,8 @@ enum Command {
     Promo(commands::promo::PromoArgs),
     /// Provisioning-sim: tasks + fault injection.
     Prov(commands::prov::ProvArgs),
+    /// YAML scenario runner (validate / list / run).
+    Scenario(commands::scenario::ScenarioArgs),
     /// Service order + service inventory (SOM).
     Som(commands::som::SomArgs),
     /// Manage subscriptions + VAS.
@@ -103,6 +106,7 @@ async fn main() -> ExitCode {
         Some(Command::Payment(args)) => commands::payment::run(args).await,
         Some(Command::Promo(args)) => commands::promo::run(args).await,
         Some(Command::Prov(args)) => commands::prov::run(args).await,
+        Some(Command::Scenario(args)) => commands::scenario::run(args).await,
         Some(Command::Som(args)) => commands::som::run(args).await,
         Some(Command::Subscription(args)) => commands::subscription::run(args).await,
         Some(Command::Ticket(args)) => commands::ticket::run(args).await,

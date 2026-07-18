@@ -21,6 +21,7 @@ pub mod order;
 pub mod payment;
 pub mod promo;
 pub mod prov;
+pub mod scenario;
 pub mod som;
 pub mod subscription;
 pub mod ticket;
