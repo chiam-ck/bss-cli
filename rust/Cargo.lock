@@ -566,6 +566,7 @@ dependencies = [
 name = "bss-cli"
 version = "0.1.0"
 dependencies = [
+ "bss-branding",
  "bss-clients",
  "bss-clock",
  "bss-cockpit",

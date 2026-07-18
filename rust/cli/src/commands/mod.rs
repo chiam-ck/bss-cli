@@ -8,6 +8,7 @@
 
 pub mod admin;
 pub mod admin_catalog;
+pub mod branding;
 pub mod case;
 pub mod catalog;
 pub mod clock;

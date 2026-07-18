@@ -38,6 +38,8 @@ struct Cli {
 enum Command {
     /// Operator tools — catalog management (reset + knowledge to follow).
     Admin(commands::admin::AdminArgs),
+    /// Operator branding — name, theme, logo mark.
+    Branding(commands::branding::BrandingArgs),
     /// Manage cases (CRM).
     Case(commands::case::CaseArgs),
     /// Browse the product catalog (TMF620).
@@ -79,6 +81,7 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Admin(args)) => commands::admin::run(args).await,
+        Some(Command::Branding(args)) => commands::branding::run(args),
         Some(Command::Case(args)) => commands::case::run(args).await,
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
