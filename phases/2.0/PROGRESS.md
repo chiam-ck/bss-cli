@@ -103,13 +103,23 @@ only so far). Both flagged decisions resolved:
   + **`parse_iso`** (`_parse_iso` seam) helpers in `commands/mod.rs`, unit-tested vs
   the Python isoformat cases. `payment cutover` reproduces `typer.confirm`'s `[y/N]`.
 
-Groups now live: catalog, clock, order, prov, som, subscription, usage, case,
-ticket, payment, promo, inventory, admin (catalog).
+**s12 — branding (`6885537`).** Config-layer (sync, no client): show/themes/set-*.
+Writes go through the same gate the cockpit screen uses —
+`BrandingSettings::validate` → `bss_cockpit::write_branding_settings` (reject →
+`rejected: <err>` exit 1). The rich colour swatches + tables are ANSI-truecolor
+presentation seams; show/themes render the palette hexes inline instead.
+
+**s13 — customer (`3dfd438`).** create/list/show, unblocked by the now-`pub`
+tokenizer: `customer create --card` tokenises + attaches under `run_safely_code`
+(bad PAN after create = partial success → exit 1). show fans out into
+`render_customer_360`.
+
+Groups now live (15): catalog, clock, order, prov, som, subscription, usage, case,
+ticket, payment, promo, inventory, admin (catalog), branding, customer.
 
 **Remaining P7 — command groups + the big pieces:**
-- Thin groups still to port: **branding** (106, config-layer via
-  `bss_cockpit::config::write_branding_settings` + `bss_branding` reads; rich
-  swatch/table is a presentation seam), **external-calls** (245, log reader),
+- Thin groups still to port, each needing new infra: **external-calls** (245, a DB
+  reader over `integrations.external_call` — needs a Rust query layer + `BSS_DB_URL`),
   **trace** (181, needs a ported `JaegerClient` + `AuditClient` + `render_swimlane`),
   **admin reset** (needs a ported `AdminClient` + per-target fan-out), **admin
   knowledge** (182, needs `bss-knowledge` + a DB session).
