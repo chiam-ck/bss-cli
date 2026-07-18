@@ -38,7 +38,11 @@
    timeline still highlights the same step. Treated as equivalent to
    ``pending_cof`` in the step_order index lookup. #}
 {% set step_order = ['pending_customer','pending_kyc','pending_kyc_handoff','pending_cof','pending_cof_elements','pending_order','pending_activation','completed'] %}
-{% set current_idx = step_order.index(signup.step) if signup.step in step_order else 0 %}
+{# List.index() is a Python method Jinja2 exposes but minijinja (the Rust portal's
+   engine) does not, so find the index with a namespace loop — valid in both engines. #}
+{% set _ns = namespace(current_idx=0) %}
+{% for _s in step_order %}{% if _s == signup.step %}{% set _ns.current_idx = loop.index0 %}{% endif %}{% endfor %}
+{% set current_idx = _ns.current_idx %}
 {# Default the trigger flag to True so the progress page (which
    doesn't pass it explicitly) keeps auto-advancing the chain. The
    confirmation page passes ``progress_with_trigger=False`` to render
@@ -48,7 +52,9 @@
 <div id="signup-progress" class="progress-card{% if signup.step == 'failed' %} progress-card-failed{% endif %}">
   <div class="progress-lane">
     {% for state, label in steps %}
-      {% set idx = step_order.index(state) %}
+      {% set _nsi = namespace(idx=0) %}
+      {% for _s in step_order %}{% if _s == state %}{% set _nsi.idx = loop.index0 %}{% endif %}{% endfor %}
+      {% set idx = _nsi.idx %}
       <span class="progress-step
         {%- if signup.step != 'failed' and current_idx >= idx %} active done
         {%- elif signup.step != 'failed' and current_idx == idx - 1 %} active running
