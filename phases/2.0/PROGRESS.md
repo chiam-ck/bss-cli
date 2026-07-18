@@ -114,15 +114,23 @@ tokenizer: `customer create --card` tokenises + attaches under `run_safely_code`
 (bad PAN after create = partial success → exit 1). show fans out into
 `render_customer_360`.
 
-Groups now live (15): catalog, clock, order, prov, som, subscription, usage, case,
-ticket, payment, promo, inventory, admin (catalog), branding, customer.
+**s14 — trace + `admin reset` (`e473204`, `4256ff1`, `894cb4f`).** Two infra-carrying
+groups. **trace** (get/for-order/for-subscription/for-ask/services) reuses the ported
+`AuditClient::list_events` + `render_swimlane`; the shared `bss_clients::JaegerClient`
+(previously get_trace-only) gained `list_services`/`find_traces`/`latest_ask_trace_id`
+(I first duplicated it CLI-local, then folded it back — `4256ff1`). **admin reset**
+adds the `AdminClient` (single reset_operational_data POST, 30s timeout) + a
+seven-service fan-out with Python's except-ladder error mapping and the
+`typer.prompt("Type 'reset' to confirm")` gate.
+
+Groups now live (17): catalog, clock, order, prov, som, subscription, usage, case,
+ticket, payment, promo, inventory, admin (catalog + reset), branding, customer, trace.
 
 **Remaining P7 — command groups + the big pieces:**
-- Thin groups still to port, each needing new infra: **external-calls** (245, a DB
-  reader over `integrations.external_call` — needs a Rust query layer + `BSS_DB_URL`),
-  **trace** (181, needs a ported `JaegerClient` + `AuditClient` + `render_swimlane`),
-  **admin reset** (needs a ported `AdminClient` + per-target fan-out), **admin
-  knowledge** (182, needs `bss-knowledge` + a DB session).
+- DB-backed groups still to port: **external-calls** (245, a reader over
+  `integrations.external_call` — needs a Rust query layer + `BSS_DB_URL`), **admin
+  knowledge** (182, `reindex`/`search`/`list` — needs `bss-knowledge` + a DB session;
+  mounts as the third `admin` subcommand).
 - **`bss ask`** (single-shot LLM dispatch) + **the reedline REPL** (the canonical
   cockpit — `bss` with no subcommand; the biggest remaining piece) + the **scenario
   engine** (ports against recorded Python-runner runs) + **onboard** (666, the
