@@ -1,13 +1,13 @@
 //! The reedline cockpit REPL — `bss` with no subcommand. Port of `cli/bss_cli/repl.py`.
 //!
-//! **s18b (this slice):** the bootstrap (Postgres-backed `Conversation` store,
-//! fail-closed autonomy, operator config), the reedline read loop + banner, and the
-//! per-turn driver — the same decision chain the browser cockpit runs
+//! **s18b/s18c (this slice):** the bootstrap (Postgres-backed `Conversation` store,
+//! fail-closed autonomy, operator config), the reedline read loop + branded banner
+//! (`repl_ui`), the per-turn driver — the same decision chain the browser cockpit runs
 //! (`portals/csr` `run_turn`), printed to the terminal instead of streamed over SSE,
-//! reusing the shared `finalize_bubble` / guards / renderers. Slash commands are
-//! `/help /confirm /exit /quit`; the session-management (`/sessions /new /switch
-//! /reset /focus`) and intent commands (`/360 /ports /config /operator` + the
-//! list-intent intercept) land in s18c/s18d.
+//! reusing the shared `finalize_bubble` / guards / renderers — and the
+//! session-management slash commands (`/sessions /new /switch /reset /focus`) on top of
+//! `/help /confirm /exit /quit`. The intent commands (`/360 /ports /config /operator` +
+//! the list-intent intercept) land in s18d.
 //!
 //! The agent's tool calls attribute to the **operator** (`channel="cli"`,
 //! `actor=OPERATOR_ACTOR`, `service_identity="operator_cockpit"`) — a human runs the
@@ -35,6 +35,7 @@ use reedline::{
 };
 use serde_json::{json, Value};
 
+use crate::repl_ui;
 use crate::runtime::build_agent_registry;
 
 /// Start the cockpit REPL. Blocks until the operator quits (`/exit`, `/quit`,
@@ -114,10 +115,17 @@ pub async fn run() -> ExitCode {
                     continue;
                 }
                 if line.starts_with('/') {
-                    println!(
-                        "'{line}' is not available yet — s18b ships /help /confirm /exit /quit; \
-                         session + intent commands land in s18c/s18d."
-                    );
+                    match handle_session_slash(&store, &mut conv, &line).await {
+                        SlashOutcome::Handled => {}
+                        SlashOutcome::Replaced(new) => {
+                            conv = new;
+                            print_banner(&model, &conv, allow_destructive_default);
+                        }
+                        SlashOutcome::Unknown => println!(
+                            "'{line}' is not available yet — s18c ships /sessions /new /switch \
+                             /reset /focus; /360 /ports /config /operator land in s18d."
+                        ),
+                    }
                     continue;
                 }
                 drive_turn(
@@ -432,15 +440,190 @@ fn last8(session_id: &str) -> String {
     session_id.chars().skip(n.saturating_sub(8)).collect()
 }
 
+/// The result of a session-management slash command. `Replaced` hands the loop a new
+/// active conversation (and triggers a fresh banner); `Unknown` means the token isn't
+/// an s18c command, so the loop prints the not-yet-available hint.
+enum SlashOutcome {
+    Handled,
+    Replaced(Conversation),
+    Unknown,
+}
+
+/// Handle the s18c session slash commands (`/sessions /new /switch /reset /focus`).
+/// Port of the matching arms of `_handle_slash` in `cli/bss_cli/repl.py`.
+async fn handle_session_slash(
+    store: &ConversationStore,
+    conv: &mut Conversation,
+    line: &str,
+) -> SlashOutcome {
+    let mut parts = line.splitn(2, char::is_whitespace);
+    let cmd = parts.next().unwrap_or("");
+    let arg = parts.next().unwrap_or("").trim();
+
+    match cmd {
+        "/sessions" => {
+            cmd_sessions(store, &conv.actor).await;
+            SlashOutcome::Handled
+        }
+        "/new" => {
+            if let Err(e) = conv.close().await {
+                eprintln!("close failed: {e}");
+            }
+            let label = (!arg.is_empty()).then_some(arg);
+            let tenant = Settings::from_env().tenant_default;
+            match store
+                .open(OPERATOR_ACTOR, label, None, false, &tenant)
+                .await
+            {
+                Ok(new) => {
+                    let suffix = label.map(|l| format!(" label={l:?}")).unwrap_or_default();
+                    println!(
+                        "{} {}{}",
+                        repl_ui::paint("green", "Opened"),
+                        repl_ui::paint("yellow", &new.session_id),
+                        repl_ui::paint("dim", &suffix),
+                    );
+                    SlashOutcome::Replaced(new)
+                }
+                Err(e) => {
+                    eprintln!("open failed: {e}");
+                    SlashOutcome::Handled
+                }
+            }
+        }
+        "/switch" => {
+            if arg.is_empty() {
+                println!("/switch needs a session id (SES-...)");
+                return SlashOutcome::Handled;
+            }
+            match store.resume(arg).await {
+                Ok(new) => {
+                    println!(
+                        "{} {}",
+                        repl_ui::paint("green", "Resumed"),
+                        repl_ui::paint("yellow", &new.session_id),
+                    );
+                    print_prior_turns(&new).await;
+                    SlashOutcome::Replaced(new)
+                }
+                Err(_) => {
+                    println!("Session {arg} not found.");
+                    SlashOutcome::Handled
+                }
+            }
+        }
+        "/reset" => {
+            match conv.reset().await {
+                Ok(()) => println!(
+                    "{} messages on {}.",
+                    repl_ui::paint("green", "Cleared"),
+                    conv.session_id
+                ),
+                Err(e) => eprintln!("reset failed: {e}"),
+            }
+            SlashOutcome::Handled
+        }
+        "/focus" => {
+            if arg.is_empty() || arg.eq_ignore_ascii_case("clear") {
+                match conv.set_focus(None).await {
+                    Ok(()) => println!("{}", repl_ui::paint("green", "Focus cleared.")),
+                    Err(e) => eprintln!("focus failed: {e}"),
+                }
+            } else {
+                match conv.set_focus(Some(arg)).await {
+                    Ok(()) => println!(
+                        "{} {}",
+                        repl_ui::paint("green", "Focus pinned to"),
+                        repl_ui::paint("yellow", arg),
+                    ),
+                    Err(e) => eprintln!("focus failed: {e}"),
+                }
+            }
+            SlashOutcome::Handled
+        }
+        _ => SlashOutcome::Unknown,
+    }
+}
+
+/// Render the operator's recent active cockpit sessions as a bordered table. Port of
+/// `_cmd_sessions` (the Rich `Table`); columns are visible-width padded so the ANSI
+/// color on the session id doesn't skew alignment.
+async fn cmd_sessions(store: &ConversationStore, actor: &str) {
+    let rows = match store.list_for(actor, true, 50).await {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("sessions failed: {e}");
+            return;
+        }
+    };
+    if rows.is_empty() {
+        println!("No active cockpit sessions for {actor}.");
+        return;
+    }
+    let mut lines = Vec::with_capacity(rows.len() + 1);
+    lines.push(repl_ui::paint(
+        "dim",
+        &format!(
+            "{:<22} {:<14} {:<12} {:<16} {:>4}",
+            "Session", "Label", "Focus", "Last active", "Msgs"
+        ),
+    ));
+    for r in &rows {
+        let sess = repl_ui::paint("yellow", &format!("{:<22}", clip(&r.session_id, 22)));
+        let label = format!("{:<14}", clip(r.label.as_deref().unwrap_or("—"), 14));
+        let focus = format!(
+            "{:<12}",
+            clip(r.customer_focus.as_deref().unwrap_or("—"), 12)
+        );
+        let last = r.last_active_at.format("%Y-%m-%d %H:%M");
+        lines.push(format!(
+            "{sess} {label} {focus} {last:<16} {:>4}",
+            r.message_count
+        ));
+    }
+    println!(
+        "{}",
+        repl_ui::framed(&format!("Cockpit sessions for {actor}"), lines, "green")
+    );
+}
+
+/// Print the last few turns of a just-resumed session for context (Python renders a
+/// dim-bordered `Panel` of the transcript tail).
+async fn print_prior_turns(conv: &Conversation) {
+    let Ok(transcript) = conv.transcript_text().await else {
+        return;
+    };
+    if transcript.is_empty() {
+        return;
+    }
+    let blocks: Vec<&str> = transcript.split("\n\n").collect();
+    let tail = blocks[blocks.len().saturating_sub(5)..].join("\n\n");
+    let lines: Vec<String> = tail.split('\n').map(str::to_string).collect();
+    println!("{}", repl_ui::framed("prior turns (last 5)", lines, "dim"));
+}
+
+/// Truncate a plain string to `n` chars (session ids / labels are ASCII-ish; the
+/// table columns are visible-width padded after this).
+fn clip(s: &str, n: usize) -> String {
+    if s.chars().count() <= n {
+        s.to_string()
+    } else {
+        s.chars().take(n).collect()
+    }
+}
+
 fn print_help() {
-    println!("bss cockpit — slash commands (s18b):");
-    println!("  /help             this cheat sheet");
+    println!("bss cockpit — slash commands (s18c):");
+    println!("  /sessions         list your recent cockpit sessions");
+    println!("  /new [label]      close current → open a fresh session");
+    println!("  /switch SES-...   resume a specific session id");
+    println!("  /reset            clear messages on the current session");
+    println!("  /focus CUST-NNN   pin a customer for the system prompt (/focus clear to unset)");
     println!("  /confirm          authorise the last proposed destructive action");
+    println!("  /help             this cheat sheet");
     println!("  /exit, /quit      leave the cockpit");
     println!("Anything else is a natural-language request to the operator agent.");
-    println!(
-        "(session + intent commands: /sessions /new /switch /reset /focus /360 /ports — s18c/s18d)"
-    );
+    println!("(/360 /ports /config /operator + the list-intent intercept land in s18d.)");
 }
 
 /// The banner shown at start and on session switch — the branded ANSI panel (ASCII

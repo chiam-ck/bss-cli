@@ -508,6 +508,59 @@ pub fn reply_panel(text: &str) -> String {
     panel(Some(&sgr("1", "bss ai")), None, &body, "green", width)
 }
 
+/// Paint `text` with a Rich color name (`"green"`, `"yellow"`, `"dim"`, …). Public so
+/// slash-command handlers can color aligned table columns without touching SGR codes.
+pub fn paint(color: &str, text: &str) -> String {
+    sgr(fg(color), text)
+}
+
+/// Truncate a possibly-ANSI-styled string to `max` visible columns, closing any open
+/// SGR run with a reset so a cut never bleeds color past the panel border.
+fn truncate_visible(s: &str, max: usize) -> String {
+    use unicode_width::UnicodeWidthChar;
+    let mut out = String::new();
+    let mut w = 0usize;
+    let mut had_escape = false;
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            out.push(c);
+            for n in chars.by_ref() {
+                out.push(n);
+                if n.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+            had_escape = true;
+            continue;
+        }
+        let cw = UnicodeWidthChar::width(c).unwrap_or(0);
+        if w + cw > max {
+            if had_escape {
+                out.push_str("\x1b[0m");
+            }
+            return out;
+        }
+        out.push(c);
+        w += cw;
+    }
+    out
+}
+
+/// Draw a titled panel around already-formatted `lines` (verbatim, left-aligned) with
+/// the named `border` color. Each line is truncated to the content width so the box
+/// stays intact regardless of terminal size. Used by the session slash commands
+/// (`/sessions` table, `/switch` prior-turns preview).
+pub fn framed(title: &str, lines: Vec<String>, border: &str) -> String {
+    let width = banner_width();
+    let content_w = width.saturating_sub(4);
+    let rows: Vec<Row> = lines
+        .into_iter()
+        .map(|l| Row::left(truncate_visible(&l, content_w)))
+        .collect();
+    panel(Some(&sgr("1", title)), None, &rows, border, width)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
