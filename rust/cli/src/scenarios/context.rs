@@ -145,7 +145,8 @@ fn value_to_string(v: &Value) -> String {
 
 /// Minimal JSONPath: `$` root, `.field` object access, `[index]` array index, chained.
 /// Returns the first match. `None` on any miss (matching `jsonpath.find()` == empty).
-fn jsonpath_first<'a>(root: &'a Value, expr: &str) -> Option<&'a Value> {
+/// Shared with the HTTP step's `capture:` (which paths into the synthetic result).
+pub(super) fn jsonpath_first<'a>(root: &'a Value, expr: &str) -> Option<&'a Value> {
     let rest = expr.strip_prefix('$')?;
     let mut cur = root;
     let mut chars = rest.chars().peekable();

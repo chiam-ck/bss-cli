@@ -6,9 +6,9 @@
 //! the scenario without masking the primary error). Never panics — failures are packed
 //! into [`ScenarioResult`].
 //!
-//! **This slice:** setup (reset/freeze), `action:` + `assert:` steps, teardown
-//! (unfreeze), captures, and the operator-facing report. `ask:` / `http:` / `file:`
-//! steps report a clear "not wired yet" failure until their executor slices land.
+//! **This slice:** setup (reset/freeze), `action:` / `assert:` / `http:` / `file:`
+//! steps, teardown (unfreeze), captures, and the operator-facing report. `ask:` steps
+//! report a clear "not wired yet" failure until the LLM-executor slice lands.
 
 use std::time::Instant;
 
@@ -170,16 +170,17 @@ async fn run_step(step: &Step, actions: &Actions, ctx: &mut ScenarioContext) -> 
     match step {
         Step::Action(_) => run_action(step, actions, ctx).await,
         Step::Assert(_) => run_assert(step, actions, ctx).await,
-        Step::Ask(_) | Step::Http(_) | Step::File(_) => StepResult {
+        Step::Http(s) => super::http_step::run_http_step(s, ctx).await,
+        Step::File(s) => super::file_step::run_file_step(s, ctx).await,
+        Step::Ask(_) => StepResult {
             name: step.name().to_string(),
             kind: step.kind(),
             ok: false,
             duration_ms: 0.0,
             captured: IndexMap::new(),
-            error: Some(format!(
-                "{}: steps are not wired yet — they land in a later scenario slice",
-                step.kind()
-            )),
+            error: Some(
+                "ask: steps are not wired yet — they land with the LLM executor slice".to_string(),
+            ),
         },
     }
 }

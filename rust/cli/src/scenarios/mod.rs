@@ -12,6 +12,8 @@
 pub mod actions;
 pub mod assertions;
 pub mod context;
+pub mod file_step;
+pub mod http_step;
 pub mod reporting;
 pub mod runner;
 pub mod schema;
