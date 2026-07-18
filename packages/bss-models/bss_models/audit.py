@@ -64,8 +64,12 @@ class DomainEvent(Base):
     # v1.2 — outbox relay bookkeeping. The relay (bss_events.relay) increments
     # published_attempts on each delivery try and records last_publish_error, so a
     # row that won't publish is visible to triage instead of silently stuck.
+    # v2.0 — Integer, not SmallInteger: a stuck relay (e.g. a broker blip the Rust
+    # MqChannel didn't recover from) can retry a single row well past SmallInteger's
+    # 32767 ceiling, and `published_attempts + 1` then raised "smallint out of range"
+    # and wedged the whole relay tick. Integer removes that failure mode.
     published_attempts: Mapped[int] = mapped_column(
-        SmallInteger, nullable=False, default=0, server_default="0"
+        Integer, nullable=False, default=0, server_default="0"
     )
     last_publish_error: Mapped[str | None] = mapped_column(Text)
 
