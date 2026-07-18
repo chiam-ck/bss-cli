@@ -20,6 +20,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod commands;
+mod repl;
 mod runtime;
 
 /// `bss` — BSS-CLI, terminal-first, LLM-native telco BSS.
@@ -106,12 +107,8 @@ async fn main() -> ExitCode {
         Some(Command::Ticket(args)) => commands::ticket::run(args).await,
         Some(Command::Trace(args)) => commands::trace::run(args).await,
         Some(Command::Usage(args)) => commands::usage::run(args).await,
-        // `bss` with no subcommand → the REPL (canonical cockpit). Not yet ported;
-        // a following slice lands it. Fail loudly rather than silently no-op.
-        None => {
-            eprintln!("the interactive REPL is not yet ported in this slice; try `bss clock now`");
-            ExitCode::from(1)
-        }
+        // `bss` with no subcommand → the interactive cockpit REPL.
+        None => repl::run().await,
     }
 }
 

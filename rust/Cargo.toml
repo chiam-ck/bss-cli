@@ -66,10 +66,11 @@ tower-http = { version = "0.5", features = ["fs"] }
 # LLM-output post-processors + chat-HTML renderer ported in P6a — matches the
 # P5b note that `postprocess::*` needs fancy-regex.
 fancy-regex = "0.13"
-# CLI arg parsing (Typer equivalent). `derive` for the command tree; lands with
-# the P7 `bss` binary. reedline (the REPL line editor) is added when the REPL
-# slice lands, not here.
+# CLI arg parsing (Typer equivalent). `derive` for the command tree.
 clap = { version = "4", features = ["derive"] }
+# REPL line editor (prompt_toolkit equivalent) — history, Ctrl-C/D signals, a
+# custom prompt. Backs the `bss` cockpit REPL (P7 s18).
+reedline = "0.38"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
 tracing-opentelemetry = "0.28"
