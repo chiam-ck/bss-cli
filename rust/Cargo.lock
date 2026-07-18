@@ -579,6 +579,7 @@ dependencies = [
  "chrono",
  "clap",
  "crossterm",
+ "fancy-regex",
  "indexmap",
  "reedline",
  "rust_decimal",

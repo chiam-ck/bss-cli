@@ -140,6 +140,14 @@ fn bss_cli_dir() -> PathBuf {
     }
 }
 
+/// The `.bss-cli` config directory (`BSS_COCKPIT_DIR` override, else
+/// `<repo_root>/.bss-cli`). Exposed so the REPL's `/config edit` / `/operator edit`
+/// can open `settings.toml` / `OPERATOR.md` in `$EDITOR`; programmatic reads still go
+/// through [`current`] (the mtime hot-reload contract).
+pub fn config_dir(root: Option<&Path>) -> PathBuf {
+    root.map(Path::to_path_buf).unwrap_or_else(bss_cli_dir)
+}
+
 fn embedded_default(filename: &str) -> Option<&'static str> {
     match filename {
         "OPERATOR.md" => Some(DEFAULT_OPERATOR_MD),

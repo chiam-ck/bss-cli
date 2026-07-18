@@ -1,13 +1,13 @@
 //! The reedline cockpit REPL — `bss` with no subcommand. Port of `cli/bss_cli/repl.py`.
 //!
-//! **s18b/s18c (this slice):** the bootstrap (Postgres-backed `Conversation` store,
+//! **s18b–s18d (this slice):** the bootstrap (Postgres-backed `Conversation` store,
 //! fail-closed autonomy, operator config), the reedline read loop + branded banner
 //! (`repl_ui`), the per-turn driver — the same decision chain the browser cockpit runs
 //! (`portals/csr` `run_turn`), printed to the terminal instead of streamed over SSE,
-//! reusing the shared `finalize_bubble` / guards / renderers — and the
-//! session-management slash commands (`/sessions /new /switch /reset /focus`) on top of
-//! `/help /confirm /exit /quit`. The intent commands (`/360 /ports /config /operator` +
-//! the list-intent intercept) land in s18d.
+//! reusing the shared `finalize_bubble` / guards / renderers — the full slash surface
+//! (`/help /confirm /exit /quit`, `/sessions /new /switch /reset /focus`, `/360 /ports`,
+//! `/config edit` / `/operator edit`), and the v0.19 list-intent intercept that
+//! dispatches clean "list/show X" prompts straight to the tool, skipping the LLM.
 //!
 //! The agent's tool calls attribute to the **operator** (`channel="cli"`,
 //! `actor=OPERATOR_ACTOR`, `service_identity="operator_cockpit"`) — a human runs the
@@ -19,6 +19,7 @@ use std::collections::BTreeMap;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use bss_clients::ClientError;
 use bss_cockpit::{
     build_cockpit_prompt, finalize_bubble, is_destructive, renderers, strip_channel_markup,
     strip_reasoning_leakage, BubbleCtx, Conversation, ConversationStore, DestructiveCall,
@@ -73,6 +74,17 @@ pub async fn run() -> ExitCode {
         }
     };
 
+    // A direct client bundle for the read-composite slash commands (`/360`, `/ports`)
+    // — the LLM tool surface goes through `registry`; these compose reads directly,
+    // exactly as Python's `_cmd_360` / `_cmd_ports` use `get_clients()`.
+    let clients = match crate::runtime::Clients::from_env() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("client setup failed: {e}");
+            return ExitCode::from(1);
+        }
+    };
+
     // v0.13: `--allow-destructive` flag support lands with the arg wiring; default off.
     let allow_destructive_default = false;
 
@@ -115,17 +127,23 @@ pub async fn run() -> ExitCode {
                     continue;
                 }
                 if line.starts_with('/') {
-                    match handle_session_slash(&store, &mut conv, &line).await {
+                    match handle_slash(&store, &clients, &mut conv, &line).await {
                         SlashOutcome::Handled => {}
                         SlashOutcome::Replaced(new) => {
                             conv = new;
                             print_banner(&model, &conv, allow_destructive_default);
                         }
-                        SlashOutcome::Unknown => println!(
-                            "'{line}' is not available yet — s18c ships /sessions /new /switch \
-                             /reset /focus; /360 /ports /config /operator land in s18d."
-                        ),
+                        SlashOutcome::Unknown => {
+                            println!("Unknown command: {line}  (/help for the list)")
+                        }
                     }
+                    continue;
+                }
+                // v0.19 list-intent intercept — a clean "list/show X" prompt dispatches
+                // the tool deterministically and skips the LLM (small models fabricate
+                // list-shaped answers). Same renderer dispatch as the LLM path.
+                if let Some(tool) = maybe_intent_match(&line) {
+                    drive_intent_turn(&registry, &mut conv, &line, tool).await;
                     continue;
                 }
                 drive_turn(
@@ -449,10 +467,12 @@ enum SlashOutcome {
     Unknown,
 }
 
-/// Handle the s18c session slash commands (`/sessions /new /switch /reset /focus`).
-/// Port of the matching arms of `_handle_slash` in `cli/bss_cli/repl.py`.
-async fn handle_session_slash(
+/// Handle the cockpit slash commands (`/sessions /new /switch /reset /focus /360
+/// /ports /config /operator`). Port of `_handle_slash` in `cli/bss_cli/repl.py`
+/// (`/help /confirm /exit /quit` are handled in the read loop before this).
+async fn handle_slash(
     store: &ConversationStore,
+    clients: &crate::runtime::Clients,
     conv: &mut Conversation,
     line: &str,
 ) -> SlashOutcome {
@@ -541,7 +561,273 @@ async fn handle_session_slash(
             }
             SlashOutcome::Handled
         }
+        "/360" => {
+            bss_context::scope(operator_request_ctx(), cmd_360(clients, conv, arg)).await;
+            SlashOutcome::Handled
+        }
+        "/ports" => {
+            bss_context::scope(operator_request_ctx(), cmd_ports(clients, conv, arg)).await;
+            SlashOutcome::Handled
+        }
+        "/config" | "/operator" => {
+            cmd_edit_config(cmd, arg);
+            SlashOutcome::Handled
+        }
         _ => SlashOutcome::Unknown,
+    }
+}
+
+/// The operator attribution scope for a REPL slash/intent action — a human runs the
+/// cockpit, so downstream writes/reads carry `channel="cli"`, `actor=operator`,
+/// `service_identity="operator_cockpit"` (not `channel="llm"`; CLAUDE.md v0.5).
+fn operator_request_ctx() -> RequestCtx {
+    RequestCtx {
+        request_id: new_request_id(),
+        actor: OPERATOR_ACTOR.to_string(),
+        channel: "cli".to_string(),
+        service_identity: "operator_cockpit".to_string(),
+        ..Default::default()
+    }
+}
+
+/// `/360 [CUST-NNN]` — customer 360 hero view (customer + subs + cases +
+/// interactions), rendered and persisted as a tool turn. Uses `/focus` when no arg.
+/// Port of `_cmd_360`. Sub-reads degrade to empty on failure (the card still renders).
+async fn cmd_360(clients: &crate::runtime::Clients, conv: &mut Conversation, arg: &str) {
+    let target = if arg.is_empty() {
+        conv.customer_focus.clone().unwrap_or_default()
+    } else {
+        arg.to_string()
+    };
+    if target.is_empty() {
+        println!("/360 needs a customer id (or set /focus first).");
+        return;
+    }
+    let customer = match clients.crm.get_customer(&target).await {
+        Ok(c) => c,
+        Err(ClientError::NotFound(_)) => {
+            println!("Customer {target} not found.");
+            return;
+        }
+        Err(e) => {
+            eprintln!("360 failed: {e}");
+            return;
+        }
+    };
+    let as_array = |v: Result<Value, ClientError>| {
+        v.ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+    };
+    let subs = as_array(clients.subscription.list_for_customer(&target).await);
+    let cases = as_array(clients.crm.list_cases(Some(&target), None, None).await);
+    let interactions = as_array(clients.crm.list_interactions(&target, 20).await);
+
+    let ctx = renderers::customer::Customer360Ctx {
+        subscriptions: &subs,
+        cases: &cases,
+        interactions: &interactions,
+        ..Default::default()
+    };
+    let card = renderers::customer::render_customer_360(&customer, &ctx);
+    println!("{card}");
+    let _ = conv.append_tool_turn("customer.360", &card).await;
+}
+
+/// `/ports [list|approve PORT-NNN|reject PORT-NNN <reason>]` — the operator MNP queue
+/// (operator-only by spec). Port of `_cmd_ports`. List reuses the shared
+/// `port_request.list` renderer so the ASCII card matches the LLM path.
+async fn cmd_ports(clients: &crate::runtime::Clients, conv: &mut Conversation, arg: &str) {
+    let mut parts = arg.splitn(3, char::is_whitespace);
+    let sub = parts.next().unwrap_or("").to_lowercase();
+    let a1 = parts.next().unwrap_or("").trim();
+    let a2 = parts.next().unwrap_or("").trim();
+
+    match sub.as_str() {
+        "" | "list" => {
+            let rows = match clients.crm.list_port_requests(None, None, 50, 0).await {
+                Ok(r) => r,
+                Err(e) => {
+                    println!("port_request.list failed: {e}");
+                    return;
+                }
+            };
+            let raw = serde_json::to_string(&rows).unwrap_or_default();
+            let card = renderers::dispatch::render_tool_result("port_request.list", &raw)
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "no port requests".to_string());
+            println!("{card}");
+            let _ = conv.append_tool_turn("port_request.list", &card).await;
+        }
+        "approve" => {
+            if a1.is_empty() {
+                println!("/ports approve PORT-NNN");
+                return;
+            }
+            match clients.crm.approve_port_request(a1).await {
+                Ok(out) => {
+                    println!(
+                        "{} {}  state={}",
+                        repl_ui::paint("green", "approved"),
+                        field_str(&out, "id"),
+                        field_str(&out, "state"),
+                    );
+                    let _ = conv
+                        .append_tool_turn("port_request.approve", &out.to_string())
+                        .await;
+                }
+                Err(e) => println!("approve failed: {e}"),
+            }
+        }
+        "reject" => {
+            if a1.is_empty() || a2.is_empty() {
+                println!("/ports reject PORT-NNN <reason>");
+                return;
+            }
+            match clients.crm.reject_port_request(a1, a2).await {
+                Ok(out) => {
+                    println!(
+                        "{} {}  reason={a2:?}",
+                        repl_ui::paint("yellow", "rejected"),
+                        field_str(&out, "id"),
+                    );
+                    let _ = conv
+                        .append_tool_turn("port_request.reject", &out.to_string())
+                        .await;
+                }
+                Err(e) => println!("reject failed: {e}"),
+            }
+        }
+        _ => println!("/ports [, list, approve PORT-NNN, reject PORT-NNN <reason>]"),
+    }
+}
+
+/// A string field off a JSON object, or `"?"` when absent — matches Python's
+/// `out.get("id", "?")` shape in the port-request confirmations.
+fn field_str(v: &Value, key: &str) -> String {
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("?")
+        .to_string()
+}
+
+/// `/config edit` / `/operator edit` — open `settings.toml` / `OPERATOR.md` in
+/// `$EDITOR` (default `vi`); the next `current()` hot-reloads on mtime. Port of the
+/// `_open_in_editor` arm. Anything but `edit` prints the usage hint.
+fn cmd_edit_config(cmd: &str, arg: &str) {
+    if arg.trim() != "edit" {
+        println!("{cmd} edit  — open the file in $EDITOR.");
+        return;
+    }
+    let filename = if cmd == "/config" {
+        "settings.toml"
+    } else {
+        "OPERATOR.md"
+    };
+    let path = bss_cockpit::config_dir(None).join(filename);
+    let editor = std::env::var("EDITOR")
+        .ok()
+        .filter(|e| !e.is_empty())
+        .unwrap_or_else(|| "vi".to_string());
+    match std::process::Command::new(&editor).arg(&path).status() {
+        Ok(_) => println!("reloaded {filename} (mtime-based hot reload)."),
+        Err(e) => eprintln!("could not launch {editor:?}: {e}"),
+    }
+}
+
+/// Match a free-text line against the list-intent rules; returns the tool name to
+/// dispatch deterministically, or `None` to fall through to the LLM. Port of
+/// `_maybe_intent_match` / `_INTENT_RULES` (all rules are no-arg reads).
+fn maybe_intent_match(line: &str) -> Option<&'static str> {
+    // (?i) case-insensitive; patterns are byte-faithful to the Python `_INTENT_RULES`.
+    const RULES: &[(&str, &str)] = &[
+        (
+            r"(?i)\b(list|show)( me| us)?( all| every| the)? customers?\b",
+            "customer.list",
+        ),
+        (
+            r"(?i)\bwho are (the|all|our|my) customers\b",
+            "customer.list",
+        ),
+        (
+            r"(?i)\b(list|show)( me| us)?( all| every| the)? (plans|products|offerings)\b",
+            "catalog.list_active_offerings",
+        ),
+        (
+            r"(?i)\bwhat( are the| plans|s)? (plans|products|offerings)\b",
+            "catalog.list_active_offerings",
+        ),
+        (r"(?i)\bproduct catalog\b", "catalog.list_active_offerings"),
+        (
+            r"(?i)\b(list|show)( me| us)?( all| every)? (vas|top.?ups?)\b",
+            "catalog.list_vas",
+        ),
+        (
+            r"(?i)\bwhat( are the)? (vas|top.?ups?)\b",
+            "catalog.list_vas",
+        ),
+        (
+            r"(?i)\b(list|show)( me| us)?( all| every)?( the)? (msisdns?|numbers?|inventory)\b",
+            "inventory.msisdn.list_available",
+        ),
+        (
+            r"(?i)\b(list|show)( me| us)?( all| every| pending| open)? port (requests?|ins?|outs?)\b",
+            "port_request.list",
+        ),
+        (
+            r"(?i)\b(list|show)( me| us)?( all| every| recent)? orders\b",
+            "order.list",
+        ),
+    ];
+    for (pat, tool) in RULES {
+        if let Ok(re) = fancy_regex::Regex::new(pat) {
+            if re.is_match(line).unwrap_or(false) {
+                return Some(tool);
+            }
+        }
+    }
+    None
+}
+
+/// Dispatch an intent-matched tool directly (skip the LLM), render via the shared
+/// dispatch, and persist the user turn + rendered result. Port of `_drive_intent_turn`.
+async fn drive_intent_turn(
+    registry: &ToolRegistry,
+    conv: &mut Conversation,
+    line: &str,
+    tool_name: &str,
+) {
+    let Some(tool) = registry.get(tool_name) else {
+        println!("intent dispatch failed: tool {tool_name:?} not registered");
+        return;
+    };
+    let ctx = ToolCtx {
+        actor: OPERATOR_ACTOR.to_string(),
+        channel: "cli".to_string(),
+        tenant: Settings::from_env().tenant_default,
+        transcript: String::new(),
+    };
+    let call = (tool.func)(json!({}), ctx);
+    let result = bss_context::scope(operator_request_ctx(), call).await;
+    let _ = conv.append_user_turn(line).await;
+    match result {
+        Ok(value) => {
+            let raw = serde_json::to_string(&value).unwrap_or_default();
+            let rendered = renderers::dispatch::render_tool_result(tool_name, &raw)
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| {
+                    serde_json::to_string_pretty(&value).unwrap_or_else(|_| raw.clone())
+                });
+            println!("{rendered}");
+            let _ = conv.append_tool_turn(tool_name, &rendered).await;
+        }
+        Err(e) => {
+            let obs = e.to_observation();
+            println!("{tool_name} failed: {obs}");
+            let _ = conv
+                .append_tool_turn(tool_name, &format!("ERROR: {obs}"))
+                .await;
+        }
     }
 }
 
@@ -613,17 +899,20 @@ fn clip(s: &str, n: usize) -> String {
 }
 
 fn print_help() {
-    println!("bss cockpit — slash commands (s18c):");
+    println!("bss cockpit — slash commands:");
     println!("  /sessions         list your recent cockpit sessions");
     println!("  /new [label]      close current → open a fresh session");
     println!("  /switch SES-...   resume a specific session id");
     println!("  /reset            clear messages on the current session");
     println!("  /focus CUST-NNN   pin a customer for the system prompt (/focus clear to unset)");
+    println!("  /360 [CUST-NNN]   customer 360 (uses /focus if no arg)");
+    println!("  /ports            MNP queue: list / approve PORT-NNN / reject PORT-NNN <reason>");
+    println!("  /config edit      open settings.toml in $EDITOR; hot-reloads");
+    println!("  /operator edit    open OPERATOR.md in $EDITOR; hot-reloads");
     println!("  /confirm          authorise the last proposed destructive action");
     println!("  /help             this cheat sheet");
     println!("  /exit, /quit      leave the cockpit");
     println!("Anything else is a natural-language request to the operator agent.");
-    println!("(/360 /ports /config /operator + the list-intent intercept land in s18d.)");
 }
 
 /// The banner shown at start and on session switch — the branded ANSI panel (ASCII
@@ -676,5 +965,48 @@ impl Prompt for ReplPrompt {
             "({prefix}reverse-search: {}) ",
             history_search.term
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intent_matches_common_list_prompts() {
+        assert_eq!(
+            maybe_intent_match("show me all customers"),
+            Some("customer.list")
+        );
+        assert_eq!(
+            maybe_intent_match("who are our customers"),
+            Some("customer.list")
+        );
+        assert_eq!(
+            maybe_intent_match("list the plans"),
+            Some("catalog.list_active_offerings")
+        );
+        assert_eq!(
+            maybe_intent_match("show me the product catalog"),
+            Some("catalog.list_active_offerings")
+        );
+        assert_eq!(maybe_intent_match("list vas"), Some("catalog.list_vas"));
+        assert_eq!(
+            maybe_intent_match("show me the numbers"),
+            Some("inventory.msisdn.list_available")
+        );
+        assert_eq!(
+            maybe_intent_match("show pending port requests"),
+            Some("port_request.list")
+        );
+        assert_eq!(maybe_intent_match("list recent orders"), Some("order.list"));
+    }
+
+    #[test]
+    fn intent_falls_through_for_non_list_prompts() {
+        // Nuanced / non-list intents go to the LLM, not the deterministic dispatch.
+        assert_eq!(maybe_intent_match("terminate SUB-0005"), None);
+        assert_eq!(maybe_intent_match("how many customers do we have"), None);
+        assert_eq!(maybe_intent_match("what's the weather"), None);
     }
 }
