@@ -3,14 +3,13 @@
 //! (which composes over loyalty-cli). Operator-only — NOT in `customer_self_serve`.
 
 use std::process::ExitCode;
-use std::str::FromStr;
 use std::sync::Arc;
 
 use bss_clients::ClientError;
 use clap::{Args, Subcommand};
-use rust_decimal::Decimal;
 use serde_json::Value;
 
+use super::normalize_decimal;
 use crate::runtime::{run_safely_promo, Clients};
 
 #[derive(Args)]
@@ -310,14 +309,6 @@ async fn show(c: Arc<Clients>, promotion_id: String) -> Result<(), ClientError> 
         println!("  {field:<20} {value}");
     }
     Ok(())
-}
-
-/// `str(Decimal(s))` — validate + canonicalise. `rust_decimal`'s round-trip preserves
-/// scale (no trailing-zero stripping) the same way CPython's `Decimal.__str__` does for
-/// plain decimals; leading whitespace/zeros are absorbed. `None` ⇒ Python's
-/// `InvalidOperation`.
-fn normalize_decimal(s: &str) -> Option<String> {
-    Decimal::from_str(s.trim()).ok().map(|d| d.to_string())
 }
 
 /// `[c.strip() for c in customers.split(",") if c.strip()]` — trim, drop empties.
