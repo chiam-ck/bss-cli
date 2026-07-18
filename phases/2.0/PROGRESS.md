@@ -135,7 +135,7 @@ are the documented seam — cell values (`✓`/`✗`, `%m-%d %H:%M:%S`, `type:id
 `[:40]` error) match Python. Verified end-to-end against live Postgres (23 rows;
 provider/failures/aggregate/since/month-to-date all correct).
 
-**s16 — admin knowledge (`<pending>`).** The last thin command group. Mounts as the
+**s16 — admin knowledge (`7815114`).** The last thin command group. Mounts as the
 third `admin` subcommand (alongside catalog + reset) — `reindex` (walk `INDEXED_PATHS`,
 chunk on headings, upsert `knowledge.doc_chunk` via `bss_knowledge::Indexer`), `search`
 (Tier-0 FTS debug over `search_fts`, the same shape the cockpit's `knowledge.search`
@@ -152,11 +152,43 @@ subscription, usage, case, ticket, payment, promo, inventory, admin (catalog + r
 knowledge), branding, customer, trace, external-calls. **The `bss <subcommand>` surface
 is complete.**
 
-**Remaining P7 — the big pieces (no thin groups left):**
-- **`bss ask`** (single-shot LLM dispatch) + **the reedline REPL** (the canonical
-  cockpit — `bss` with no subcommand; the biggest remaining piece) + the **scenario
+**s17 — the shared tool registry + `bss ask` (`1ad0255`, `5bce994`).** The first big
+piece. Two commits:
+
+- **s17a (`1ad0255`) — extract the registry.** The full operator tool surface lived
+  only inside the CSR portal's private `build_cockpit_registry`, which deliberately
+  omitted `trace.*`/`knowledge.*` (no Jaeger/audit/pool handles). New
+  `bss_orchestrator::registry`: `RegistryClients` (the nine typed service clients,
+  built by each caller with its own auth) + `RegistryExtras` (optional
+  Jaeger/audit/knowledge-pool) → `build_registry()`, registering every read + write
+  family plus `trace.*`/`knowledge.*` when handles are present. The trace/knowledge
+  tool impls already existed (test-pinned) — this only wires them. CSR now delegates
+  to the shared builder and passes Jaeger + both audit surfaces, so the cockpit gains
+  `trace.*` (the `operator_cockpit` profile already lists them — a closed parity gap,
+  not a surface change). Cockpit knowledge stays unwired at its sync build point (the
+  FTS pool connects later in `build_state_with_db`).
+- **s17b (`5bce994`) — `bss ask`.** Port of `ask.py` + `llm_runner.run_single_shot` →
+  `session.ask_once`. Runs one prompt through a fresh agent over the full surface
+  (`tool_filter=None`, `SYSTEM_PROMPT`, autonomy Batched) and prints the final
+  assistant text (rich.Panel seam). `runtime::build_agent_registry` reuses
+  `Clients::from_env` + supplies the extras, so `bss ask` gets the **complete** Python
+  surface including trace.* + knowledge.* (knowledge pool gated on
+  `BSS_KNOWLEDGE_ENABLED` + `BSS_DB_URL`). Runs inside a `bss_context::scope` with
+  `channel="llm"` / `actor="llm-<model>"` (port of `use_llm_context`). Missing
+  `BSS_LLM_API_KEY` and a loop `Error` both map to Python's exit-1 "LLM unavailable".
+  Verified live: a clock round-trip and a `knowledge.search` citation ([HANDBOOK §8.4])
+  both correct. **Known telemetry gap:** no explicit `bss.ask` span yet (the CLI root
+  span covers the command; precise `bss-orchestrator`-service attribution for
+  `bss trace for-ask` is deferred with the broader tracing-parity pass).
+
+**Remaining P7 — the big pieces:**
+- **The reedline REPL** (the canonical cockpit — `bss` with no subcommand; the biggest
+  remaining piece; reuses `build_agent_registry` + `astream_once`) + the **scenario
   engine** (ports against recorded Python-runner runs) + **onboard** (666, the
   compound signup flow) + **bss-seed** / **bss-admin** CLI wiring.
+- **Cockpit knowledge wiring** (small follow-up): rebuild the cockpit registry in
+  `build_state_with_db` with `knowledge_pool = Some(pool)` when `BSS_KNOWLEDGE_ENABLED`,
+  so the browser cockpit gains `knowledge.*` too (currently CLI-only).
 
 ---
 
