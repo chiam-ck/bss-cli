@@ -36,8 +36,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Operator tools — catalog management (reset + knowledge to follow).
+    /// Operator tools — catalog management, operational-data reset, doc knowledge.
     Admin(commands::admin::AdminArgs),
+    /// Single-shot natural-language LLM dispatch over the full tool surface.
+    Ask(commands::ask::AskArgs),
     /// Operator branding — name, theme, logo mark.
     Branding(commands::branding::BrandingArgs),
     /// Manage cases (CRM).
@@ -87,6 +89,7 @@ async fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
         Some(Command::Admin(args)) => commands::admin::run(args).await,
+        Some(Command::Ask(args)) => commands::ask::run(args).await,
         Some(Command::Branding(args)) => commands::branding::run(args),
         Some(Command::Case(args)) => commands::case::run(args).await,
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,

@@ -13,10 +13,12 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 use bss_clients::{
-    CatalogClient, ClientError, ComClient, CrmClient, InventoryClient, MediationClient,
-    PaymentClient, ProvisioningClient, SomClient, SubscriptionClient, TokenAuthProvider,
+    AuditClient, AuthProvider, CatalogClient, ClientError, ComClient, CrmClient, InventoryClient,
+    JaegerClient, MediationClient, PaymentClient, ProvisioningClient, SomClient,
+    SubscriptionClient, TokenAuthProvider,
 };
 use bss_context::{new_request_id, RequestCtx};
+use bss_orchestrator::{build_registry, RegistryClients, RegistryExtras, ToolRegistry};
 
 fn env_or(key: &str, default: &str) -> String {
     std::env::var(key)
@@ -89,6 +91,60 @@ impl Clients {
             .map_err(mk)?,
         })
     }
+}
+
+/// Build the full LLM tool registry for `bss ask` / the REPL, over the shared
+/// `bss_orchestrator::build_registry`. The nine service clients reuse
+/// [`Clients::from_env`]; the observability + knowledge extras are built here
+/// (Jaeger is unauthenticated, the audit surfaces reuse the default token, the
+/// knowledge pool connects only when `BSS_KNOWLEDGE_ENABLED` and `BSS_DB_URL` are
+/// both set — mirroring Python's `_maybe_register`).
+pub(crate) async fn build_agent_registry() -> Result<ToolRegistry, String> {
+    let c = Clients::from_env()?;
+    let reg_clients = RegistryClients {
+        catalog: c.catalog,
+        crm: c.crm,
+        inventory: c.inventory,
+        payment: c.payment,
+        com: c.com,
+        som: c.som,
+        subscription: c.subscription,
+        mediation: c.mediation,
+        provisioning: c.provisioning,
+    };
+
+    // Extras need the token + COM/subscription URLs again (the bundle consumed them).
+    let auth: Arc<dyn AuthProvider> =
+        Arc::new(TokenAuthProvider::new(env_or("BSS_API_TOKEN", "")).map_err(|e| e.to_string())?);
+    let com_url = env_or("BSS_COM_URL", "http://com:8000");
+    let sub_url = env_or("BSS_SUBSCRIPTION_URL", "http://subscription:8000");
+
+    let knowledge_pool = if knowledge_enabled() {
+        match env_or("BSS_DB_URL", "") {
+            db_url if db_url.is_empty() => None,
+            db_url => bss_db::connect(&db_url).await.ok(),
+        }
+    } else {
+        None
+    };
+
+    let extras = RegistryExtras {
+        jaeger: JaegerClient::from_env().ok(),
+        audit_com: AuditClient::new(com_url, auth.clone()).ok(),
+        audit_sub: AuditClient::new(sub_url, auth).ok(),
+        knowledge_pool,
+    };
+
+    Ok(build_registry(&reg_clients, extras))
+}
+
+/// `BSS_KNOWLEDGE_ENABLED` truthiness — default true, enabled for `{1,true,yes,on}`
+/// (lower-cased, trimmed). Port of Python's `_knowledge_enabled`.
+fn knowledge_enabled() -> bool {
+    let raw = env_or("BSS_KNOWLEDGE_ENABLED", "true")
+        .trim()
+        .to_lowercase();
+    matches!(raw.as_str(), "1" | "true" | "yes" | "on")
 }
 
 /// The CLI request context: `actor="cli-user"`, `channel="cli"`, a fresh
