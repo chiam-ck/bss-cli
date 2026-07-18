@@ -89,6 +89,10 @@ pub fn build_registry(clients: &RegistryClients, extras: RegistryExtras) -> Tool
     tools::provisioning::register_provisioning_write_tools(&mut r, clients.provisioning.clone());
     tools::promo::register_promo_write_tools(&mut r, clients.catalog.clone());
     tools::catalog::register_catalog_admin_write_tools(&mut r, clients.catalog.clone());
+    // `usage.simulate` — the LLM-hidden mediation write. Not on the model's surface,
+    // but scenarios drive it directly (deterministic usage burn), so it must be in the
+    // registry. (Its sibling `register_usage_tools` above covers the reads.)
+    tools::usage::register_usage_write_tools(&mut r, clients.mediation.clone());
 
     // ── Observability (trace.*) — needs Jaeger + both audit surfaces ─────────
     if let (Some(jaeger), Some(audit_com), Some(audit_sub)) =
