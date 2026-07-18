@@ -7,6 +7,67 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
+## ⇢ HANDOFF (next session) — REPL visual parity (s18b-polish)
+
+**State:** the REPL (`bss` no subcommand) is functionally live (s18b) + two fixes:
+localhost URL defaults (`c04f193`) and the renderer-less-tool prose fix (`ba905fe`,
+`f2e241d` s18b). It boots, drives real turns, renders ASCII tool cards (catalog,
+subscription, etc.), stages `/confirm`. **Gap the operator flagged:** it looks plain
+next to the Python REPL. Python has: a big ASCII logo, a **bordered branded banner
+panel**, each reply in a **green bordered `bss ai` panel**, **markdown-rendered
+replies** (headings/bold/tables), a **full colored slash-hint line**, and inline
+tool-call `[info]` log lines. The Rust REPL currently prints plain text seams.
+
+**Task: port the REPL presentation** (`rust/cli/src/repl.rs`, add a `repl_ui.rs`).
+All facts gathered:
+- **Logo:** `_LOGO` at `cli/bss_cli/repl.py:123` (the `██████╗` block art) — copy
+  verbatim, print in the accent color.
+- **Slash hints:** `_SLASH_HELP` at `repl.py:132` — `/sessions list · /new [label] ·
+  /switch SES · /reset · /focus CUST · /360 · /ports · /confirm · /config edit ·
+  /operator edit · /help · /exit` (green verbs). Full banner in `_render_banner`
+  (`repl.py:151`): logo (bold accent) + `brand_name` + tagline + actor/model/session/
+  focus meta + hints, all in a Rich `Panel`.
+- **Reply panel:** Python does `Panel(Markdown(final_text), title="bss ai",
+  border_style="green")`. Currently the Rust REPL prints `bss ai\n{text}` plain.
+- **Branding (Rust):** `bss_branding::current(None) -> BrandingView { brand_name,
+  theme: ThemePalette, mark, .. }`. `ThemePalette` has `accent` (hex, phosphor
+  `"#74d535"`), `rich_accent` (name, `"green"`), `accent_amber`, `fg`, `fg_dim`, …
+  Default theme = phosphor (green). Use the hex for ANSI truecolor
+  (`\x1b[38;2;R;G;Bm`).
+- **Width:** `crossterm` is already in the lock (via reedline) — add it as a direct
+  CLI dep and use `crossterm::terminal::size()` (fallback 100) for panel width.
+- **Approach:** ANSI-truecolor helpers from the theme hex; a `panel(title, body_lines,
+  border_color, width)` box-drawer (rounded `╭─╮│╰╯`, title in the top rule); a light
+  markdown→ANSI renderer (headings → bold+accent, `**bold**`, `` `code` `` → dim,
+  `- ` bullets → `•`, and ideally pipe-tables — the LLM replies lean on these). Wire:
+  banner panel at start/switch, reply in a green `bss ai` panel, full slash hints.
+  The tool cards already look right (they go through `render_tool_result`); leave them.
+- The `[info] knowledge.search …` lines in Python are structlog from the tool call —
+  nice-to-have, lower priority than the panels/markdown.
+
+**After the polish:** resume the REPL feature slices — **s18c** (`/sessions /new
+/switch /reset /focus`), **s18d** (`/360 /ports /config /operator` + the list-intent
+intercept `_maybe_intent_match`/`_drive_intent_turn`). Then the **scenario engine**
+(P7 exit gate), **onboard**, **bss-seed/bss-admin** wiring.
+
+**Also open (this session's work, all pushed + CI green):**
+- Relay/idempotency hardening DONE: SOM idempotency (`2333f72`), MqChannel
+  reconnection (`00b25f1`), provisioning inbox dedup (`2629a43`, migration 0032 +
+  applied to tech-vm). See [[rust-provisioning-activation-loop]] +
+  [[rust-mq-relay-no-reconnect]]. **Deploy note:** the MqChannel fix is in the shared
+  `bss-events` crate — only provisioning-sim + payment + som were rebuilt during
+  verification; a **full-stack rebuild** is needed for it to be live on
+  com/subscription/crm/catalog/mediation/rating (additive, so the mixed state is safe).
+- **Consumer-loop re-subscription** is still a follow-up (the reconnection fix covers
+  the publish path, not long-lived consumers whose channel dies).
+- **E2E order verified end to end** (ORD-0098 → SUB-0089 active). Reminder:
+  Claude's verification flips `BSS_PAYMENT_PROVIDER`→mock + KYC→prebaked and restores
+  after (stripe/didit are the operator's for manual testing) — see
+  [[verification-uses-mock-providers]]. `.env` service URLs use compose names; the CLI
+  now defaults to `localhost:800X` so `bss` works from the host with no exports.
+
+---
+
 ## Tagging discipline (2.0)
 
 Every phase gets an **annotated** git tag when — and only when — its exit criteria
