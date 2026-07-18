@@ -20,7 +20,6 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 
 mod commands;
-mod jaeger;
 mod runtime;
 
 /// `bss` — BSS-CLI, terminal-first, LLM-native telco BSS.

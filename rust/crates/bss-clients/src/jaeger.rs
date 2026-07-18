@@ -82,4 +82,81 @@ impl JaegerClient {
             None => Err(JaegerError(format!("trace {trace_id} returned empty data"))),
         }
     }
+
+    /// `GET /api/services` → the exporting-service names (`body.data`, strings only).
+    /// Backs `bss trace services`.
+    pub async fn list_services(&self) -> Result<Vec<String>, JaegerError> {
+        let url = format!("{}/api/services", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| JaegerError(e.to_string()))?;
+        if resp.status().as_u16() != 200 {
+            return Err(JaegerError(format!(
+                "GET /api/services -> {}",
+                resp.status().as_u16()
+            )));
+        }
+        let body: Value = resp.json().await.map_err(|e| JaegerError(e.to_string()))?;
+        Ok(body
+            .get("data")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    /// `GET /api/traces?service=…&limit=…[&operation=…]` → recent traces (`body.data`).
+    pub async fn find_traces(
+        &self,
+        service: &str,
+        operation: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<Value>, JaegerError> {
+        let url = format!("{}/api/traces", self.base_url);
+        let mut query: Vec<(&str, String)> = vec![
+            ("service", service.to_string()),
+            ("limit", limit.to_string()),
+        ];
+        if let Some(op) = operation {
+            query.push(("operation", op.to_string()));
+        }
+        let resp = self
+            .http
+            .get(&url)
+            .query(&query)
+            .send()
+            .await
+            .map_err(|e| JaegerError(e.to_string()))?;
+        if resp.status().as_u16() != 200 {
+            return Err(JaegerError(format!(
+                "GET /api/traces -> {}",
+                resp.status().as_u16()
+            )));
+        }
+        let body: Value = resp.json().await.map_err(|e| JaegerError(e.to_string()))?;
+        Ok(body
+            .get("data")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    /// The `traceID` of the most recent `bss.ask` invocation, if any. Backs
+    /// `bss trace for-ask`.
+    pub async fn latest_ask_trace_id(&self) -> Result<Option<String>, JaegerError> {
+        let traces = self
+            .find_traces("bss-orchestrator", Some("bss.ask"), 1)
+            .await?;
+        Ok(traces
+            .first()
+            .and_then(|t| t.get("traceID"))
+            .and_then(Value::as_str)
+            .map(str::to_string))
+    }
 }

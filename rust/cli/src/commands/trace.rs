@@ -6,12 +6,11 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use bss_clients::{AuditClient, TokenAuthProvider};
+use bss_clients::{AuditClient, JaegerClient, JaegerError, TokenAuthProvider};
 use bss_cockpit::renderers::trace::{render_swimlane, SwimlaneOpts};
 use clap::{Args, Subcommand};
 use serde_json::Value;
 
-use crate::jaeger::JaegerClient;
 use crate::runtime::cli_ctx;
 
 #[derive(Args)]
@@ -89,7 +88,7 @@ async fn dispatch(args: TraceArgs) -> ExitCode {
             only_service,
             json,
         } => {
-            let jc = match JaegerClient::new() {
+            let jc = match JaegerClient::from_env() {
                 Ok(jc) => jc,
                 Err(e) => return jaeger_err(&e),
             };
@@ -141,7 +140,7 @@ async fn dispatch(args: TraceArgs) -> ExitCode {
             show_sql,
             json,
         } => {
-            let jc = match JaegerClient::new() {
+            let jc = match JaegerClient::from_env() {
                 Ok(jc) => jc,
                 Err(e) => return jaeger_err(&e),
             };
@@ -161,7 +160,7 @@ async fn dispatch(args: TraceArgs) -> ExitCode {
             ExitCode::SUCCESS
         }
         TraceCommand::Services => {
-            let jc = match JaegerClient::new() {
+            let jc = match JaegerClient::from_env() {
                 Ok(jc) => jc,
                 Err(e) => return jaeger_err(&e),
             };
@@ -218,7 +217,7 @@ async fn trace_from_audit(
         println!("no trace_id recorded for {noun} {aggregate_id} (was it created before v0.2?)");
         return ExitCode::from(2);
     };
-    let jc = match JaegerClient::new() {
+    let jc = match JaegerClient::from_env() {
         Ok(jc) => jc,
         Err(e) => return jaeger_err(&e),
     };
@@ -270,7 +269,7 @@ fn latest_trace_id(events: &Value) -> Option<String> {
     None
 }
 
-fn jaeger_err(e: &crate::jaeger::JaegerError) -> ExitCode {
+fn jaeger_err(e: &JaegerError) -> ExitCode {
     eprintln!("{e}");
     ExitCode::from(2)
 }

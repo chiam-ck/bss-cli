@@ -20,7 +20,6 @@ chrono = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 rust_decimal = { workspace = true }
-reqwest = { workspace = true }
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }
