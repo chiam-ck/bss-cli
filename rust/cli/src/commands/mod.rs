@@ -17,6 +17,7 @@ pub mod clock;
 pub mod customer;
 pub mod external_calls;
 pub mod inventory;
+pub mod onboard;
 pub mod order;
 pub mod payment;
 pub mod promo;

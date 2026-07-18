@@ -57,6 +57,8 @@ enum Command {
     ExternalCalls(commands::external_calls::ExternalCallsArgs),
     /// Browse MSISDN + eSIM inventory pools (read-only).
     Inventory(commands::inventory::InventoryArgs),
+    /// First-run provider configuration wizard (email / KYC / payment).
+    Onboard(commands::onboard::OnboardArgs),
     /// Manage commercial orders (TMF622).
     Order(commands::order::OrderArgs),
     /// Payment methods + payment attempts.
@@ -102,6 +104,7 @@ async fn main() -> ExitCode {
         Some(Command::Customer(args)) => commands::customer::run(args).await,
         Some(Command::ExternalCalls(args)) => commands::external_calls::run(args).await,
         Some(Command::Inventory(args)) => commands::inventory::run(args).await,
+        Some(Command::Onboard(args)) => commands::onboard::run(args).await,
         Some(Command::Order(args)) => commands::order::run(args).await,
         Some(Command::Payment(args)) => commands::payment::run(args).await,
         Some(Command::Promo(args)) => commands::promo::run(args).await,
