@@ -48,21 +48,21 @@ pub async fn run(args: AdminArgs) -> ExitCode {
 
 /// A service that owns operational data: display label + base-URL env var + default.
 const TARGETS: &[(&str, &str, &str)] = &[
-    ("mediation", "BSS_MEDIATION_URL", "http://mediation:8000"),
+    ("mediation", "BSS_MEDIATION_URL", "http://localhost:8007"),
     (
         "subscription",
         "BSS_SUBSCRIPTION_URL",
-        "http://subscription:8000",
+        "http://localhost:8006",
     ),
-    ("som", "BSS_SOM_URL", "http://som:8000"),
-    ("com", "BSS_COM_URL", "http://com:8000"),
+    ("som", "BSS_SOM_URL", "http://localhost:8005"),
+    ("com", "BSS_COM_URL", "http://localhost:8004"),
     (
         "provisioning-sim",
         "BSS_PROVISIONING_URL",
-        "http://provisioning:8000",
+        "http://localhost:8010",
     ),
-    ("payment", "BSS_PAYMENT_URL", "http://payment:8000"),
-    ("crm (+ inventory)", "BSS_CRM_URL", "http://crm:8000"),
+    ("payment", "BSS_PAYMENT_URL", "http://localhost:8003"),
+    ("crm (+ inventory)", "BSS_CRM_URL", "http://localhost:8002"),
 ];
 
 struct ResetResult {

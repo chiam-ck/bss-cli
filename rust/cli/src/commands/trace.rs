@@ -105,7 +105,7 @@ async fn dispatch(args: TraceArgs) -> ExitCode {
             show_sql,
             json,
         } => {
-            let url = service_url("BSS_COM_URL", "http://com:8000");
+            let url = service_url("BSS_COM_URL", "http://localhost:8004");
             trace_from_audit(
                 &url,
                 "ProductOrder",
@@ -123,7 +123,7 @@ async fn dispatch(args: TraceArgs) -> ExitCode {
             show_sql,
             json,
         } => {
-            let url = service_url("BSS_SUBSCRIPTION_URL", "http://subscription:8000");
+            let url = service_url("BSS_SUBSCRIPTION_URL", "http://localhost:8006");
             trace_from_audit(
                 &url,
                 "subscription",

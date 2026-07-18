@@ -50,42 +50,46 @@ pub struct Clients {
 
 impl Clients {
     /// Build the bundle from env. Errors if `BSS_API_TOKEN` is unset or a base URL
-    /// is malformed.
+    /// is malformed. Service URLs default to `http://localhost:800X` (the host-mapped
+    /// compose ports) so `bss` works from a dev shell out of the box — matching
+    /// Python's `bss_orchestrator.config` dev defaults, not the compose-network
+    /// hostnames the services use to reach each other. Override via `BSS_<SVC>_URL`
+    /// when running the CLI inside the container network.
     pub fn from_env() -> Result<Self, String> {
         let token = env_or("BSS_API_TOKEN", "");
         let auth = Arc::new(TokenAuthProvider::new(token).map_err(|e| e.to_string())?);
         let mk = |e: ClientError| e.to_string();
         // Inventory lives inside CRM (same base URL), matching get_clients().
-        let crm_url = env_or("BSS_CRM_URL", "http://crm:8000");
+        let crm_url = env_or("BSS_CRM_URL", "http://localhost:8002");
         Ok(Self {
             catalog: CatalogClient::new(
-                env_or("BSS_CATALOG_URL", "http://catalog:8000"),
+                env_or("BSS_CATALOG_URL", "http://localhost:8001"),
                 auth.clone(),
             )
             .map_err(mk)?,
             crm: CrmClient::new(crm_url.clone(), auth.clone()).map_err(mk)?,
             inventory: InventoryClient::new(crm_url, auth.clone()).map_err(mk)?,
             payment: PaymentClient::new(
-                env_or("BSS_PAYMENT_URL", "http://payment:8000"),
+                env_or("BSS_PAYMENT_URL", "http://localhost:8003"),
                 auth.clone(),
             )
             .map_err(mk)?,
-            com: ComClient::new(env_or("BSS_COM_URL", "http://com:8000"), auth.clone())
+            com: ComClient::new(env_or("BSS_COM_URL", "http://localhost:8004"), auth.clone())
                 .map_err(mk)?,
-            som: SomClient::new(env_or("BSS_SOM_URL", "http://som:8000"), auth.clone())
+            som: SomClient::new(env_or("BSS_SOM_URL", "http://localhost:8005"), auth.clone())
                 .map_err(mk)?,
             subscription: SubscriptionClient::new(
-                env_or("BSS_SUBSCRIPTION_URL", "http://subscription:8000"),
+                env_or("BSS_SUBSCRIPTION_URL", "http://localhost:8006"),
                 auth.clone(),
             )
             .map_err(mk)?,
             mediation: MediationClient::new(
-                env_or("BSS_MEDIATION_URL", "http://mediation:8000"),
+                env_or("BSS_MEDIATION_URL", "http://localhost:8007"),
                 auth.clone(),
             )
             .map_err(mk)?,
             provisioning: ProvisioningClient::new(
-                env_or("BSS_PROVISIONING_URL", "http://provisioning:8000"),
+                env_or("BSS_PROVISIONING_URL", "http://localhost:8010"),
                 auth.clone(),
             )
             .map_err(mk)?,
@@ -116,8 +120,8 @@ pub(crate) async fn build_agent_registry() -> Result<ToolRegistry, String> {
     // Extras need the token + COM/subscription URLs again (the bundle consumed them).
     let auth: Arc<dyn AuthProvider> =
         Arc::new(TokenAuthProvider::new(env_or("BSS_API_TOKEN", "")).map_err(|e| e.to_string())?);
-    let com_url = env_or("BSS_COM_URL", "http://com:8000");
-    let sub_url = env_or("BSS_SUBSCRIPTION_URL", "http://subscription:8000");
+    let com_url = env_or("BSS_COM_URL", "http://localhost:8004");
+    let sub_url = env_or("BSS_SUBSCRIPTION_URL", "http://localhost:8006");
 
     let knowledge_pool = if knowledge_enabled() {
         match env_or("BSS_DB_URL", "") {
