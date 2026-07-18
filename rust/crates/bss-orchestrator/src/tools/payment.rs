@@ -24,18 +24,18 @@ const DESC_CHARGE: &str = include_str!("desc/payment_charge.txt");
 
 /// Sandbox client-side tokenizer — a pure port of `local_tokenize_card`. Brand from
 /// the BIN, FAIL/DECLINE embedded in the token from the raw PAN text, uuid body.
-/// Returns `(card_token, last4, brand)` or a `ValueError` for an invalid PAN.
-fn local_tokenize_card(card_number: &str) -> Result<(String, String, String), ToolError> {
+/// Returns `(card_token, last4, brand)` or the Python `ValueError` detail string for
+/// an invalid PAN. Public so `bss payment add-card` can call it exactly as the Python
+/// CLI imports it from `bss_orchestrator.tools.payment` — the CLI maps the error to
+/// exit 1, the write tool below maps it back to a `ToolError::Other{kind:"ValueError"}`.
+pub fn local_tokenize_card(card_number: &str) -> Result<(String, String, String), String> {
     let digits: String = card_number
         .chars()
         .filter(|c| *c != ' ' && *c != '-')
         .collect();
     if !digits.chars().all(|c| c.is_ascii_digit()) || digits.len() < 12 {
-        return Err(ToolError::Other {
-            kind: "ValueError".to_string(),
-            // Python `f"Invalid card number: {card_number!r}"` (single-quoted repr).
-            detail: format!("Invalid card number: '{card_number}'"),
-        });
+        // Python `f"Invalid card number: {card_number!r}"` (single-quoted repr).
+        return Err(format!("Invalid card number: '{card_number}'"));
     }
     let last4: String = digits[digits.len() - 4..].to_string();
     let bin2: i32 = digits[..2].parse().unwrap_or(0);
@@ -124,7 +124,11 @@ pub fn register_payment_write_tools(registry: &mut ToolRegistry, client: Payment
             async move {
                 let customer_id = req_str(&args, "customer_id")?;
                 let card_number = req_str(&args, "card_number")?;
-                let (token, last4, brand) = local_tokenize_card(&card_number)?;
+                let (token, last4, brand) =
+                    local_tokenize_card(&card_number).map_err(|detail| ToolError::Other {
+                        kind: "ValueError".to_string(),
+                        detail,
+                    })?;
                 c.create_payment_method(&customer_id, &token, &last4, &brand, 12, 2030)
                     .await
                     .map_err(map_err)
@@ -205,11 +209,8 @@ mod tests {
             .0
             .starts_with("tok_"));
 
-        // Too short / non-digit → the Python-style ValueError observation.
+        // Too short / non-digit → the Python-style ValueError detail string.
         let err = local_tokenize_card("41111").unwrap_err();
-        assert!(err.to_observation().contains("ValueError"));
-        assert!(err
-            .to_observation()
-            .contains("Invalid card number: '41111'"));
+        assert_eq!(err, "Invalid card number: '41111'");
     }
 }

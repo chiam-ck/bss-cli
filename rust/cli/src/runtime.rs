@@ -147,6 +147,38 @@ where
     }
 }
 
+/// Like [`run_safely`] but additionally maps a `NotFound` to `NOT_FOUND  <detail>`
+/// plus exit 2. The `bss promo` group is the one command family whose Python
+/// `_run_safely` catches `NotFound`; every other group lets it propagate to exit 1.
+pub async fn run_safely_promo<F, Fut>(body: F) -> ExitCode
+where
+    F: FnOnce(Arc<Clients>) -> Fut,
+    Fut: Future<Output = Result<(), ClientError>>,
+{
+    let clients = match Clients::from_env() {
+        Ok(c) => Arc::new(c),
+        Err(e) => {
+            eprintln!("client setup failed: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    match bss_context::scope(cli_ctx(), body(clients)).await {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(ClientError::Policy(p)) => {
+            eprintln!("POLICY_VIOLATION {}  {}", p.rule, p.message);
+            ExitCode::from(2)
+        }
+        Err(ClientError::NotFound(detail)) => {
+            eprintln!("NOT_FOUND  {detail}");
+            ExitCode::from(2)
+        }
+        Err(e) => {
+            eprintln!("error ({}): {e}", e.status_code());
+            ExitCode::from(1)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

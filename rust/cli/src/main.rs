@@ -44,6 +44,10 @@ enum Command {
     Clock(commands::clock::ClockArgs),
     /// Manage commercial orders (TMF622).
     Order(commands::order::OrderArgs),
+    /// Payment methods + payment attempts.
+    Payment(commands::payment::PaymentArgs),
+    /// Operator promotion management (create / assign / show).
+    Promo(commands::promo::PromoArgs),
     /// Provisioning-sim: tasks + fault injection.
     Prov(commands::prov::ProvArgs),
     /// Service order + service inventory (SOM).
@@ -74,6 +78,8 @@ async fn main() -> ExitCode {
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
         Some(Command::Order(args)) => commands::order::run(args).await,
+        Some(Command::Payment(args)) => commands::payment::run(args).await,
+        Some(Command::Promo(args)) => commands::promo::run(args).await,
         Some(Command::Prov(args)) => commands::prov::run(args).await,
         Some(Command::Som(args)) => commands::som::run(args).await,
         Some(Command::Subscription(args)) => commands::subscription::run(args).await,

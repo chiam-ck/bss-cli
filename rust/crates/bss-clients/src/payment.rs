@@ -206,6 +206,22 @@ impl PaymentClient {
         }
         serde_json::from_slice(&bytes).map_err(|e| ClientError::Transport(e.to_string()))
     }
+
+    /// `POST /admin-api/v1/cutover/invalidate-mock-tokens?dryRun=…` — marks every
+    /// active mock-token payment method as expired ahead of a `mock → stripe` cutover.
+    /// `dry_run=true` returns the candidate count without writing. Backs
+    /// `bss payment cutover`.
+    pub async fn cutover_invalidate_mock_tokens(
+        &self,
+        dry_run: bool,
+    ) -> Result<Value, ClientError> {
+        let flag = if dry_run { "true" } else { "false" };
+        let path = format!("/admin-api/v1/cutover/invalidate-mock-tokens?dryRun={flag}");
+        let resp = self.inner.request(Method::POST, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
 }
 
 /// Minimal query-value encoding for the id characters that need it (mirrors

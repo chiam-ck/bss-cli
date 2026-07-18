@@ -304,6 +304,30 @@ impl CatalogClient {
         .await
     }
 
+    /// `POST …/promotion/{id}/unassign` with `{customerIds}` — remove customers from a
+    /// targeted promo's eligibility list and revoke the upfront loyalty offer (v1.3.1,
+    /// idempotent). Backs `bss promo unassign`.
+    pub async fn unassign_promotion(
+        &self,
+        promotion_id: &str,
+        customer_ids: &[String],
+    ) -> Result<Value, ClientError> {
+        let path = format!("{PROMO_PATH}/{promotion_id}/unassign");
+        self.send(
+            Method::POST,
+            &path,
+            Some(&json!({"customerIds": customer_ids})),
+        )
+        .await
+    }
+
+    /// `POST …/promotion/{id}/exhaust` (no body) — operator-initiated terminal stop,
+    /// `active → exhausted` (v1.4.1, idempotent). Backs `bss promo exhaust`.
+    pub async fn exhaust_promotion(&self, promotion_id: &str) -> Result<Value, ClientError> {
+        let path = format!("{PROMO_PATH}/{promotion_id}/exhaust");
+        self.send(Method::POST, &path, None).await
+    }
+
     /// `POST /admin/catalog/offering` — add a new offering + its opening price.
     /// Optional allowances/window sent only when present. Backs `catalog.add_offering`
     /// (LLM-hidden).

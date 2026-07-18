@@ -570,9 +570,11 @@ dependencies = [
  "bss-clock",
  "bss-cockpit",
  "bss-context",
+ "bss-orchestrator",
  "bss-telemetry",
  "chrono",
  "clap",
+ "rust_decimal",
  "serde_json",
  "tokio",
 ]
