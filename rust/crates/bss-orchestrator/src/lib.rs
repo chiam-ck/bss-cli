@@ -27,6 +27,7 @@ pub mod events;
 pub mod llm;
 pub mod ownership;
 pub mod prompts;
+pub mod registry;
 pub mod safety;
 pub mod tools;
 
@@ -38,6 +39,7 @@ pub use config::Settings;
 pub use events::AgentEvent;
 pub use llm::OpenRouterChatModel;
 pub use ownership::{assert_owned_output, AgentOwnershipViolation, OWNERSHIP_PATHS};
+pub use registry::{build_registry, RegistryClients, RegistryExtras};
 pub use safety::{is_destructive, AutonomyMode, DESTRUCTIVE_TOOLS};
 pub use tools::{ToolCtx, ToolError, ToolRegistry, ToolSpec};
 

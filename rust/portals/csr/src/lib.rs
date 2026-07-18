@@ -257,59 +257,40 @@ pub fn build_state() -> AppState {
 /// `get_clients()` distinct from the portal's. `None` without a perimeter token.
 fn build_cockpit_registry(settings: &Settings) -> Option<ToolRegistry> {
     use bss_clients::{
-        CatalogClient, ComClient, CrmClient, InventoryClient, MediationClient, PaymentClient,
-        ProvisioningClient, SomClient, SubscriptionClient,
+        AuditClient, CatalogClient, ComClient, CrmClient, InventoryClient, JaegerClient,
+        MediationClient, PaymentClient, ProvisioningClient, SomClient, SubscriptionClient,
     };
-    use bss_orchestrator::tools;
+    use bss_orchestrator::{build_registry, RegistryClients, RegistryExtras};
 
     let auth = clients::cockpit_auth().ok()?;
-    let catalog = CatalogClient::new(settings.catalog_url.clone(), auth.clone()).ok()?;
-    let crm = CrmClient::new(settings.crm_url.clone(), auth.clone()).ok()?;
-    let sub = SubscriptionClient::new(settings.subscription_url.clone(), auth.clone()).ok()?;
-    let payment = PaymentClient::new(settings.payment_url.clone(), auth.clone()).ok()?;
-    let com = ComClient::new(settings.com_url.clone(), auth.clone()).ok()?;
-    let som = SomClient::new(settings.som_url.clone(), auth.clone()).ok()?;
-    // Inventory lives inside CRM (same base URL).
-    let inventory = InventoryClient::new(settings.crm_url.clone(), auth.clone()).ok()?;
-    let provisioning =
-        ProvisioningClient::new(settings.provisioning_url.clone(), auth.clone()).ok()?;
-    let mediation = MediationClient::new(settings.mediation_url.clone(), auth.clone()).ok()?;
+    let reg_clients = RegistryClients {
+        catalog: CatalogClient::new(settings.catalog_url.clone(), auth.clone()).ok()?,
+        crm: CrmClient::new(settings.crm_url.clone(), auth.clone()).ok()?,
+        // Inventory lives inside CRM (same base URL).
+        inventory: InventoryClient::new(settings.crm_url.clone(), auth.clone()).ok()?,
+        payment: PaymentClient::new(settings.payment_url.clone(), auth.clone()).ok()?,
+        com: ComClient::new(settings.com_url.clone(), auth.clone()).ok()?,
+        som: SomClient::new(settings.som_url.clone(), auth.clone()).ok()?,
+        subscription: SubscriptionClient::new(settings.subscription_url.clone(), auth.clone())
+            .ok()?,
+        mediation: MediationClient::new(settings.mediation_url.clone(), auth.clone()).ok()?,
+        provisioning: ProvisioningClient::new(settings.provisioning_url.clone(), auth.clone())
+            .ok()?,
+    };
 
-    let mut r = ToolRegistry::new();
-    // Reads.
-    tools::clock::register_clock_tools(&mut r);
-    tools::catalog::register_catalog_tools(&mut r, catalog.clone());
-    tools::customer::register_customer_tools(&mut r, crm.clone(), sub.clone());
-    tools::case::register_case_tools(&mut r, crm.clone());
-    tools::ticket::register_ticket_tools(&mut r, crm.clone());
-    tools::port_request::register_port_request_tools(&mut r, crm.clone());
-    tools::ops::register_ops_tools(&mut r, crm.clone());
-    tools::subscription::register_subscription_tools(&mut r, sub.clone());
-    tools::payment::register_payment_tools(&mut r, payment.clone());
-    tools::order::register_order_tools(&mut r, com.clone());
-    tools::som::register_som_tools(&mut r, som.clone());
-    tools::inventory::register_inventory_tools(&mut r, inventory.clone());
-    tools::provisioning::register_provisioning_tools(&mut r, provisioning.clone());
-    tools::promo::register_promo_tools(&mut r, catalog.clone());
-    tools::usage::register_usage_tools(&mut r, mediation.clone());
-    // Writes — the cockpit is the operator surface, so it carries the full write
-    // set. The destructive ones are gated by the loop's wrapper + /confirm, not
-    // by omission from the registry.
-    tools::customer::register_customer_write_tools(&mut r, crm.clone());
-    tools::case::register_case_write_tools(&mut r, crm.clone());
-    tools::ticket::register_ticket_write_tools(&mut r, crm.clone());
-    tools::port_request::register_port_request_write_tools(&mut r, crm.clone());
-    tools::subscription::register_subscription_write_tools(&mut r, sub.clone());
-    tools::payment::register_payment_write_tools(&mut r, payment.clone());
-    tools::order::register_order_write_tools(&mut r, com.clone());
-    tools::inventory::register_inventory_write_tools(&mut r, inventory.clone());
-    tools::provisioning::register_provisioning_write_tools(&mut r, provisioning.clone());
-    tools::promo::register_promo_write_tools(&mut r, catalog.clone());
-    tools::catalog::register_catalog_admin_write_tools(&mut r, catalog.clone());
-    // NOTE: `trace.*` (JaegerClient + AuditClient) and `knowledge.*` (a PgPool)
-    // need infra handles this bundle doesn't carry; they land with the CLI/REPL
-    // wiring in P7, where the same registry is built once and shared.
-    Some(r)
+    // `trace.*` — the `operator_cockpit` profile lists these, so the cockpit carries
+    // them. Jaeger is unauthenticated; the audit surfaces reuse the cockpit token.
+    // `knowledge.*` needs the FTS pool, which isn't connected at this sync build
+    // point (it lands in `build_state_with_db`); the cockpit's knowledge wiring
+    // follows there. `bss ask` / the REPL supply the pool directly.
+    let extras = RegistryExtras {
+        jaeger: JaegerClient::from_env().ok(),
+        audit_com: AuditClient::new(settings.com_url.clone(), auth.clone()).ok(),
+        audit_sub: AuditClient::new(settings.subscription_url.clone(), auth.clone()).ok(),
+        knowledge_pool: None,
+    };
+
+    Some(build_registry(&reg_clients, extras))
 }
 
 /// Like [`build_state`] but also connects the cockpit `Conversation` store.
