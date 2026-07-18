@@ -123,14 +123,27 @@ adds the `AdminClient` (single reset_operational_data POST, 30s timeout) + a
 seven-service fan-out with Python's except-ladder error mapping and the
 `typer.prompt("Type 'reset' to confirm")` gate.
 
-Groups now live (17): catalog, clock, order, prov, som, subscription, usage, case,
-ticket, payment, promo, inventory, admin (catalog + reset), branding, customer, trace.
+**s15 — external-calls (`<pending>`).** The first CLI group that talks to Postgres
+directly rather than through a service HTTP client — the forensic `external_call`
+log is cross-provider triage data with no owning service. Wires `bss-db` (the shared
+`connect()` pool) + `sqlx` into the CLI crate for the first time. Read-only browser:
+`--provider`/`--since`/`--aggregate`/`--month-to-date`/`--limit`/`--failures`, dynamic
+WHERE with positional binds, ordered `occurred_at DESC`. The `--since` `<n>{s,m,h,d}`
+parser + the `--month-to-date`/`--since` mutual-exclusion + `BSS_DB_URL`-unset all
+map to Python's exit 2; the two `rich.Table` outputs (row browser + month summary)
+are the documented seam — cell values (`✓`/`✗`, `%m-%d %H:%M:%S`, `type:id` aggregate,
+`[:40]` error) match Python. Verified end-to-end against live Postgres (23 rows;
+provider/failures/aggregate/since/month-to-date all correct).
+
+Groups now live (18): catalog, clock, order, prov, som, subscription, usage, case,
+ticket, payment, promo, inventory, admin (catalog + reset), branding, customer, trace,
+external-calls.
 
 **Remaining P7 — command groups + the big pieces:**
-- DB-backed groups still to port: **external-calls** (245, a reader over
-  `integrations.external_call` — needs a Rust query layer + `BSS_DB_URL`), **admin
-  knowledge** (182, `reindex`/`search`/`list` — needs `bss-knowledge` + a DB session;
-  mounts as the third `admin` subcommand).
+- DB-backed group still to port: **admin knowledge** (182, `reindex`/`search`/`list` —
+  needs `bss-knowledge` + a DB session; mounts as the third `admin` subcommand). The
+  `bss-db`/`sqlx` CLI wiring landed in s15, so this now only owes the `bss-knowledge`
+  FTS surface.
 - **`bss ask`** (single-shot LLM dispatch) + **the reedline REPL** (the canonical
   cockpit — `bss` with no subcommand; the biggest remaining piece) + the **scenario
   engine** (ports against recorded Python-runner runs) + **onboard** (666, the

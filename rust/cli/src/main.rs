@@ -48,6 +48,8 @@ enum Command {
     Customer(commands::customer::CustomerArgs),
     /// Time helpers (v0.1 = wall clock).
     Clock(commands::clock::ClockArgs),
+    /// Read-only browser over integrations.external_call (v0.14+).
+    ExternalCalls(commands::external_calls::ExternalCallsArgs),
     /// Browse MSISDN + eSIM inventory pools (read-only).
     Inventory(commands::inventory::InventoryArgs),
     /// Manage commercial orders (TMF622).
@@ -90,6 +92,7 @@ async fn main() -> ExitCode {
         Some(Command::Catalog(args)) => commands::catalog::run(args).await,
         Some(Command::Clock(args)) => commands::clock::run(args),
         Some(Command::Customer(args)) => commands::customer::run(args).await,
+        Some(Command::ExternalCalls(args)) => commands::external_calls::run(args).await,
         Some(Command::Inventory(args)) => commands::inventory::run(args).await,
         Some(Command::Order(args)) => commands::order::run(args).await,
         Some(Command::Payment(args)) => commands::payment::run(args).await,
