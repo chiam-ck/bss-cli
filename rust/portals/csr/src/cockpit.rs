@@ -207,12 +207,31 @@ fn individual_name(c: &Value) -> Option<String> {
 
 // ── POST /cockpit/new ────────────────────────────────────────────────
 
-pub async fn new_session(State(state): State<AppState>) -> Response {
+/// Optional label for a new session (`/cockpit/new` posts `label=...`; the header
+/// "New" button posts nothing). `Option<Form<_>>` tolerates a bodyless POST.
+#[derive(serde::Deserialize, Default)]
+pub struct NewSessionForm {
+    #[serde(default)]
+    label: Option<String>,
+}
+
+pub async fn new_session(
+    State(state): State<AppState>,
+    form: Option<Form<NewSessionForm>>,
+) -> Response {
     let s = match store(&state) {
         Ok(s) => s,
         Err(r) => return r,
     };
-    match s.open(OPERATOR_ACTOR, None, None, false, &tenant()).await {
+    // Persist the operator-supplied label so the thread page's `thread_title` (which
+    // falls back to `conv.label`) renders it before the first turn lands.
+    let label = form
+        .and_then(|f| f.0.label)
+        .filter(|s| !s.trim().is_empty());
+    match s
+        .open(OPERATOR_ACTOR, label.as_deref(), None, false, &tenant())
+        .await
+    {
         Ok(conv) => Redirect::to(&format!("/cockpit/{}", conv.session_id)).into_response(),
         Err(e) => {
             tracing::error!(error = %e, "cockpit.new_session_failed");
