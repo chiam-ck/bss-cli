@@ -36,6 +36,18 @@ pub async fn handle_task_completed(
         return Ok(());
     };
 
+    // Idempotency: a `task.completed` for an already-`activated` CFS is a duplicate
+    // or late redelivery — all tasks were already done and the service activated on
+    // the final one. Ack-and-skip. Without this, the handler recomputes
+    // all_completed=true and attempts `activated → activated`, which the service FSM
+    // rejects (`Allowed: ['terminated']`); under at-least-once delivery that failure
+    // then storms the retry/park queues. The `service` FSM allows only
+    // `activated → terminated`, so `activated` is terminal for the provisioning path.
+    if cfs.state == "activated" {
+        tracing::info!(service_id, task_type, "task.completed.already_activated_noop");
+        return Ok(());
+    }
+
     let (chars, pending) = mark_pending(&cfs.characteristics, task_type, "completed");
 
     let all_completed = pending.values().all(|v| v == "completed");
