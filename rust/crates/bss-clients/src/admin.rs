@@ -41,7 +41,12 @@ impl AdminClient {
     pub async fn reset_operational_data(&self) -> Result<Value, ClientError> {
         let resp = self
             .inner
-            .request(Method::POST, "/admin-api/v1/reset-operational-data", None, None)
+            .request(
+                Method::POST,
+                "/admin-api/v1/reset-operational-data",
+                None,
+                None,
+            )
             .await?;
         resp.json()
             .await

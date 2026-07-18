@@ -9,6 +9,7 @@
 //! task-local the server middleware installs. §2.1 of 02-TECH-MAPPING.md.
 #![forbid(unsafe_code)]
 
+mod admin;
 mod audit;
 mod auth;
 mod base;
@@ -25,6 +26,7 @@ mod provisioning;
 mod som;
 mod subscription;
 
+pub use admin::AdminClient;
 pub use audit::AuditClient;
 pub use auth::{
     AuthError, AuthProvider, BearerAuthProvider, NamedTokenAuthProvider, NoAuthProvider,
