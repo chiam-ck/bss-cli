@@ -44,7 +44,11 @@ pub async fn handle_task_completed(
     // then storms the retry/park queues. The `service` FSM allows only
     // `activated → terminated`, so `activated` is terminal for the provisioning path.
     if cfs.state == "activated" {
-        tracing::info!(service_id, task_type, "task.completed.already_activated_noop");
+        tracing::info!(
+            service_id,
+            task_type,
+            "task.completed.already_activated_noop"
+        );
         return Ok(());
     }
 
