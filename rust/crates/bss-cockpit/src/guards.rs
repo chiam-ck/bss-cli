@@ -8,7 +8,7 @@
 
 use std::sync::LazyLock;
 
-use bss_cockpit::renderers::dispatch::RENDERED_TOOLS;
+use crate::renderers::dispatch::RENDERED_TOOLS;
 use fancy_regex::Regex;
 use serde_json::Value;
 
@@ -177,26 +177,11 @@ mod tests {
         assert!(!is_destructive(""));
     }
 
-    /// The cockpit's list is NOT safety's, and the difference is deliberate.
-    /// This pins the direction that would actually hurt: a tool the loop BLOCKS
-    /// but the cockpit can't stage for `/confirm` would strand the operator with
-    /// no way to authorise it. That set must stay empty.
-    #[test]
-    fn no_cockpit_tool_is_blocked_without_being_stageable() {
-        use bss_orchestrator::safety::DESTRUCTIVE_TOOLS;
-        use bss_orchestrator::tools::profile_tools;
-
-        let profile: Vec<&str> = profile_tools("operator_cockpit").to_vec();
-        let stranded: Vec<&&str> = DESTRUCTIVE_TOOLS
-            .iter()
-            .filter(|t| profile.contains(t) && !is_destructive(t))
-            .collect();
-        assert!(
-            stranded.is_empty(),
-            "these cockpit tools are blocked by safety but cannot be staged for \
-             /confirm — the operator would hit a wall with no way through: {stranded:?}"
-        );
-    }
+    // NOTE: the cross-crate invariant `no_cockpit_tool_is_blocked_without_being_
+    // stageable` (cockpit `is_destructive` must cover every `operator_cockpit`
+    // DESTRUCTIVE_TOOL) lives in `portals/csr/tests/cockpit_guards.rs` — it needs
+    // `bss_orchestrator`, which this crate can't depend on (orchestrator → cockpit
+    // is the dependency direction).
 
     #[test]
     fn recap_detects_a_pre_tag_bubble() {

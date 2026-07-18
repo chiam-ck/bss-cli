@@ -20,8 +20,9 @@
 //! portal — the guard `rg 'astream_once' portals/csr/.../routes/` must match this
 //! file only.
 //!
-//! The decision logic lives in [`crate::turn`] / [`crate::bubble`] /
-//! [`crate::guards`]; this module is the wiring.
+//! The decision logic lives in [`crate::turn`] + the shared
+//! `bss_cockpit::{bubble, guards}` (relocated there in P7 s18a so the REPL reuses
+//! it); this module is the wiring.
 
 use std::collections::BTreeMap;
 use std::convert::Infallible;
@@ -41,14 +42,13 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
-use crate::bubble::{finalize_bubble, BubbleCtx, DestructiveCall};
-use crate::guards::is_destructive;
 use crate::inflight::{heartbeat_frame, HEARTBEAT_SECONDS, RELOAD_FRAME_HTML};
 use crate::routes::render;
 use crate::sessions::{first_user_message_title, group_rows, humanize_time, SessionRow};
 use crate::tool_row::render_tool_row_as_pre;
 use crate::turn::{plan_turn, TurnPlan};
 use crate::AppState;
+use bss_cockpit::{finalize_bubble, is_destructive, BubbleCtx, DestructiveCall};
 
 const SSE_MIME: &str = "text/event-stream";
 

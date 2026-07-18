@@ -9,10 +9,10 @@
 //! Extracted from the SSE plumbing because this decides what an operator reads
 //! and therefore what they authorise. It is pure; the route keeps only the wiring.
 
-use bss_cockpit::{knowledge_called, strip_fake_propose};
 use serde_json::Value;
 
 use crate::guards::{claims_handbook, suppress_tool_recap, KNOWLEDGE_HALLUCINATION_FALLBACK};
+use crate::{knowledge_called, strip_fake_propose};
 
 /// A destructive tool call — its name and args — captured this turn.
 #[derive(Debug, Clone, PartialEq)]

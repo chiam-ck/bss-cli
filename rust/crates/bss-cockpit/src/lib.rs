@@ -18,13 +18,16 @@
 //! + branding writers (land with `bss-branding`).
 #![forbid(unsafe_code)]
 
+pub mod bubble;
 pub mod chrome_filter;
 pub mod config;
 pub mod conversation;
+pub mod guards;
 pub mod postprocess;
 pub mod prompts;
 pub mod renderers;
 
+pub use bubble::{finalize_bubble, BubbleCtx, BubbleOutcome, DestructiveCall};
 pub use chrome_filter::{is_cockpit_chrome, strip_fake_propose, ASSISTANT_CHROME_PREFIXES};
 pub use config::{
     current, remove_branding_logo, reset_cache, write_branding_logo, write_branding_settings,
@@ -34,6 +37,10 @@ pub use config::{
 pub use conversation::{
     Conversation, ConversationError, ConversationMessage, ConversationStore, ConversationSummary,
     PendingDestructive,
+};
+pub use guards::{
+    claims_handbook, is_destructive, looks_like_tool_recap, suppress_tool_recap,
+    DESTRUCTIVE_PREFIXES, KNOWLEDGE_HALLUCINATION_FALLBACK,
 };
 pub use postprocess::{knowledge_called, strip_channel_markup, strip_reasoning_leakage};
 pub use prompts::{build_cockpit_prompt, COCKPIT_INVARIANTS};

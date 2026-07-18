@@ -24,14 +24,12 @@
 #![forbid(unsafe_code)]
 
 pub mod branding;
-pub mod bubble;
 pub mod cases;
 pub mod catalog;
 pub mod clients;
 pub mod cockpit;
 pub mod config;
 pub mod customers;
-pub mod guards;
 pub mod handoff;
 pub mod inflight;
 pub mod orders;
