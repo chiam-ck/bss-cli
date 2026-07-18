@@ -310,13 +310,19 @@ async fn drive_turn(
                         executed.push(call);
                     }
                 }
-                // A registered renderer produces the ASCII card; no renderer → the raw
-                // JSON verbatim (the LLM is forbidden from reformatting it).
-                let rendered = renderers::dispatch::render_tool_result(&name, &raw).unwrap_or(raw);
-                if !rendered.is_empty() {
-                    tool_rows.push((name.clone(), rendered.clone()));
-                    println!("{rendered}");
-                    cards_shown += 1;
+                // Show an ASCII card ONLY when a renderer is registered (Python REPL's
+                // `if card:`). Renderer-less tools (knowledge.*, …) return `None` → no
+                // card, so `cards_shown` stays 0 and the model's prose answer is what
+                // the operator sees — NOT the raw JSON. (The browser cockpit dumps raw
+                // JSON as a <pre> because it always also shows the final bubble; the
+                // REPL suppresses the bubble when a card rendered, so it must not treat
+                // a renderer-less result as a card.)
+                if let Some(rendered) = renderers::dispatch::render_tool_result(&name, &raw) {
+                    if !rendered.is_empty() {
+                        tool_rows.push((name.clone(), rendered.clone()));
+                        println!("{rendered}");
+                        cards_shown += 1;
+                    }
                 }
             }
             AgentEvent::FinalMessage { text } => {
