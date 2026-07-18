@@ -30,6 +30,8 @@ enum AdminCommand {
     Catalog(super::admin_catalog::AdminCatalogArgs),
     /// Doc-corpus indexer + FTS search debug surface (v0.20+).
     Knowledge(super::admin_knowledge::KnowledgeArgs),
+    /// Seed reference data across every domain (idempotent — the clean reseed).
+    Seed,
     /// Wipe operational data across every BSS service (reference data survives).
     Reset {
         /// Skip interactive confirmation.
@@ -42,6 +44,7 @@ pub async fn run(args: AdminArgs) -> ExitCode {
     match args.command {
         AdminCommand::Catalog(a) => super::admin_catalog::run(a).await,
         AdminCommand::Knowledge(a) => super::admin_knowledge::run(a).await,
+        AdminCommand::Seed => super::admin_seed::run().await,
         AdminCommand::Reset { yes } => reset(yes).await,
     }
 }

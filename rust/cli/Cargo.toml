@@ -31,6 +31,7 @@ sqlx = { workspace = true }
 indexmap = { version = "2", features = ["serde"] }
 crossterm = "0.28"
 unicode-width = "0.1"
+uuid = { workspace = true }
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }

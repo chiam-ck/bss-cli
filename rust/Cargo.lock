@@ -592,6 +592,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "unicode-width",
+ "uuid",
 ]
 
 [[package]]
