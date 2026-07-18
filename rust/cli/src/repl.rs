@@ -75,7 +75,7 @@ pub async fn run() -> ExitCode {
     // v0.13: `--allow-destructive` flag support lands with the arg wiring; default off.
     let allow_destructive_default = false;
 
-    print_banner(&model, &conv);
+    print_banner(&model, &conv, allow_destructive_default);
 
     let mut editor = Reedline::create();
     loop {
@@ -402,10 +402,9 @@ async fn drive_turn(
     if cards_shown > 0 {
         return;
     }
-    // The prose reply (Python renders a `rich.Panel(title="bss ai")`; the box chrome
-    // is a documented CLI seam).
-    println!("bss ai");
-    println!("{}", outcome.text);
+    // The prose reply — Rich `Panel(Markdown(text), title="bss ai", border_style=
+    // "green")`, ported to an ANSI panel with light markdown formatting.
+    println!("{}", crate::repl_ui::reply_panel(&outcome.text));
 }
 
 /// `[{name, args, call_id}, …]` for the assistant turn's `tool_calls_json`, or
@@ -444,18 +443,23 @@ fn print_help() {
     );
 }
 
-/// The banner shown at start and on session switch. Python renders a Rich `Panel`
-/// with branding + ASCII logo; this is the documented text seam (same info).
-fn print_banner(model: &str, conv: &Conversation) {
+/// The banner shown at start and on session switch — the branded ANSI panel (ASCII
+/// logo, tagline, meta, hints), read from operator branding per render. Port of
+/// `_render_banner`.
+fn print_banner(model: &str, conv: &Conversation, allow_destructive_default: bool) {
     let focus = conv.customer_focus.as_deref().unwrap_or("—");
-    println!("┌─ bss cockpit ────────────────────────────────────────");
-    println!("  LLM-native Business Support System · operator cockpit");
+    let brand = bss_branding::current(None);
     println!(
-        "  actor {OPERATOR_ACTOR}  ·  model {model}\n  session {}  ·  focus {focus}",
-        conv.session_id
+        "{}",
+        crate::repl_ui::banner(
+            &brand,
+            OPERATOR_ACTOR,
+            model,
+            &conv.session_id,
+            focus,
+            allow_destructive_default,
+        )
     );
-    println!("  try   show the catalog · show subscription SUB-0001 · /help");
-    println!("└──────────────────────────────────────────────────────");
 }
 
 /// The reedline prompt: `bss:<last-8-of-session>> ` (ANSI-coloured to match the

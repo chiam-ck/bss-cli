@@ -23,6 +23,8 @@ serde_json = { workspace = true }
 rust_decimal = { workspace = true }
 sqlx = { workspace = true }
 indexmap = { version = "2", features = ["serde"] }
+crossterm = "0.28"
+unicode-width = "0.1"
 
 bss-branding = { workspace = true }
 bss-clients = { workspace = true }
@@ -31,6 +33,7 @@ bss-clock = { workspace = true }
 bss-cockpit = { workspace = true }
 bss-context = { workspace = true }
 bss-knowledge = { workspace = true }
+bss-models = { workspace = true }
 bss-orchestrator = { workspace = true }
 bss-telemetry = { workspace = true }
 

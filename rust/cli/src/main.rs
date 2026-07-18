@@ -21,6 +21,7 @@ use clap::{Parser, Subcommand};
 
 mod commands;
 mod repl;
+mod repl_ui;
 mod runtime;
 
 /// `bss` — BSS-CLI, terminal-first, LLM-native telco BSS.

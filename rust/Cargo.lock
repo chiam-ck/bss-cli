@@ -573,16 +573,19 @@ dependencies = [
  "bss-context",
  "bss-db",
  "bss-knowledge",
+ "bss-models",
  "bss-orchestrator",
  "bss-telemetry",
  "chrono",
  "clap",
+ "crossterm",
  "indexmap",
  "reedline",
  "rust_decimal",
  "serde_json",
  "sqlx",
  "tokio",
+ "unicode-width",
 ]
 
 [[package]]
