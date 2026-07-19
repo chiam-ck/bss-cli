@@ -47,8 +47,10 @@ across services as an ASCII swimlane; Jaeger has the full UI.
 
 ## Quick start
 
-Prerequisites: Docker + Compose, Python 3.12 + [uv](https://docs.astral.sh/uv/),
-and an OpenRouter API key (or any OpenAI-compatible endpoint) for the chat/REPL.
+Prerequisites: Docker + Compose, a [Rust toolchain](https://rustup.rs) (to build the
+service images + the `bss` CLI), and an OpenRouter API key (or any OpenAI-compatible
+endpoint) for the chat/REPL. (BSS-CLI is all-Rust as of 2.0; the retired Python stack
+lives in `python-legacy/` as the reproducible oracle.)
 
 ```bash
 git clone <repo> && cd bss-cli
@@ -58,8 +60,11 @@ cp .env.example .env
 sed -i "s/^BSS_API_TOKEN=changeme$/BSS_API_TOKEN=$(openssl rand -hex 32)/" .env
 # Then edit .env: set BSS_LLM_API_KEY
 
-docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d
-make migrate
+# Bring up the all-Rust service plane + portals + infra (Postgres/RabbitMQ/Jaeger)
+docker compose -f docker-compose.yml -f docker-compose.rust.yml -f docker-compose.infra.yml up -d
+
+cargo build --release -p bss-cli && export PATH="$PWD/target/release:$PATH"
+bss admin migrate            # apply the schema (sqlx baseline); --baseline on an existing DB
 make seed                    # plans, VAS, 1000 MSISDNs, 1000 eSIM profiles
 make knowledge-reindex       # cockpit doc search corpus
 

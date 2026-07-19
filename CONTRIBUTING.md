@@ -2,6 +2,8 @@
 
 > If you're reading this for the first time, **read [`CLAUDE.md`](CLAUDE.md) before making any code changes.** It's the project doctrine — seven motto principles, scope boundaries, write-policy doctrine, naming conventions, anti-patterns. Everything else here assumes you've internalized that contract.
 
+> **Stack note (2.0).** BSS-CLI is an **all-Rust** Cargo workspace at the repo root (`cargo`, and `make test`/`fmt`/`lint`/`doctrine-check` all drive Rust). The retired Python implementation lives in `python-legacy/` as the reproducible **oracle**; its dev loop is the `py-*` make targets (`make py-test`, `py-fmt`, `py-migrate`, …). `CLAUDE.md`'s "Tech stack" section still lists the Python originals (FastAPI/SQLAlchemy/pytest/…) pending a doctrine amendment — the behaviour, contracts, data model, and tool surface are unchanged by the port.
+
 ## Project doctrine
 
 `CLAUDE.md` is the contract. Three things matter most:
@@ -86,7 +88,7 @@ Established across Phase 4 + revisited every minor version since:
 ## How to run the full suite
 
 ```bash
-make test                 # every service + package + cli + portal suite, parallel-safe
+make test                 # cargo test --workspace (Rust). py-test = the Python oracle's per-package pytest sweep
 make scenarios            # every scenario (17 heroes as of v0.18)
 make scenarios-hero       # the hero-tagged scenarios (deterministic + LLM-driven mix)
 make doctrine-check       # 14 grep guards: datetime, OTel surfaces, channel attribution, renewal worker confinement, etc.
