@@ -5,6 +5,10 @@
 > read the indexed doc corpus (HANDBOOK + CLAUDE + runbooks + ARCHITECTURE
 > + DECISIONS + TOOL_SURFACE + ROADMAP + CONTRIBUTING). Operator-initiated;
 > no file-watcher in containers.
+>
+> **2.0 (all-Rust):** schema is applied by `bss admin migrate` (sqlx baseline),
+> not `make migrate`/Alembic; reindex is `bss admin knowledge reindex`. pgvector
+> is still required (the baseline runs `CREATE EXTENSION vector`).
 
 ## When to run
 
@@ -32,7 +36,9 @@ You do NOT need to reindex after:
 
 ## Prerequisites — pgvector on Postgres
 
-The v0.20 migration `0022` runs `CREATE EXTENSION IF NOT EXISTS vector`.
+The schema baseline (`migrations/0001_baseline.sql`, applied by `bss admin
+migrate`) runs `CREATE EXTENSION IF NOT EXISTS vector` and creates the
+`knowledge` schema — the old Alembic `0022`/`0023` are collapsed into it.
 Stock `postgres:16` and `postgres:16-alpine` images do **not** include
 the extension; activation requires either an image swap (bundled mode)
 or a one-time `CREATE EXTENSION` (BYOI).

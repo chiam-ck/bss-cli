@@ -11,6 +11,8 @@ tags: [bss-cli, handbook, runbook, reference]
 > Single canonical reference for **operating, deploying, and troubleshooting BSS-CLI**. Optimized for Obsidian (back-links, table-of-contents, anchor-jump). Designed to be ingestible by the REPL/Cockpit when a tool answer is insufficient.
 >
 > **Repo doctrine** lives in [`CLAUDE.md`](../CLAUDE.md). **Architecture** lives in [`ARCHITECTURE.md`](../ARCHITECTURE.md). **Decisions log** lives in [`DECISIONS.md`](../DECISIONS.md). This handbook synthesizes them into one navigable document; when a fact differs, the source-of-truth files win.
+>
+> **2.0 — all-Rust (2026-07-19).** BSS-CLI was rewritten Python → Rust (behaviour-frozen — the operating model, env vars, providers, tools, and DB schema are unchanged). The Rust workspace is the repo root; `make` targets now drive Rust (`make migrate` = `bss admin migrate`, `test/fmt/lint` = cargo). The retired Python stack lives in `python-legacy/` (its dev loop is the `py-*` targets), kept as the golden-diff oracle until the `v2.0.0` release. Run steps below are updated for Rust; a few informational mentions (FastAPI, OTel auto-instrumentors, `uv run pytest` for snapshot regen) still describe the retired Python internals.
 
 ---
 
@@ -131,7 +133,7 @@ Phase-12 OAuth/RBAC for staff is **retired** (DECISIONS 2026-05-01), not deferre
 
 ## Part 2 — Quick start (5-minute path)
 
-> **Prerequisites:** Docker + Docker Compose, Python 3.12, [`uv`](https://docs.astral.sh/uv/), and an OpenRouter API key (free at openrouter.ai). Linux / macOS. ~4 GB RAM headroom.
+> **Prerequisites:** Docker + Docker Compose, a [Rust toolchain](https://rustup.rs) (to build the `bss` CLI + the service images), and an OpenRouter API key (free at openrouter.ai). Linux / macOS. ~4 GB RAM headroom. (BSS-CLI is all-Rust as of 2.0; the retired Python stack lives in `python-legacy/` as the reproducible oracle.)
 
 ```bash
 git clone <repo-url>
@@ -146,14 +148,17 @@ sed -i "s/^BSS_PORTAL_TOKEN_PEPPER=changeme$/BSS_PORTAL_TOKEN_PEPPER=$(openssl r
 
 # 3. Set BSS_LLM_API_KEY in .env to your OpenRouter key (sk-or-v1-...).
 
-# 4. Bring everything up (bundled = local Postgres + RabbitMQ + Jaeger).
+# 4. Bring the all-Rust stack up (bundled = local Postgres + RabbitMQ + Jaeger).
 make up-all
 
-# 5. Apply migrations + seed reference data (3 plans, 4 VAS, 1000 MSISDNs, 1000 eSIM profiles).
-make migrate
+# 5. Build the bss CLI + put it on PATH (used for migrate/seed/REPL).
+cargo build --release -p bss-cli && export PATH="$PWD/target/release:$PATH"
+
+# 6. Apply the schema (sqlx baseline) + seed reference data (3 plans, 4 VAS, 1000 MSISDNs, 1000 eSIM profiles).
+bss admin migrate            # existing DB already migrated by Alembic? use: bss admin migrate --baseline
 make seed
 
-# 6. Open the cockpit REPL.
+# 7. Open the cockpit REPL.
 bss
 ```
 
@@ -257,8 +262,9 @@ make up-all
 # 4b. OR BYOI mode — first edit BSS_DB_URL / BSS_MQ_URL / BSS_OTEL_EXPORTER_OTLP_ENDPOINT, then:
 make up
 
-# 5. Apply Alembic migrations (latest head 0030 on v1.5).
-make migrate
+# 5. Build the bss CLI (used by migrate/seed/REPL) + apply the schema (sqlx baseline).
+cargo build --release -p bss-cli && export PATH="$PWD/target/release:$PATH"
+bss admin migrate            # existing (Alembic-migrated) DB → bss admin migrate --baseline
 
 # 6. Seed reference data: 3 plans + 4 VAS (incl. roaming) + 1000 MSISDNs + 1000 eSIM profiles.
 make seed
@@ -270,7 +276,7 @@ bss onboard --domain email
 bss onboard --domain kyc
 bss onboard --domain payment
 # After onboard, restart services so lifespans pick up the new env:
-docker compose down && docker compose up -d
+make down && make up-all
 
 # 8. Open the cockpit REPL.
 bss
@@ -443,22 +449,24 @@ Loaded once at startup into a `TokenMap` (HMAC-SHA-256 hashed). Identity derived
 | Target | What it does |
 |---|---|
 | `help` | Print one-line summary of every public target |
-| `up` | `docker compose up -d` — services only (BYOI Postgres/RabbitMQ); pre-creates `.dev-mailbox/` `0777` |
-| `up-all` | `docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d` — bundled mode |
+| `up` | Bring up the **all-Rust** services (rust overlay; BYOI Postgres/RabbitMQ); pre-creates `.dev-mailbox/` `0777` |
+| `up-all` | Rust overlay + bundled infra (Postgres/RabbitMQ/Jaeger) |
 | `up-minimal` | `catalog crm payment` only |
 | `up-core` | `up-minimal` + `com som subscription provisioning-sim` |
-| `down` | Stops everything (both compose files) |
-| `build` | `docker compose build` all service images |
-| `migrate` | `cd packages/bss-models && uv run alembic upgrade head` (sources `.env` first) |
-| `seed` | `uv run bss-seed` — 3 plans (incl. roaming buckets) + 4 VAS (incl. roaming) + 1000 MSISDNs + 1000 eSIM profiles |
-| `knowledge-reindex` | (v0.20+) Reindex doc corpus into `knowledge.doc_chunk` for the cockpit's `knowledge.search` tool. Idempotent (mtime + content_hash dedup) |
-| `reset-db` | DROP every BSS schema + re-migrate + re-seed (uses `BSS_ALLOW_ADMIN_RESET` paths) |
-| `test` | Per-package pytest sweep with PYTHONPATH isolation; excludes `integration` mark |
-| `fmt` | `ruff format .` |
-| `lint` | `ruff check .` + `mypy .` |
-| `scenarios` | Run every `scenarios/*.yaml`. Side-effect: temporarily flips `BSS_PORTAL_EMAIL_PROVIDER → logging`, `BSS_PORTAL_KYC_PROVIDER → prebaked` (+ `BSS_KYC_ALLOW_PREBAKED=true`), `BSS_PAYMENT_PROVIDER → mock` in `.env`, recreates affected containers, restores on EXIT/INT/TERM |
+| `down` | Stops everything (rust overlay + infra) |
+| `build` | Build all Rust service + portal images |
+| `migrate` | `bss admin migrate` (Rust sqlx migrator; `--baseline` on an existing DB). `py-migrate` = `alembic upgrade head` |
+| `seed` | `bss admin seed` — 3 plans + 4 VAS (incl. roaming) + 1000 MSISDNs + 1000 eSIM profiles. `py-seed` = Python bss-seed |
+| `knowledge-reindex` | `bss admin knowledge reindex` — doc corpus into `knowledge.doc_chunk`. Idempotent (mtime + content_hash dedup) |
+| `reset-db` | DROP every BSS schema (+ the sqlx ledger) + re-migrate + re-seed (uses `BSS_ALLOW_ADMIN_RESET` paths) |
+| `test` | `cargo test --workspace`. `py-test` = the Python oracle's per-package pytest sweep |
+| `fmt` | `cargo fmt --all --check`. `py-fmt` = `ruff format` |
+| `lint` | `cargo clippy --workspace -D warnings`. `py-lint` = `ruff check`, `lint-types` = mypy |
+| `doctrine-check` | `scripts/rust_doctrine_check.sh` — 14 grep guards over the Rust workspace. `py-doctrine-check` = the Python guards |
+| `scenarios` | Run every `scenarios/*.yaml` via the Rust scenario engine. Side-effect: temporarily flips `BSS_PORTAL_EMAIL_PROVIDER → logging`, `BSS_PORTAL_KYC_PROVIDER → prebaked` (+ `BSS_KYC_ALLOW_PREBAKED=true`), `BSS_PAYMENT_PROVIDER → mock` in `.env`, recreates affected containers, restores on EXIT/INT/TERM |
 | `scenarios-hero` | Same flip-and-restore, but `--tag hero` (17 hero scenarios) |
-| `python-check` | Warn-only check that active Python is 3.12 |
+| `py-*` | The Python oracle's dev loop under `python-legacy/` — `py-test`, `py-fmt`, `py-lint`, `py-migrate`, `py-seed`, `py-doctrine-check` (kept for golden-diffs until the `v2.0.0` release) |
+| `python-check` | Warn-only check that the `python-legacy/` interpreter is 3.12 |
 | `check-clock` | Grep guard — every `datetime.now/utcnow` site must route through `bss-clock` |
 | `doctrine-check` | Runs `check-clock` plus 13 more grep guards (chat-only orchestrator mediation, OTel-out-of-services, no-campaignos-leak, renewal-reads-snapshot, no-caller-asserted-service-identity, no-runtime-token-env-reads, customer_id-bound-from-state, astream_once-stays-in-chat, stripe-fixtures-redacted, rating-roaming-blind, ported_out-terminal, renewal-worker-lifespan-only, version-from-BSS_RELEASE) |
 
@@ -2421,8 +2429,10 @@ troubleshooting) lives in
 Quick reference:
 
 ```bash
-# First-time activation (after `make migrate` lands 0022 + 0023):
-make knowledge-reindex
+# First-time activation (the schema baseline already carries the knowledge
+# schema + the vector extension — the old Alembic 0022/0023 are collapsed into
+# migrations/0001_baseline.sql, applied by `bss admin migrate`):
+make knowledge-reindex        # = bss admin knowledge reindex
 
 # After a docs PR merges:
 make knowledge-reindex
@@ -2436,7 +2446,7 @@ bss admin knowledge search "rotate cockpit token"
 bss admin knowledge search "prebaked KYC env flag" --kind doctrine
 ```
 
-**Postgres prereq.** The migration's `CREATE EXTENSION IF NOT EXISTS
+**Postgres prereq.** The baseline's `CREATE EXTENSION IF NOT EXISTS
 vector` requires pgvector to be installable. Stock `postgres:16` and
 `postgres:16-alpine` images don't include it.
 
@@ -2444,7 +2454,7 @@ vector` requires pgvector to be installable. Stock `postgres:16` and
   `image: pgvector/pgvector:pg16` (drop-in same-major; data dir
   preserved; reversible).
 - **BYOI mode:** one-time `CREATE EXTENSION IF NOT EXISTS vector` on
-  the target Postgres before `make migrate`.
+  the target Postgres before `bss admin migrate`.
 
 After the swap, **bounce the BSS service containers** — their
 connection pools went stale during the Postgres restart and will

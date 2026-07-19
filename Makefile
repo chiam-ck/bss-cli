@@ -25,11 +25,15 @@ help:
 	@echo "  doctrine-check      — (2.0) Rust grep guards over the workspace; py-doctrine-check = Python guards"
 	@echo "  python-check        — warn if active Python is outside the supported 3.12 range"
 
+# 2.0: the all-Rust images are the default stack. `make up*` runs the Rust overlay;
+# for the Python oracle drop it (`docker compose -f docker-compose.yml ...`).
+COMPOSE := docker compose -f docker-compose.yml -f docker-compose.rust.yml
+
 up: dev-mailbox-dir
-	docker compose up -d
+	$(COMPOSE) up -d
 
 up-all: dev-mailbox-dir
-	docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d
+	$(COMPOSE) -f docker-compose.infra.yml up -d
 
 # v0.8 — pre-create the host bind-mount dir for the portal dev mailbox.
 # If Docker auto-creates it, it lands as root:root 755 and the portal
@@ -42,16 +46,16 @@ dev-mailbox-dir:
 	@chmod 0777 .dev-mailbox 2>/dev/null || true
 
 up-minimal:
-	docker compose up -d catalog crm payment
+	$(COMPOSE) up -d catalog crm payment
 
 up-core:
-	docker compose up -d catalog crm payment com som subscription provisioning-sim
+	$(COMPOSE) up -d catalog crm payment com som subscription provisioning-sim
 
 down:
-	docker compose -f docker-compose.yml -f docker-compose.infra.yml down
+	$(COMPOSE) -f docker-compose.infra.yml down
 
 build:
-	docker compose build
+	$(COMPOSE) build
 
 python-check:
 	@# Project targets Python 3.12 (CLAUDE.md "Tech stack"). Newer minors
