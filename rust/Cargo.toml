@@ -45,6 +45,13 @@ sqlx = { version = "0.8", default-features = false, features = [
     "chrono",
     "uuid",
     "json",
+    # Phase 8 — the sqlx migrator (`bss admin migrate`) replaces Alembic as the
+    # go-forward schema source. `migrate` pulls the `Migrator` type; `macros`
+    # provides the `migrate!` macro that embeds rust/migrations at compile time
+    # (no DATABASE_URL / offline data needed — we use runtime `sqlx::query`, not
+    # the compile-time-checked `query!`).
+    "migrate",
+    "macros",
 ] }
 reqwest = { version = "0.12", default-features = false, features = [
     "json",

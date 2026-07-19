@@ -9,6 +9,7 @@
 pub mod admin;
 pub mod admin_catalog;
 pub mod admin_knowledge;
+pub mod admin_migrate;
 pub mod admin_seed;
 pub mod ask;
 pub mod branding;

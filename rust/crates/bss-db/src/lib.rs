@@ -5,6 +5,7 @@
 //! `PolicyViolation` wire shape is a frozen contract the LLM depends on.
 #![forbid(unsafe_code)]
 
+pub mod migrate;
 mod policy;
 mod pool;
 

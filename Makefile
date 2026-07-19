@@ -1,4 +1,4 @@
-.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
+.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate rust-migrate seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
 
 help:
 	@echo "  up                  — 10 BSS services (BYOI Postgres/RabbitMQ)"
@@ -445,6 +445,13 @@ ENV_SOURCE := if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
 migrate:
 	@$(ENV_SOURCE); cd packages/bss-models && uv run --package bss-models alembic upgrade head
+
+# Phase 8 (2.0): the sqlx migrator replaces Alembic for the all-Rust stack. Fresh
+# install → applies rust/migrations/; existing (Alembic-created) DB → run once with
+# `-- --baseline` to stamp the baseline as applied without re-running it. See
+# docs/runbooks/rust-schema-baseline.md.
+rust-migrate:
+	@$(ENV_SOURCE); cd rust && cargo run --quiet -p bss-cli -- admin migrate $(ARGS)
 
 seed:
 	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.main

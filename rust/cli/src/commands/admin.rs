@@ -32,6 +32,13 @@ enum AdminCommand {
     Knowledge(super::admin_knowledge::KnowledgeArgs),
     /// Seed reference data across every domain (idempotent — the clean reseed).
     Seed,
+    /// Apply the sqlx schema migrations (Phase 8 — Alembic freeze → sqlx baseline).
+    Migrate {
+        /// Existing install: stamp the baseline as applied WITHOUT running its SQL
+        /// (the schema already exists from Alembic). Fresh installs omit this.
+        #[arg(long)]
+        baseline: bool,
+    },
     /// Wipe operational data across every BSS service (reference data survives).
     Reset {
         /// Skip interactive confirmation.
@@ -45,6 +52,7 @@ pub async fn run(args: AdminArgs) -> ExitCode {
         AdminCommand::Catalog(a) => super::admin_catalog::run(a).await,
         AdminCommand::Knowledge(a) => super::admin_knowledge::run(a).await,
         AdminCommand::Seed => super::admin_seed::run().await,
+        AdminCommand::Migrate { baseline } => super::admin_migrate::run(baseline).await,
         AdminCommand::Reset { yes } => reset(yes).await,
     }
 }
