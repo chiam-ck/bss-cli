@@ -22,6 +22,9 @@ type MainError = Box<dyn std::error::Error>;
 
 #[tokio::main]
 async fn main() -> Result<(), MainError> {
+    // Distroless healthcheck self-probe: `--healthcheck` exits before any bootstrap.
+    bss_telemetry::maybe_run_healthcheck(8000);
+
     let settings = Settings::from_env();
     let _telemetry = bss_telemetry::init_telemetry(&settings.service_name);
 

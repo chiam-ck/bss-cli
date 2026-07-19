@@ -17,6 +17,9 @@ type MainError = Box<dyn std::error::Error>;
 
 #[tokio::main]
 async fn main() -> Result<(), MainError> {
+    // Distroless healthcheck self-probe: `--healthcheck` exits before any bootstrap.
+    bss_telemetry::maybe_run_healthcheck(8000);
+
     // Telemetry BEFORE state construction — otherwise the store/client boot
     // warnings are emitted before a subscriber exists and vanish.
     let settings = bss_csr::config::Settings::from_env();

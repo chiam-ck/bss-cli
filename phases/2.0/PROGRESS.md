@@ -7,7 +7,7 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — **Phase 8 STARTED: cargo-chef dep caching DONE**; Phase 7 + P6 acceptance 19/19 complete
+## ⇢ HANDOFF (next session) — **Phase 8 STARTED: items 1–2 DONE (cargo-chef caching + distroless --healthcheck)**; Phase 7 + P6 acceptance 19/19 complete
 
 **Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
 (s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
@@ -49,14 +49,16 @@ subscription 8006, mediation 8007, rating 8008, prov-sim 8010, self-serve 9001, 
 9002. Verification flips payment→mock (+ email→logging + kyc→prebaked when a scenario needs
 them), restores after ([[verification-uses-mock-providers]]).
 
-**NEXT: Phase 8 — cutover & decommission** (see `03-PHASES.md` §Phase 8). **Item 1 of 8,
-cargo-chef dependency caching, is DONE** (2026-07-19; see the Phase 8 section below). All 11
-Dockerfiles (9 services + 2 portals) reworked to the `chef → planner → cook → build` layout;
-a source-only edit now rebuilds in ~1–2 min instead of ~20–30 min. Remaining Phase 8 items,
-now all on the fast loop: Alembic freeze → `pg_dump --schema-only` sqlx baseline,
-`make doctrine-check` finalize (Rust guards), distroless/`--healthcheck` images (folds into
-the same Dockerfile), motto-#6 RAM/cold-start/p99 report vs `05-BASELINE.md`, runbook pass +
-archive the Python repo, and the 14-day soak (wall-clock gate — start it early).
+**NEXT: Phase 8 — cutover & decommission** (see `03-PHASES.md` §Phase 8). **Items 1–2 DONE**
+(2026-07-19; see the Phase 8 section below): (1) cargo-chef dependency caching — all 11
+Dockerfiles reworked to `chef → planner → cook → build`, source-only rebuilds now ~1–2 min;
+(2) distroless `--healthcheck` images — every binary self-probes `GET /health` via a
+`--healthcheck` flag + image-level `HEALTHCHECK`, so the compose `service_healthy` gates work
+on the Rust images. **Remaining Phase 8 items** (all now on the fast rebuild loop): Alembic
+freeze → `pg_dump --schema-only` sqlx baseline; `make doctrine-check` finalize (Rust guards);
+motto-#6 RAM/cold-start/p99 report vs `05-BASELINE.md`; runbook pass + archive the Python
+repo; and the 14-day soak (wall-clock gate — start it early). No phase tag until the soak
+passes (`v2.0.0` is the gate).
 
 ---
 
@@ -153,6 +155,39 @@ running `:rust` images are byte-equivalent and already validated; the new Docker
 exercised for real on the next Phase 8 rebuild (the distroless/`--healthcheck` item, which
 folds into this same Dockerfile). `make doctrine-check`, the Alembic→sqlx baseline, and the
 motto-#6 re-measure remain.
+
+### Item 2 — distroless `--healthcheck` images — ✅ DONE (2026-07-19)
+
+**Problem.** The Rust images are distroless (no shell, no curl), so they carried **no**
+`HEALTHCHECK` — the Python images' `HEALTHCHECK CMD curl -f http://localhost:8000/health`
+had no equivalent. But `docker-compose.yml` has both portals gate every backend service on
+`depends_on: { condition: service_healthy }`, which a container with no healthcheck can never
+satisfy. This was the standing "no HEALTHCHECK until P8" gap (`03-PHASES.md` §Phase 8).
+
+**What landed.**
+- New `bss_telemetry::healthcheck` module — `maybe_run_healthcheck(port)`: if `--healthcheck`
+  is on the argv, open `127.0.0.1:<port>`, send a minimal HTTP/1.0 `GET /health`, and
+  `process::exit(0)` iff the status line is `200`, else `exit(1)`. Raw `std::net` only (no
+  shell, no curl, no new dep — the OTLP exporter already pulls the async stack but the probe
+  is deliberately blocking + dependency-free). Unit tests: 200 → true, 500 → false,
+  nothing-listening → err. All 11 binaries link `bss-telemetry`, so it's the natural home.
+- Called as the **first line** of all 11 mains (9 services + 2 portals), before any
+  telemetry/DB/adapter bootstrap, so the probe is cheap and side-effect-free.
+- Image-level `HEALTHCHECK --interval=10s --timeout=3s --retries=3 CMD
+  ["/usr/local/bin/<bin>", "--healthcheck"]` (exec form — distroless-safe, no shell) added to
+  the runtime stage of all 11 Dockerfiles, matching the Python images' timing. It sits AFTER
+  the cook stage, so the cross-service cook-layer sharing from item 1 is untouched.
+- Port 8000 hardcoded in the probe, consistent with the services' existing
+  `TcpListener::bind("0.0.0.0:8000")` and the portal Dockerfiles' `BSS_PORTAL_*_PORT=8000`
+  (the container-internal port; the Python images probed `localhost:8000` in every image too).
+
+**Validated (2026-07-19).** fmt + `clippy --workspace -D warnings` + `cargo test --workspace`
+all green (the 3 new probe tests included). Rebuilt the catalog image (**1m2s** — cook still
+CACHED even though `bss-telemetry`, a workspace crate, changed; only the workspace crates
+recompiled — item 1 paying off), ran it on the compose network with live env → Docker ran the
+`HEALTHCHECK` and the container reached **`healthy`** (exit 0); a direct
+`/usr/local/bin/catalog --healthcheck` against the live server also exit 0. The compose
+`service_healthy` gates are now satisfiable by the Rust images.
 
 ## Phase 7 — CLI + REPL + scenario engine — ✅ DONE (2026-07-18; P6 acceptance 19/19 closed 2026-07-19)
 

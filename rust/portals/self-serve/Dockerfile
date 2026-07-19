@@ -49,4 +49,8 @@ ENV BSS_PORTAL_STATIC_DIR=/assets/local/static \
     BSS_PORTAL_SHARED_TEMPLATE_DIR=/assets/shared/templates \
     BSS_PORTAL_SELF_SERVE_PORT=8000
 EXPOSE 8000
+# Distroless has no curl; the binary self-probes GET /health via --healthcheck
+# (mirrors the Python image's `curl -f http://localhost:8000/health || exit 1`).
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD ["/usr/local/bin/portal-self-serve", "--healthcheck"]
 ENTRYPOINT ["/usr/local/bin/portal-self-serve"]

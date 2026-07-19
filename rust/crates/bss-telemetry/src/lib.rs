@@ -10,11 +10,13 @@
 #![forbid(unsafe_code)]
 
 pub mod bootstrap;
+pub mod healthcheck;
 pub mod propagation;
 pub mod redaction;
 pub mod semconv;
 
 pub use bootstrap::{emit_probe_span, init_telemetry, TelemetryGuard};
+pub use healthcheck::{healthcheck_requested, maybe_run_healthcheck};
 pub use propagation::{
     continue_trace, current_trace_id, current_traceparent, traceparent_for_trace_id, TRACEPARENT,
 };

@@ -30,4 +30,8 @@ FROM gcr.io/distroless/cc-debian12 AS runtime
 USER 65532:65532
 COPY --from=builder /build/target/release/payment /usr/local/bin/payment
 EXPOSE 8000
+# Distroless has no curl; the binary self-probes GET /health via --healthcheck
+# (mirrors the Python image's `curl -f http://localhost:8000/health || exit 1`).
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+  CMD ["/usr/local/bin/payment", "--healthcheck"]
 ENTRYPOINT ["/usr/local/bin/payment"]
