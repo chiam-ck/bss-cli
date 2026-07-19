@@ -7,7 +7,7 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — **Phase 8: items 1–3 DONE (cargo-chef caching + distroless --healthcheck + Alembic→sqlx baseline)**; Phase 7 + P6 acceptance 19/19 complete
+## ⇢ HANDOFF (next session) — **Phase 8: items 1–4 DONE (cargo-chef + --healthcheck + Alembic→sqlx baseline + motto-#6 re-measure)**; Phase 7 + P6 acceptance 19/19 complete
 
 **Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
 (s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
@@ -56,11 +56,12 @@ Dockerfiles reworked to `chef → planner → cook → build`, source-only rebui
 `--healthcheck` flag + image-level `HEALTHCHECK`, so the compose `service_healthy` gates work
 on the Rust images; (3) Alembic freeze → sqlx baseline — `rust/migrations/0001_baseline.sql` +
 `bss_db::migrate` + `bss admin migrate [--baseline]` (single runner) replace `alembic upgrade
-head`. **Remaining Phase 8 items** (all now on the fast rebuild loop): `make doctrine-check`
-finalize (Rust guards) + re-point `make test/lint/fmt/seed/scenarios*/e2e`; motto-#6
-RAM/cold-start/p99 report vs `05-BASELINE.md`; runbook pass (23) + archive the Python repo;
-and the 14-day soak (wall-clock gate — start it early). No phase tag until the soak passes
-(`v2.0.0` is the gate).
+head`; (4) motto-#6 re-measure — all budgets met with big headroom (RAM 81.7 MiB vs 4 GB,
+cold-start 3.08 s, p99 6–8 ms), full report in `06-MOTTO6-REMEASURE.md`. **Remaining Phase 8
+items** (all on the fast rebuild loop): `make doctrine-check` finalize (Rust guards) +
+re-point `make test/lint/fmt/seed/scenarios*/e2e`; runbook pass (23) + archive the Python
+repo; and the 14-day soak (wall-clock gate — start it early). No phase tag until the soak
+passes (`v2.0.0` is the gate).
 
 ---
 
@@ -228,6 +229,30 @@ no-op exit 0; (3) existing DB (raw baseline pre-applied) without `--baseline` �
 fail (`schema "audit" already exists`, exit 1); (4) `--baseline` → stamp exit 0; (5)
 post-stamp plain migrate → no-op exit 0. fmt + `clippy --workspace -D warnings` + `cargo
 test --workspace` (119 groups) green.
+
+### Item 4 — motto-#6 re-measure — ✅ DONE (2026-07-19)
+
+Re-measured RAM / cold-start / p99 on the all-Rust stack vs `05-BASELINE.md`, same
+host, same method. Full write-up: **[`06-MOTTO6-REMEASURE.md`](06-MOTTO6-REMEASURE.md)**.
+All three motto-#6 budgets met with large headroom:
+
+| Metric | Budget | Python | Rust | Δ |
+|---|---|---|---|---|
+| RAM (11 app, idle) | <4 GB | 1204 MiB | **81.7 MiB** | ~14.7× smaller (2% of budget) |
+| Cold start (all 11) | <30 s | 6.36 s | **3.08 s** | ~2.1× faster |
+| p99 `/health` floor | <50 ms | 12.8 ms | **6.16 ms** | ~2× |
+| p99 real DB read | <50 ms | (floor only) | **8.47 ms** (`/vas/offering`) | under budget |
+| 11-image sum | — | ≈3.46 GB | **657 MB** | ~5.3× smaller |
+| non-test LOC | — | 109,297 | **71,322** | ~0.65× (under the 1.1–1.4× estimate) |
+
+Per-container RSS fell from ~90–155 MiB (Python interpreter + FastAPI + SQLAlchemy +
+aio-pika + OTel per process) to **~2–13 MiB** static binaries; the two Jinja portals
+(Python's 137–155 MiB / 6.2 s tail) are now 6–9 MiB and serve at ~3 s.
+**Method note carried into the report:** the heavy TMF620 `productOffering` list read
+is ~114 ms p99 — but that's N sequential queries to the *remote* tech-vm Postgres over
+Tailscale, identical for Python + Rust; the pooled single-read `/vas/offering` (8.47 ms
+p99) is the honest internal-latency figure (the baseline §3 upgrade). Stack restored to
+11/11 healthy after the cold-start restart.
 
 ## Phase 7 — CLI + REPL + scenario engine — ✅ DONE (2026-07-18; P6 acceptance 19/19 closed 2026-07-19)
 
