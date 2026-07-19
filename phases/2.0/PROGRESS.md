@@ -7,7 +7,7 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — **Phase 8: items 1–4 DONE (cargo-chef + --healthcheck + Alembic→sqlx baseline + motto-#6 re-measure)**; Phase 7 + P6 acceptance 19/19 complete
+## ⇢ HANDOFF (next session) — **Phase 8: items 1–5 DONE (cargo-chef + --healthcheck + Alembic→sqlx baseline + motto-#6 + rust-doctrine-check/make targets)**; Phase 7 + P6 acceptance 19/19 complete
 
 **Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
 (s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
@@ -49,7 +49,7 @@ subscription 8006, mediation 8007, rating 8008, prov-sim 8010, self-serve 9001, 
 9002. Verification flips payment→mock (+ email→logging + kyc→prebaked when a scenario needs
 them), restores after ([[verification-uses-mock-providers]]).
 
-**NEXT: Phase 8 — cutover & decommission** (see `03-PHASES.md` §Phase 8). **Items 1–3 DONE**
+**NEXT: Phase 8 — cutover & decommission** (see `03-PHASES.md` §Phase 8). **Items 1–5 DONE**
 (2026-07-19; see the Phase 8 section below): (1) cargo-chef dependency caching — all 11
 Dockerfiles reworked to `chef → planner → cook → build`, source-only rebuilds now ~1–2 min;
 (2) distroless `--healthcheck` images — every binary self-probes `GET /health` via a
@@ -57,10 +57,13 @@ Dockerfiles reworked to `chef → planner → cook → build`, source-only rebui
 on the Rust images; (3) Alembic freeze → sqlx baseline — `rust/migrations/0001_baseline.sql` +
 `bss_db::migrate` + `bss admin migrate [--baseline]` (single runner) replace `alembic upgrade
 head`; (4) motto-#6 re-measure — all budgets met with big headroom (RAM 81.7 MiB vs 4 GB,
-cold-start 3.08 s, p99 6–8 ms), full report in `06-MOTTO6-REMEASURE.md`. **Remaining Phase 8
-items** (all on the fast rebuild loop): `make doctrine-check` finalize (Rust guards) +
-re-point `make test/lint/fmt/seed/scenarios*/e2e`; runbook pass (23) + archive the Python
-repo; and the 14-day soak (wall-clock gate — start it early). No phase tag until the soak
+cold-start 3.08 s, p99 6–8 ms), full report in `06-MOTTO6-REMEASURE.md`; (5)
+`make rust-doctrine-check` (`scripts/rust_doctrine_check.sh`, 14 grep guards, all
+verified-firing) + `rust-fmt`/`rust-lint`/`rust-test` dev targets. **Remaining Phase 8
+items**: **rename the canonical `test/lint/fmt/seed/scenarios*/e2e` make targets to the
+Rust ones** (deferred with the archive so the Python oracle stays runnable); runbook pass
+(23) + archive the Python repo; and the 14-day soak (wall-clock gate — start it early).
+No phase tag until the soak
 passes (`v2.0.0` is the gate).
 
 ---
@@ -253,6 +256,33 @@ is ~114 ms p99 — but that's N sequential queries to the *remote* tech-vm Postg
 Tailscale, identical for Python + Rust; the pooled single-read `/vas/offering` (8.47 ms
 p99) is the honest internal-latency figure (the baseline §3 upgrade). Stack restored to
 11/11 healthy after the cold-start restart.
+
+### Item 5 — Rust doctrine-check + dev make targets — ✅ DONE (2026-07-19)
+
+**What landed.** `scripts/rust_doctrine_check.sh` (`make rust-doctrine-check`) — the
+greppable doctrine guards re-expressed over `rust/`, mirroring the Python
+`make doctrine-check` 1:1 (`02-TECH-MAPPING.md` §4). **14 grep guards, all green**:
+clock (bss_clock::now, not direct Utc/Local/SystemTime::now — infra/display sites
+allowlisted like the Python `# noqa: bss-clock`), OTel-in-platform-crates,
+campaignos, renewal-reads-snapshot (awk range over `renew()`), no-service-identity-
+header, tokens-at-startup, astream_once-chat-only, rating-roaming-blind (awk range
+over `rate_usage()`), ported_out-terminal, renewal-worker-containment, version-from-
+BSS_RELEASE, outbox-single-publisher, email-no-hex, toml_edit-confined. Each verified
+to **fire on a synthetic violation** (not pass vacuously) and the two awk-range guards
+confirmed non-empty (renew 315 / rate_usage 51 lines).
+
+- Dispositions covered elsewhere (per §4, not re-grepped): **structural** — OTel
+  containment, service-identity newtype, `#![forbid(unsafe_code)]`, clippy
+  unwrap/expect deny, single `BSS_RELEASE` const; **test** — knowledge-profile,
+  INDEXED_PATHS (V0 docs), ported_out, routes_crm confirm-gate (run by `rust-test`);
+  **Python-only** — stripe fixture redaction (no Rust fixtures dir) + brand-in-
+  templates (shared Jinja assets, covered by the Python guard).
+- Also added the Rust dev-loop make targets: `rust-fmt` (`cargo fmt --check`),
+  `rust-lint` (`clippy --workspace -D warnings`), `rust-test` (`cargo test
+  --workspace`), plus the earlier `rust-migrate`. The Python `test/lint/fmt` stay the
+  oracle; **renaming the canonical targets to the Rust ones is deferred to final
+  cutover** (with the Python-repo archive), so the oracle stays runnable until the
+  soak passes.
 
 ## Phase 7 — CLI + REPL + scenario engine — ✅ DONE (2026-07-18; P6 acceptance 19/19 closed 2026-07-19)
 
