@@ -232,7 +232,7 @@ pub fn build_state() -> AppState {
             None
         }
     };
-    let chat_registry = build_cockpit_registry(&settings).map(Arc::new);
+    let chat_registry = build_cockpit_registry(&settings, None).map(Arc::new);
     // v1.5 — fail-closed. The binary validates this at boot before build_state is
     // reached, so a bad value never gets this far; default defensively.
     let autonomy_mode = bss_orchestrator::read_autonomy_mode().unwrap_or(AutonomyMode::Granular);
@@ -253,7 +253,10 @@ pub fn build_state() -> AppState {
 /// This is the agent's own client bundle, deliberately separate from
 /// [`CockpitClients`] — mirroring Python, where the orchestrator holds its own
 /// `get_clients()` distinct from the portal's. `None` without a perimeter token.
-fn build_cockpit_registry(settings: &Settings) -> Option<ToolRegistry> {
+fn build_cockpit_registry(
+    settings: &Settings,
+    knowledge_pool: Option<bss_db::PgPool>,
+) -> Option<ToolRegistry> {
     use bss_clients::{
         AuditClient, CatalogClient, ComClient, CrmClient, InventoryClient, JaegerClient,
         MediationClient, PaymentClient, ProvisioningClient, SomClient, SubscriptionClient,
@@ -278,14 +281,15 @@ fn build_cockpit_registry(settings: &Settings) -> Option<ToolRegistry> {
 
     // `trace.*` — the `operator_cockpit` profile lists these, so the cockpit carries
     // them. Jaeger is unauthenticated; the audit surfaces reuse the cockpit token.
-    // `knowledge.*` needs the FTS pool, which isn't connected at this sync build
-    // point (it lands in `build_state_with_db`); the cockpit's knowledge wiring
-    // follows there. `bss ask` / the REPL supply the pool directly.
+    // `knowledge.*` needs the FTS pool: the sync `build_state` path passes `None`; the
+    // async `build_state_with_db` re-builds this registry with the connected pool (it
+    // already opens one for the Conversation store), so knowledge.search/get register.
+    // `bss ask` / the REPL supply the pool directly.
     let extras = RegistryExtras {
         jaeger: JaegerClient::from_env().ok(),
         audit_com: AuditClient::new(settings.com_url.clone(), auth.clone()).ok(),
         audit_sub: AuditClient::new(settings.subscription_url.clone(), auth.clone()).ok(),
-        knowledge_pool: None,
+        knowledge_pool,
     };
 
     Some(build_registry(&reg_clients, extras))
@@ -306,6 +310,23 @@ pub async fn build_state_with_db() -> Result<AppState, String> {
     let pool = bss_db::connect(&state.settings.db_url)
         .await
         .map_err(|e| format!("cockpit store connect failed: {e}"))?;
+    // knowledge.* (operator_cockpit) needs the FTS pool. The sync `build_state` left it
+    // None; now that we have a connection, rebuild the registry with it so
+    // knowledge.search / knowledge.get register. Reuses the store's pool (same DB).
+    if knowledge_enabled() {
+        state.chat_registry =
+            build_cockpit_registry(&state.settings, Some(pool.clone())).map(Arc::new);
+    }
     state.store = Some(Arc::new(ConversationStore::new(pool)));
     Ok(state)
+}
+
+/// `BSS_KNOWLEDGE_ENABLED` truthiness — default true (`{1,true,yes,on}`), mirroring
+/// the CLI + Python `_knowledge_enabled`.
+fn knowledge_enabled() -> bool {
+    let raw = std::env::var("BSS_KNOWLEDGE_ENABLED")
+        .unwrap_or_else(|_| "true".to_string())
+        .trim()
+        .to_lowercase();
+    matches!(raw.as_str(), "1" | "true" | "yes" | "on")
 }
