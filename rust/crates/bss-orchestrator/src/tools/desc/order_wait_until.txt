@@ -1,0 +1,16 @@
+Poll an order until it reaches ``target_state`` or times out. Returns
+    early if it reaches a different terminal state (``failed``, ``cancelled``).
+
+    Args:
+        order_id: Order ID with the ORD- prefix (opaque suffix).
+        target_state: The state to wait for (default ``completed``).
+        timeout_s: Seconds to wait (default 30).
+
+    Returns:
+        The final order dict.
+
+    Raises:
+        Timeout: the order did not reach ``target_state`` within ``timeout_s``.
+            If this happens, read ``order.get`` to see current state and
+            ``service_order.list_for_order`` + ``provisioning.list_tasks`` to
+            understand where things are stuck.

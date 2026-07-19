@@ -1,0 +1,195 @@
+{
+ "strip_channel_markup": [
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "hello",
+   "out": "hello"
+  },
+  {
+   "in": "<channel|>hi there",
+   "out": "hi there"
+  },
+  {
+   "in": "<|channel|>yo",
+   "out": "yo"
+  },
+  {
+   "in": "</channel>\nbody",
+   "out": "body"
+  },
+  {
+   "in": "  assistantfinal\nThe answer is 42",
+   "out": "The answer is 42"
+  },
+  {
+   "in": "text <channel|> mid",
+   "out": "text  mid"
+  },
+  {
+   "in": "assistantfinal\n\nHello",
+   "out": "Hello"
+  }
+ ],
+ "strip_reasoning_leakage": [
+  {
+   "in": "",
+   "out": ""
+  },
+  {
+   "in": "plain",
+   "out": "plain"
+  },
+  {
+   "in": "<think>secret</think>Answer.",
+   "out": "Answer."
+  },
+  {
+   "in": "<thinking>x</thinking>\nHi",
+   "out": "Hi"
+  },
+  {
+   "in": "thought\n\nAnswer.",
+   "out": "Answer."
+  },
+  {
+   "in": "thought Searched for plans",
+   "out": "Searched for plans"
+  },
+  {
+   "in": "thinking: \nGo",
+   "out": "Go"
+  },
+  {
+   "in": "thoughtful people",
+   "out": "thoughtful people"
+  },
+  {
+   "in": "  thought   \n\nfoo",
+   "out": "foo"
+  }
+ ],
+ "render_chat_markdown": [
+  {
+   "in": "",
+   "allow_tables": false,
+   "out": "&nbsp;"
+  },
+  {
+   "in": "hello world",
+   "allow_tables": false,
+   "out": "<p>hello world</p>"
+  },
+  {
+   "in": "**bold** and *italic* and _und_ and `code`",
+   "allow_tables": false,
+   "out": "<p><strong>bold</strong> and <em>italic</em> and <em>und</em> and <code>code</code></p>"
+  },
+  {
+   "in": "# Heading one\n## Heading two\n### three\n#### four",
+   "allow_tables": false,
+   "out": "<h3>Heading one</h3><h4>Heading two</h4><h5>three</h5><h6>four</h6>"
+  },
+  {
+   "in": "- a\n- b\n* c",
+   "allow_tables": false,
+   "out": "<ul><li>a</li><li>b</li><li>c</li></ul>"
+  },
+  {
+   "in": "1. first\n2. second\n3) third",
+   "allow_tables": false,
+   "out": "<ol><li>first</li><li>second</li><li>third</li></ol>"
+  },
+  {
+   "in": "para line one\npara line two\n\nsecond para",
+   "allow_tables": false,
+   "out": "<p>para line one<br>para line two</p><p>second para</p>"
+  },
+  {
+   "in": "```\ncode block\nline two\n```",
+   "allow_tables": false,
+   "out": "<pre><code>code block\nline two</code></pre>"
+  },
+  {
+   "in": "| a | b |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |",
+   "allow_tables": true,
+   "out": "<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr><tr><td>3</td><td>4</td></tr></tbody></table>"
+  },
+  {
+   "in": "| a | b |\n| --- | --- |\n| 1 | 2 |",
+   "allow_tables": false,
+   "out": "<p>| a | b |<br>| --- | --- |<br>| 1 | 2 |</p>"
+  },
+  {
+   "in": "not a table | just pipes |",
+   "allow_tables": false,
+   "out": "<p>not a table | just pipes |</p>"
+  },
+  {
+   "in": "<think>r</think># H\n- item **b**",
+   "allow_tables": true,
+   "out": "<h3>H</h3><ul><li>item <strong>b</strong></li></ul>"
+  },
+  {
+   "in": "┌─────┐\n│ box │\n└─────┘",
+   "allow_tables": false,
+   "out": "<pre><code>┌─────┐\n│ box │\n└─────┘</code></pre>"
+  },
+  {
+   "in": "**a** _b_ *c* `d` mix\n- **li** item",
+   "allow_tables": true,
+   "out": "<p><strong>a</strong> <em>b</em> <em>c</em> <code>d</code> mix</p><ul><li><strong>li</strong> item</li></ul>"
+  },
+  {
+   "in": "assistantfinal\nHere are plans:\n\n| P | Price |\n| --- | --- |\n| S | 10 |",
+   "allow_tables": true,
+   "out": "<p>Here are plans:</p><table><thead><tr><th>P</th><th>Price</th></tr></thead><tbody><tr><td>S</td><td>10</td></tr></tbody></table>"
+  }
+ ],
+ "render_assistant_bubble": [
+  {
+   "in": "hello",
+   "error": false,
+   "allow_tables": false,
+   "out": "<div class=\"chat-bubble chat-bubble-assistant\"><p>hello</p></div>"
+  },
+  {
+   "in": "**e**",
+   "error": true,
+   "allow_tables": false,
+   "out": "<div class=\"chat-bubble chat-bubble-assistant chat-bubble-error\"><p><strong>e</strong></p></div>"
+  },
+  {
+   "in": "| a | b |\n| --- | --- |\n| 1 | 2 |",
+   "error": false,
+   "allow_tables": true,
+   "out": "<div class=\"chat-bubble chat-bubble-assistant\"><table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table></div>"
+  },
+  {
+   "in": "",
+   "error": false,
+   "allow_tables": false,
+   "out": "<div class=\"chat-bubble chat-bubble-assistant\">&nbsp;</div>"
+  }
+ ],
+ "render_tool_pill": [
+  {
+   "in": "catalog.list_active_offerings",
+   "out": "<div class=\"chat-tool-pill\"><span class=\"chat-tool-icon\">≈</span><span class=\"chat-tool-name\">catalog.list_active_offerings</span></div>"
+  },
+  {
+   "in": "case.open_for_me",
+   "out": "<div class=\"chat-tool-pill\"><span class=\"chat-tool-icon\">≈</span><span class=\"chat-tool-name\">case.open_for_me</span></div>"
+  },
+  {
+   "in": "<script>x</script>",
+   "out": "<div class=\"chat-tool-pill\"><span class=\"chat-tool-icon\">≈</span><span class=\"chat-tool-name\">&lt;script&gt;x&lt;/script&gt;</span></div>"
+  },
+  {
+   "in": "a&b",
+   "out": "<div class=\"chat-tool-pill\"><span class=\"chat-tool-icon\">≈</span><span class=\"chat-tool-name\">a&amp;b</span></div>"
+  }
+ ]
+}

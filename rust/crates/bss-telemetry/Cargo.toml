@@ -1,0 +1,19 @@
+[package]
+name = "bss-telemetry"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Log-field redaction rules + span attribute keys. Port of the services' redact_sensitive + bss_telemetry.semconv. tracing/OTel bootstrap lands with the conformance service."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+opentelemetry-otlp = { workspace = true }

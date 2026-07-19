@@ -1,0 +1,14 @@
+Read recent usage events, optionally filtered.
+
+    Args:
+        subscription_id: Filter by subscription.
+        msisdn: Filter by MSISDN.
+        event_type: Filter by event type.
+        since: Only events at or after this ISO-8601 timestamp.
+        limit: Max rows (default 100, server cap 1000).
+
+    Returns:
+        List of usage dicts, newest first.
+
+    Raises:
+        (none expected — read tool)

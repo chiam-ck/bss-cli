@@ -1,0 +1,12 @@
+Return the current wall-clock time as ISO-8601 UTC. Use this whenever
+    a tool needs a ``since`` / ``event_time`` value — do NOT fabricate timestamps.
+
+    Args:
+        (none)
+
+    Returns:
+        ``{now: IsoDatetime, source: "system"}``. In Phase 11 ``source`` will
+        become ``"scenario"`` when a virtual clock is active.
+
+    Raises:
+        (none)

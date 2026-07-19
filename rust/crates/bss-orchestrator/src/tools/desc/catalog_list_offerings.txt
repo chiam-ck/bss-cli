@@ -1,0 +1,11 @@
+List all product offerings (plans + VAS). In v0.1 there are exactly
+    three plans — ``PLAN_S``, ``PLAN_M``, ``PLAN_L`` — plus a handful of VAS.
+
+    Args:
+        (none)
+
+    Returns:
+        List of offering dicts ``{id, name, price, allowances, type}``.
+
+    Raises:
+        (none expected — read tool)

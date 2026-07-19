@@ -1,0 +1,10 @@
+List payment methods on file for a customer.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+
+    Returns:
+        List of payment method dicts.
+
+    Raises:
+        (none expected — read tool)

@@ -1,0 +1,11 @@
+List the CFS + RFS tree belonging to a subscription.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        Flat list of service dicts (mix of CFS and RFS). The CFS has
+        ``parentServiceId = None``; each RFS points up to the CFS.
+
+    Raises:
+        (none expected — read tool)

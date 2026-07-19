@@ -1,0 +1,14 @@
+Close a case with a resolution code. Requires all child tickets to be
+    resolved or closed first.
+
+    Args:
+        case_id: Case ID with the CASE- prefix (opaque suffix).
+        resolution_code: Short resolution slug, e.g. ``"fixed"``, ``"duplicate"``.
+
+    Returns:
+        The updated case dict with ``state="closed"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``case.close.requires_all_tickets_resolved``: resolve the listed
+              open tickets first. ``context.open_tickets`` gives the IDs.

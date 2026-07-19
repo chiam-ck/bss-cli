@@ -1,0 +1,14 @@
+Read the logged-in customer's record (contact mediums, KYC
+    status, account state). customer_id is bound from the chat
+    session — no parameter.
+
+    Args:
+        (none — customer_id is bound from auth_context.current().actor.)
+
+    Returns:
+        Customer dict including ``status`` (pending/active/suspended/
+        closed), ``contactMedium`` list, ``kycVerified`` boolean, and
+        timestamps.
+
+    Raises:
+        chat.no_actor_bound: invoked outside a chat-scoped session.

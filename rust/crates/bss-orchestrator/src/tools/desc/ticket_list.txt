@@ -1,0 +1,13 @@
+List tickets, optionally filtered.
+
+    Args:
+        customer_id: Filter by customer.
+        case_id: Filter by parent case.
+        state: Filter by ticket state.
+        agent_id: Filter by assigned agent.
+
+    Returns:
+        List of ticket dicts (may be empty).
+
+    Raises:
+        (none expected — read tool)

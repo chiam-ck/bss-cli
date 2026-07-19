@@ -1,0 +1,11 @@
+List available eSIM profiles. Rarely needed by the LLM — order
+    workflow assigns an eSIM automatically.
+
+    Args:
+        limit: Maximum rows (default 20).
+
+    Returns:
+        List of eSIM dicts ``{iccid, state}``.
+
+    Raises:
+        (none expected — read tool)

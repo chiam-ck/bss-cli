@@ -1,0 +1,20 @@
+Run one deterministic renewal sweep (v0.18 admin endpoint).
+
+    Invokes the same active-due + blocked-overdue sweep the in-process
+    worker runs every ``BSS_RENEWAL_TICK_SECONDS``. Used by scenarios
+    after ``clock.advance`` so they don't wait for the wall-clock
+    interval. Operator-only (the tool wraps an endpoint gated by
+    ``BSS_ALLOW_ADMIN_RESET`` on the subscription service).
+
+    Args:
+        (none)
+
+    Returns:
+        ``{"status": "ok"}`` — the sweep is fire-and-forget; per-id
+        outcomes land in audit events (``subscription.renewed`` /
+        ``subscription.renewal_skipped`` / ``subscription.renew_failed``).
+
+    Raises:
+        ClientError: 403 when ``BSS_ALLOW_ADMIN_RESET`` is not set on
+            the subscription service (the endpoint is disabled in
+            production by design).

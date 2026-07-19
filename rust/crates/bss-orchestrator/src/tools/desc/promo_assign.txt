@@ -1,0 +1,17 @@
+Add customers to a *targeted* promotion's eligibility list.
+
+    Operator/admin only. The promotion's code then auto-applies for these
+    customers at their next order (and a typed attempt by them validates).
+    Re-runnable — a customer already eligible is reported under ``already``.
+
+    Args:
+        promotion_id: An ``active`` ``targeted`` promotion id (from ``promo.create
+            audience=targeted``).
+        customer_ids: The chosen audience (CUST- prefixed).
+
+    Returns:
+        ``{promotionId, code, eligible: [...], already: [...]}``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``catalog.promotion.not_targeted``: missing, inactive, or public.

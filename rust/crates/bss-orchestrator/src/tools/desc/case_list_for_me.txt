@@ -1,0 +1,49 @@
+List cases the logged-in customer has on file with us.
+
+    Use this when the customer asks "what's my case ID?", "is my case
+    still open?", "why was my case closed?", or any similar follow-up
+    after a prior escalation. The wrapper binds ``customer_id`` from
+    ``auth_context.current().actor``; the LLM signature must NOT carry
+    a ``customer_id`` parameter (the v0.12 prompt-injection containment
+    seam).
+
+    Args:
+        state: Optional filter — ``"open"`` / ``"in_progress"`` /
+            ``"resolved"`` / ``"closed"``. Default returns every case
+            for this customer regardless of state.
+
+    Returns:
+        List of case dicts. **All fields are customer-facing** — pass
+        them through plainly when the customer asks. No "internal
+        only" classification exists in v0.13. Each dict includes:
+
+        - ``id``                — opaque case id (CASE-...)
+        - ``subject``           — the case headline
+        - ``state``             — open / in_progress / pending_customer
+                                  / resolved / closed
+        - ``category``          — e.g. ``billing_dispute``, ``fraud``
+        - ``priority``          — high / medium / low
+        - ``resolution_code``   — closure reason slug (e.g. ``fixed``,
+                                  ``duplicate``). Tell the customer
+                                  in plain English ("we closed it as
+                                  fixed").
+        - ``opened_at`` / ``closed_at`` — ISO timestamps.
+        - ``notes``             — list of ``{body, author_agent_id,
+                                  created_at}``. These are NOTES THE
+                                  CUSTOMER CAN SEE — there is no
+                                  internal/external distinction in
+                                  v0.13. Quote them when asked why a
+                                  case was closed; if a note is
+                                  CSR-jargon-y ("non issue"), you may
+                                  paraphrase, but don't pretend it
+                                  doesn't exist.
+        - ``chatTranscriptHash`` — present when the case was opened
+                                   from this chat surface. Don't
+                                   surface the hash itself; it's an
+                                   audit pointer.
+
+        Empty list when the customer has no cases — render plainly
+        ("no cases on file").
+
+    Raises:
+        chat.no_actor_bound: invoked outside a chat-scoped session.

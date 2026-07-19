@@ -1,0 +1,74 @@
+# Rust service cutover overlay (phases/2.0). Overlaid on docker-compose.yml to
+# run the Rust port of a service in place of its Python container, per the
+# per-service cutover doctrine (03-PHASES.md: build the image, swap it into
+# compose, run the hero scenarios, retire the Python container).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.rust.yml up -d rating
+#
+# To fall back to the Python oracle, just drop this overlay (compose rebuilds the
+# Python image from the base file) — the oracle stays reproducible on demand.
+#
+# Cut over so far: rating (Phase 1); mediation, provisioning-sim, som (Phase 2);
+# catalog, com (Phase 3); payment (Phase 4a); subscription (Phase 4b); crm (Phase 4c).
+# → the entire service plane is now Rust.
+services:
+  rating:
+    build:
+      context: rust
+      dockerfile: services/rating/Dockerfile
+    image: bss-rating:rust
+  catalog:
+    build:
+      context: rust
+      dockerfile: services/catalog/Dockerfile
+    image: bss-catalog:rust
+  com:
+    build:
+      context: rust
+      dockerfile: services/com/Dockerfile
+    image: bss-com:rust
+  mediation:
+    build:
+      context: rust
+      dockerfile: services/mediation/Dockerfile
+    image: bss-mediation:rust
+  provisioning-sim:
+    build:
+      context: rust
+      dockerfile: services/provisioning-sim/Dockerfile
+    image: bss-provisioning-sim:rust
+  som:
+    build:
+      context: rust
+      dockerfile: services/som/Dockerfile
+    image: bss-som:rust
+  payment:
+    build:
+      context: rust
+      dockerfile: services/payment/Dockerfile
+    image: bss-payment:rust
+  subscription:
+    build:
+      context: rust
+      dockerfile: services/subscription/Dockerfile
+    image: bss-subscription:rust
+  crm:
+    build:
+      context: rust
+      dockerfile: services/crm/Dockerfile
+    image: bss-crm:rust
+  # Portals (P6). Context is the repo root (not rust/) so the image can bundle the
+  # shared Jinja templates + static assets the Rust portals serve from disk, reused
+  # verbatim from the Python source tree. All other config (ports, env, volumes,
+  # network) comes from the base compose's portal definitions via the *bss-service
+  # anchor — this overlay only swaps the build + image.
+  portal-self-serve:
+    build:
+      context: .
+      dockerfile: rust/portals/self-serve/Dockerfile
+    image: bss-portal-self-serve:rust
+  portal-csr:
+    build:
+      context: .
+      dockerfile: rust/portals/csr/Dockerfile
+    image: bss-portal-csr:rust

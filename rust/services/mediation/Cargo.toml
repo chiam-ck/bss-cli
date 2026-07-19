@@ -1,0 +1,42 @@
+[package]
+name = "mediation"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Mediation service (Phase 2). TMF635 online mediation — block-at-edge ingress that enriches via Subscription, persists usage_event, and inline-publishes usage.recorded. Port of services/mediation."
+
+[lints]
+workspace = true
+
+[lib]
+name = "mediation"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mediation"
+path = "src/main.rs"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+bss-admin = { workspace = true }
+bss-clock = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-middleware = { workspace = true }
+bss-events = { workspace = true }
+bss-telemetry = { workspace = true }
+bss-clients = { workspace = true }
+bss-models = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }

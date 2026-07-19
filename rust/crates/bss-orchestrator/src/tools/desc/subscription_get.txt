@@ -1,0 +1,14 @@
+Read a subscription with bundle balances + renewal info. This is the
+    go-to diagnostic read — the ``state`` field tells you whether the service
+    is active, blocked, or terminated.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        Subscription dict ``{id, customerId, offeringId, msisdn, iccid,
+        state, balances, nextRenewalAt}``. ``balances`` is a list of
+        ``{type, used, total, unit}`` rows — ``total=None`` means unlimited.
+
+    Raises:
+        NotFound: unknown subscription.

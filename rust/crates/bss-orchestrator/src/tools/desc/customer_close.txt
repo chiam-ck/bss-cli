@@ -1,0 +1,12 @@
+Close a customer account. DESTRUCTIVE — gated by ``safety.py``.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+
+    Returns:
+        The updated customer dict with ``status="closed"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``customer.close.no_active_subscriptions``: terminate the
+              customer's subscriptions first (also destructive).

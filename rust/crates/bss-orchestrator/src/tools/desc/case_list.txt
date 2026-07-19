@@ -1,0 +1,13 @@
+List cases, optionally filtered. At least one filter recommended — the
+    unfiltered list can be long.
+
+    Args:
+        customer_id: Filter by customer.
+        state: Filter by case state.
+        agent_id: Filter by assigned agent.
+
+    Returns:
+        List of case dicts. May be empty.
+
+    Raises:
+        (none expected — read tool)

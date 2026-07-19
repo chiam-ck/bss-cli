@@ -1,0 +1,52 @@
+[package]
+name = "portal-self-serve"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Self-serve customer portal (service 9001). Rust port of portals/self-serve. Slice 1: the axum app skeleton + branding-aware MiniJinja templating (reusing the existing Jinja templates) + the public static surface (welcome / legal / logo / health)."
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "portal-self-serve"
+path = "src/main.rs"
+
+[lib]
+name = "bss_self_serve"
+path = "src/lib.rs"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+futures-util = { workspace = true }
+fancy-regex = { workspace = true }
+tower-http = { workspace = true }
+minijinja = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+qrcode = { workspace = true }
+image = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+bss-clock = { workspace = true }
+
+bss-branding = { workspace = true }
+bss-clients = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-orchestrator = { workspace = true }
+bss-models = { workspace = true }
+bss-portal-auth = { workspace = true }
+bss-portal-ui = { workspace = true }
+bss-telemetry = { workspace = true }
+
+[dev-dependencies]
+tower = { workspace = true }
+http-body-util = "0.1"

@@ -1,0 +1,10 @@
+Read a promotion's money terms + loyalty link + state.
+
+    Args:
+        promotion_id: The promotion id.
+
+    Returns:
+        The promotion dict (discount terms, code, offerDefinitionId, state).
+
+    Raises:
+        NotFound: no such promotion.

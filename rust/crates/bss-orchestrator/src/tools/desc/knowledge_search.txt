@@ -1,0 +1,66 @@
+Search the BSS-CLI documentation corpus (handbook, doctrine, runbooks,
+    architecture, decisions, tool surface, roadmap, contributing).
+
+    CALL THIS FIRST for every operator question that isn't a direct
+    list/show/get of platform data. That includes:
+      - "how do I X" / "how does X work" / "what's the procedure for X"
+      - "what is X" / "what does X mean" / "what's the difference between X and Y"
+      - "where do I find X" / "what file/section covers X"
+      - "is X allowed" / "what's the rule on X" / "what's the doctrine on X"
+      - "what env var / setting / flag controls X"
+      - "what command do I run to X"
+
+    Your training data is months stale and frequently wrong about
+    post-v0.x doctrine. The corpus IS the authoritative source. If
+    you are about to write prose explaining something rather than
+    rendering tool output, you should have called this tool first.
+
+    Cite the returned ``anchor`` + ``source_path`` in your reply, e.g.
+    ``[HANDBOOK §8.4](docs/HANDBOOK.md#84-rotate-api-tokens)``. The
+    citation guard at the REPL + browser surface replaces un-cited
+    first-person handbook claims with a templated fallback.
+
+    Args:
+        query: Natural-language search query, e.g. "rotate cockpit token",
+            "prebaked KYC env flag", "how does roaming exhaustion work".
+        k: How many top hits to return. Default 5.
+        kinds: Optional list of doc kinds to scope the search.
+
+            **STRONG DEFAULT: leave this UNSET (omit / pass ``None``) and
+            let cross-corpus FTS ranking decide.** A "how do I manage
+            MSISDN pool" question lands in ``architecture`` (topology)
+            + ``runbook`` (port-in / port-out) + ``tool_surface``
+            (inventory tools) + ``doctrine`` (domain coverage), NOT in
+            ``handbook``. Restricting to ``kinds=["handbook"]`` silently
+            zeroes out hits and the operator sees a "found nothing"
+            reply that's just a filter mistake.
+
+            Only pass ``kinds`` when the operator's question is
+            EXPLICITLY scoped to a doc family — e.g. they ask "what
+            does the **handbook** say about X" → ``kinds=["handbook"]``,
+            or "what's the **doctrine** on Y" → ``kinds=["doctrine"]``.
+            Implicit phrasing ("how do I", "what env var", "explain X")
+            stays cross-corpus.
+
+            Valid kinds: ``handbook``, ``doctrine``, ``runbook``,
+            ``architecture``, ``decisions``, ``tool_surface``, ``roadmap``,
+            ``contributing``.
+
+    Returns:
+        ``{"hits": [{"anchor", "source_path", "heading_path", "kind",
+        "snippet", "content"}, ...], "query": "..."}``.
+
+        IMPORTANT: read ``content`` to answer, NOT ``snippet``.
+        ``snippet`` is a short ts_headline excerpt for ranking display.
+        ``content`` is the FULL chunk — env var lists, command tables,
+        step-by-step procedures all live there. If you answer from
+        ``snippet``, you'll cut off in the middle of the actual
+        information and feel weak. Use ``content``.
+
+        Empty hits = no relevant content. Don't answer from training
+        data; tell the operator what you searched and what you didn't
+        find.
+
+    Raises:
+        RuntimeError: BSS_DB_URL not set on the orchestrator process.
+            Configuration error, not a runtime miss.

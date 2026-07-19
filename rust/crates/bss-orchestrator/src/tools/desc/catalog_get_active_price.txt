@@ -1,0 +1,16 @@
+Resolve the active recurring price row for an offering at a moment.
+
+    When multiple rows are simultaneously active (base + windowed promo),
+    the lowest amount wins.
+
+    Args:
+        offering_id: ``PLAN_S`` / ``PLAN_M`` / ``PLAN_L`` (or a v0.7+ added plan).
+        at: Optional ISO-8601 instant. Defaults to now.
+
+    Returns:
+        TMF620 price dict.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``catalog.price.no_active_row``: nothing is active for that
+              offering at the requested moment.

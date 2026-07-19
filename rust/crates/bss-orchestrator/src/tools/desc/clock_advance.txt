@@ -1,0 +1,10 @@
+Advance the scenario clock by a duration. NOT IMPLEMENTED in v0.1.
+
+    Args:
+        duration: Duration string, e.g. ``"1h"``, ``"30d"``.
+
+    Returns:
+        v0.1: structured ``NOT_IMPLEMENTED`` payload.
+
+    Raises:
+        (none in v0.1)

@@ -1,0 +1,21 @@
+Create a new customer record. Use this as the FIRST step of any signup
+    workflow — before ``payment.add_card`` and ``order.create``. The customer
+    will be created in ``pending`` state; a KYC attestation + COF are required
+    before an order can be placed.
+
+    Args:
+        name: Customer display name (free text, e.g. ``"Ck"``).
+        email: RFC-5322 email address, e.g. ``"ck@example.com"``. Optional but
+            strongly recommended — required by some downstream policies.
+        phone: E.164 phone number with country code, e.g. ``"+6590000005"``.
+
+    Returns:
+        The created customer dict with ``id`` (CUST-... opaque suffix), ``name``, ``status``,
+        and a ``contactMedium`` list. Pass ``id`` to subsequent tools.
+
+    Raises:
+        PolicyViolationFromServer: common rules:
+            - ``customer.create.email_unique``: email already belongs to another
+              customer. Ask the user whether they meant to look up the existing
+              customer via ``customer.list``.
+            - ``customer.create.invalid_email``: format is invalid.

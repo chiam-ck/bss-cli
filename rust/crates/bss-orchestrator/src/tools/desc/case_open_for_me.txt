@@ -1,0 +1,49 @@
+Open a case on the logged-in customer's behalf for an out-of-
+    scope escalation. Use this when the conversation hits one of the
+    five non-negotiable categories the AI must not attempt to resolve
+    alone:
+
+    - ``fraud`` — unauthorised charges, account takeover suspicion,
+      stolen card.
+    - ``billing_dispute`` — customer disputes a charge or refund
+      decision.
+    - ``regulator_complaint`` — IMDA / regulatory inquiry / formal
+      complaint.
+    - ``identity_recovery`` — account access lost; cannot prove
+      identity through the standard self-serve flow.
+    - ``bereavement`` — customer is calling on behalf of a deceased
+      account holder.
+
+    ``other`` is a CSR-triaged catch-all; CSRs re-categorise on
+    review. Do not invent a sixth category.
+
+    The full chat transcript up to and including this turn is hashed
+    (SHA-256) and persisted via ``crm.store_chat_transcript`` before
+    the case is opened. The case row carries the hash so a CSR can
+    retrieve the conversation via ``case.show_transcript_for``.
+
+    After calling this tool, tell the customer plainly: "I've opened
+    a case for this. A member of our team will follow up via email
+    at <email>." Do NOT promise a specific turnaround time or hour
+    count — case-update emails are operator-driven today, not
+    platform-automated. Do NOT attempt the resolution yourself.
+
+    Args:
+        category: One of the five non-negotiable categories or
+            ``other`` for ambiguous escalations.
+        subject: One-line case subject. Concrete, e.g.
+            ``"Disputes charge on 2026-04-25 — claims unauthorised"``.
+        description: One-paragraph free text. Capture what the
+            customer said and any relevant context. The transcript
+            link gives the CSR the full conversation.
+
+    Returns:
+        Case dict from ``crm.open_case``, including the new case id
+        and ``chatTranscriptHash`` field. Render the id back to the
+        customer so they can quote it if calling in.
+
+    Raises:
+        chat.no_actor_bound: invoked outside a chat-scoped session.
+        PolicyViolationFromServer:
+            ``case.open.customer_must_be_active``: customer record is
+            in pending/closed state — escalate via a different path.

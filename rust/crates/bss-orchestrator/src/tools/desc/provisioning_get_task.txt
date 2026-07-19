@@ -1,0 +1,10 @@
+Read a single provisioning task with error + timing detail.
+
+    Args:
+        task_id: Provisioning Task ID with the PTK- prefix (opaque suffix).
+
+    Returns:
+        Task dict including ``lastError``, ``startedAt``, ``completedAt``.
+
+    Raises:
+        NotFound: unknown task.

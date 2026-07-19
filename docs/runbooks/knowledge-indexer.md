@@ -8,9 +8,11 @@
 
 ## When to run
 
-- **First time activating v0.20.** After `make migrate` lands `0022` +
-  `0023`, run `make knowledge-reindex` once to populate
-  `knowledge.doc_chunk`.
+- **First time activating v0.20.** After the schema is applied (`bss admin
+  migrate` — the frozen baseline already includes the `knowledge` schema +
+  pgvector; the old Alembic `0022`/`0023` are collapsed into it, see
+  [`rust-schema-baseline.md`](rust-schema-baseline.md)), run `bss admin
+  knowledge reindex` once to populate `knowledge.doc_chunk`.
 - **After a docs PR merges to main.** The corpus is frozen between
   reindex runs; new sections won't be citable until the next reindex.
   In a typical small-MVNO workflow, an operator runs `make knowledge-reindex`
@@ -91,11 +93,11 @@ docker compose restart \
 docker exec postgres psql -U postgres -d postgres \
     -c "ALTER DATABASE bss REFRESH COLLATION VERSION;"
 
-# 8. Apply v0.20 migrations.
-make migrate
+# 8. Apply the schema (baseline already includes knowledge + pgvector).
+bss admin migrate
 
 # 9. Index the corpus.
-make knowledge-reindex
+bss admin knowledge reindex
 ```
 
 ### BYOI mode — one-time CREATE EXTENSION
@@ -105,8 +107,8 @@ make knowledge-reindex
 psql -h <pg-host> -U postgres -d bss -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 # Then back on the bss-cli host:
-make migrate
-make knowledge-reindex
+bss admin migrate
+bss admin knowledge reindex
 ```
 
 If your shared Postgres serves multiple databases (e.g. metabase, n8n),
@@ -207,7 +209,7 @@ docker compose restart portal-csr
 
 ### "could not open extension control file vector.control"
 
-`make migrate` failed because pgvector isn't on the target Postgres.
+`bss admin migrate` failed because pgvector isn't on the target Postgres.
 See [Prerequisites](#prerequisites--pgvector-on-postgres) above.
 
 ### "BSS_DB_URL is not set"

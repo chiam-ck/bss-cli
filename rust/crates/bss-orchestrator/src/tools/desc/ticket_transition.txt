@@ -1,0 +1,13 @@
+Explicitly transition a ticket to another state. Prefer
+    ``ticket.resolve`` and ``ticket.close`` for those specific transitions.
+
+    Args:
+        ticket_id: Ticket ID with the TKT- prefix (opaque suffix).
+        to_state: Target state.
+
+    Returns:
+        Updated ticket dict.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``ticket.transition.illegal``: state machine forbids this move.

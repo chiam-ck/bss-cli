@@ -1,0 +1,163 @@
+{
+ "in": [
+  {
+   "id": "PLAN_M",
+   "name": "Standard",
+   "isSellable": true,
+   "lifecycleStatus": "active",
+   "isBundle": true,
+   "productOfferingPrice": [
+    {
+     "price": {
+      "taxIncludedAmount": {
+       "value": 25.0
+      }
+     }
+    }
+   ],
+   "bundleAllowance": [
+    {
+     "allowanceType": "data",
+     "quantity": 51200,
+     "unit": "mb"
+    },
+    {
+     "allowanceType": "voice",
+     "quantity": 500,
+     "unit": "min"
+    },
+    {
+     "allowanceType": "sms",
+     "quantity": 500,
+     "unit": "sms"
+    },
+    {
+     "allowanceType": "data_roaming",
+     "quantity": 2048,
+     "unit": "mb"
+    }
+   ]
+  },
+  {
+   "id": "PLAN_S",
+   "name": "Lite",
+   "productOfferingPrice": [
+    {
+     "price": {
+      "taxIncludedAmount": {
+       "value": 10.0
+      }
+     }
+    }
+   ],
+   "bundleAllowance": [
+    {
+     "allowanceType": "data",
+     "quantity": 10240,
+     "unit": "mb"
+    },
+    {
+     "allowanceType": "voice_minutes",
+     "quantity": 100,
+     "unit": "min"
+    },
+    {
+     "allowanceType": "sms",
+     "quantity": 100,
+     "unit": "sms"
+    },
+    {
+     "allowanceType": "data_roaming",
+     "quantity": 0,
+     "unit": "mb"
+    }
+   ]
+  },
+  {
+   "id": "PLAN_L",
+   "name": "Max",
+   "productOfferingPrice": [
+    {
+     "price": {
+      "taxIncludedAmount": {
+       "value": 45.0
+      }
+     }
+    }
+   ],
+   "bundleAllowance": [
+    {
+     "allowanceType": "data",
+     "quantity": -1,
+     "unit": "mb"
+    },
+    {
+     "allowanceType": "voice",
+     "quantity": "unlimited"
+    },
+    {
+     "allowanceType": "sms",
+     "quantity": 1000,
+     "unit": "sms"
+    }
+   ]
+  },
+  {
+   "id": "VAS_X",
+   "name": "TopUp",
+   "isBundle": false,
+   "productOfferingPrice": [
+    {
+     "price": {
+      "taxIncludedAmount": {
+       "value": 5.0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "PLAN_OLD",
+   "name": "Retired",
+   "lifecycleStatus": "retired",
+   "productOfferingPrice": [
+    {
+     "price": {
+      "taxIncludedAmount": {
+       "value": 1.0
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "out": [
+  {
+   "id": "PLAN_S",
+   "name": "Lite",
+   "price": "10",
+   "data": "10 GB",
+   "voice": "100 min",
+   "sms": "100 sms",
+   "roaming": null
+  },
+  {
+   "id": "PLAN_M",
+   "name": "Standard",
+   "price": "25",
+   "data": "50 GB",
+   "voice": "500 min",
+   "sms": "500 sms",
+   "roaming": "2 GB"
+  },
+  {
+   "id": "PLAN_L",
+   "name": "Max",
+   "price": "45",
+   "data": "unlimited",
+   "voice": "unlimited",
+   "sms": "1000 sms",
+   "roaming": null
+  }
+ ]
+}

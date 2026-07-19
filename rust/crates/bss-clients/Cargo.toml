@@ -1,0 +1,24 @@
+[package]
+name = "bss-clients"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "S2S HTTP base client (reqwest): mandatory timeouts, no retries, typed errors, ctx propagation, AuthProvider. Port of packages/bss-clients base. Typed per-service clients land per phase."
+
+[lints]
+workspace = true
+
+[dependencies]
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-telemetry = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+axum = { workspace = true }

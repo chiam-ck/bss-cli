@@ -1,0 +1,29 @@
+Create AND submit a commercial order. The customer must have an active
+    card-on-file (``payment.add_card``) and a valid KYC attestation before
+    this call will succeed.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        offering_id: An active sellable plan ID. Get the current set
+            from ``catalog.list_active_offerings`` — operators may add
+            new plans at runtime; never hardcode the v1.0 trio.
+        msisdn_preference: Optional preferred MSISDN. If unset or unavailable,
+            SOM auto-picks one from the pool.
+        notes: Optional free text stored on the order.
+        discount_code: Optional promo code (v1.1). Validated + composed by
+            catalog; an invalid code never blocks the order (it just proceeds
+            at full price). When omitted, any offer pre-assigned to the
+            customer auto-applies. Consumed at activation, not at create.
+
+    Returns:
+        Order dict ``{id, customerId, items, state, orderDate}``. Expect
+        ``state="acknowledged"`` immediately; use ``order.wait_until`` to
+        wait for ``completed``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``order.create.requires_cof``: customer has no active card.
+              Fix with ``payment.add_card`` then retry.
+            - ``order.create.requires_verified_customer``: KYC not verified.
+              Fix with ``customer.attest_kyc`` (channel has the token) then retry.
+            - ``order.create.offering_not_sellable``: plan is inactive.

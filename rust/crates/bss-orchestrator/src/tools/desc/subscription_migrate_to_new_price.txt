@@ -1,0 +1,27 @@
+Operator-initiated price migration with notice. Admin-only.
+
+    Schedules ``new_price_id`` against every active subscription on
+    ``offering_id`` such that ``effective_from + notice_days`` becomes the
+    effective moment. The renewal flow applies the change atomically per
+    subscription. Subscriptions that terminate during the notice window
+    skip the migration without manual cleanup.
+
+    Args:
+        offering_id: The offering to retag (e.g. ``PLAN_M``).
+        new_price_id: New ``product_offering_price.id`` belonging to that
+            same offering (validated server-side).
+        effective_from: ISO-8601 instant — earliest moment the new price
+            may be applied. ``effective_from + notice_days`` is the actual
+            apply boundary.
+        notice_days: Regulatory notice (Singapore: 30 for upward moves).
+        initiated_by: Operator identity stamped into the audit trail.
+
+    Returns:
+        ``{count, subscriptionIds}`` — the affected subscriptions.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``subscription.admin_only``: caller lacks the admin role.
+            - ``subscription.migrate_price.unknown_price``: no such price row.
+            - ``subscription.migrate_price.price_not_on_offering``: target
+              price belongs to a different offering than the filter.

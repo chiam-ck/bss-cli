@@ -1,0 +1,43 @@
+[package]
+name = "subscription"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Subscription & Bundle Balance (Phase 4b). Subscription FSM + block-on-exhaust balance decrement (FOR UPDATE), price-snapshot renewal, plan-change/price-migration pivot, VAS top-up; runs the outbox relay + usage.rated consumer + the in-process renewal worker. Port of services/subscription."
+
+[lints]
+workspace = true
+
+[lib]
+name = "subscription"
+path = "src/lib.rs"
+
+[[bin]]
+name = "subscription"
+path = "src/main.rs"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+rust_decimal = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+
+bss-admin = { workspace = true }
+bss-clock = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-middleware = { workspace = true }
+bss-telemetry = { workspace = true }
+bss-events = { workspace = true }
+bss-clients = { workspace = true }
+bss-models = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }

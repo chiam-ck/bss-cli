@@ -1,0 +1,33 @@
+**Non-destructive.** Purchase a VAS (Value-Added Service) for a
+    subscription and charge the customer's default card-on-file.
+
+    **This is the canonical fix for a blocked-on-exhaust subscription.**
+    When a customer reports "data isn't working" / "I'm blocked" and
+    you've confirmed ``state == "blocked"``, the recovery is to call
+    this tool with a data VAS from ``catalog.list_vas``. Do not refuse
+    on a destructive-action caveat — VAS top-up adds allowance, it
+    never removes service. The opposite tool — ``subscription.terminate``
+    — IS destructive and is NOT what to call here.
+
+    Use cases: blocked-on-exhaust recovery (primary), or proactive
+    allowance top-up on an active subscription.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+        vas_offering_id: VAS offering ID (e.g. ``VAS_DATA_5GB``). Get this
+            from ``catalog.list_vas`` — do not guess.
+
+    Returns:
+        Updated subscription dict. If the subscription was ``blocked``, expect
+        it to be ``active`` now. Check ``balances`` for the updated allowance.
+        After this returns, call ``interaction.log`` with a one-line summary
+        to close out the troubleshoot.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``subscription.vas_purchase.requires_active_cof``: customer has
+              no active card. Fix with ``payment.add_card``, then retry.
+            - ``subscription.vas_purchase.vas_offering_sellable``: VAS offering
+              is inactive. Ask ``catalog.list_vas`` for valid IDs.
+            - ``subscription.vas_purchase.not_if_terminated``: subscription is
+              terminated; not recoverable.

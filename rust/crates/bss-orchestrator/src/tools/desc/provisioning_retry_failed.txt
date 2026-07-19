@@ -1,0 +1,12 @@
+Retry a FAILED provisioning task (up to ``maxAttempts``).
+
+    Args:
+        task_id: Provisioning Task ID with the PTK- prefix (opaque suffix).
+
+    Returns:
+        Updated task dict.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``provisioning.retry.max_attempts_reached``: human intervention
+              required; open a ticket.

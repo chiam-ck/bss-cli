@@ -1,0 +1,119 @@
+# BSS-CLI → Rust migration (phases/2.0). Cargo workspace mirroring the uv
+# workspace. Members are added phase by phase; see phases/2.0/03-PHASES.md.
+#
+#   crates/   ← packages/bss-* equivalents (lib crates)      — P0, P5
+#   services/ ← 9 bin crates, one per service                — P1–P4
+#   portals/  ← 2 bin crates (self-serve, csr)               — P6
+#   cli/      ← bss bin (Typer/Rich/REPL equivalent)         — P7
+[workspace]
+resolver = "2"
+members = ["crates/*", "services/*", "portals/*", "cli", "conformance"]
+
+[workspace.package]
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.80"
+repository = "https://github.com/chiam-ck/bss-cli"
+
+[workspace.dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+arc-swap = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5", features = ["util"] }
+uuid = { version = "1", features = ["v4"] }
+# Money — matches Python `decimal.Decimal` (2dp NUMERIC columns, ROUND_HALF_UP).
+# Read from Postgres as `amount::text` → `Decimal::from_str` to preserve scale
+# exactly (so "20.00" stays "20.00" and `.normalize()` matches Python's
+# `format(value.normalize(), 'f')` for discount labels). Lands with catalog (P3).
+rust_decimal = { version = "1", default-features = false, features = ["serde", "std"] }
+rand = "0.8"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+# Standard base64 — svix webhook secret decode (`whsec_<base64>`) + signature
+# encode. Lands with bss-webhooks (P6a).
+base64 = "0.22"
+# eSIM LPA activation-code + KYC-handoff QR PNGs on the self-serve portal (P6b).
+qrcode = { version = "0.14", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "postgres",
+    "runtime-tokio-rustls",
+    "chrono",
+    "uuid",
+    "json",
+    # Phase 8 — the sqlx migrator (`bss admin migrate`) replaces Alembic as the
+    # go-forward schema source. `migrate` pulls the `Migrator` type; `macros`
+    # provides the `migrate!` macro that embeds rust/migrations at compile time
+    # (no DATABASE_URL / offline data needed — we use runtime `sqlx::query`, not
+    # the compile-time-checked `query!`).
+    "migrate",
+    "macros",
+] }
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+# RabbitMQ (aio-pika equivalent). lapin drives its own async-io reactor; the
+# tokio-*-trait shims run it on the tokio runtime so we don't spin a second
+# reactor thread (matches the single-runtime posture of the Python services).
+lapin = { version = "2", default-features = false, features = ["rustls"] }
+tokio-executor-trait = "2"
+tokio-reactor-trait = "1"
+futures-util = "0.3"
+# Portal templating — Jinja-compatible; the P6 portals reuse the existing
+# `.html` templates via a path loader (no rewrite, single source during the
+# bilingual period). `loader` feature enables `path_loader`.
+minijinja = { version = "2", features = ["loader"] }
+tower-http = { version = "0.5", features = ["fs"] }
+# Lookbehind/lookahead regex (the `regex` crate can't do them). Used by the
+# LLM-output post-processors + chat-HTML renderer ported in P6a — matches the
+# P5b note that `postprocess::*` needs fancy-regex.
+fancy-regex = "0.13"
+# CLI arg parsing (Typer equivalent). `derive` for the command tree.
+clap = { version = "4", features = ["derive"] }
+# REPL line editor (prompt_toolkit equivalent) — history, Ctrl-C/D signals, a
+# custom prompt. Backs the `bss` cockpit REPL (P7 s18).
+reedline = "0.38"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "json", "env-filter"] }
+tracing-opentelemetry = "0.28"
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", default-features = false, features = [
+    "trace",
+    "http-proto",
+    "reqwest-client",
+] }
+
+# Workspace-internal crates (path deps).
+bss-admin = { path = "crates/bss-admin" }
+bss-clock = { path = "crates/bss-clock" }
+bss-context = { path = "crates/bss-context" }
+bss-db = { path = "crates/bss-db" }
+bss-middleware = { path = "crates/bss-middleware" }
+bss-events = { path = "crates/bss-events" }
+bss-telemetry = { path = "crates/bss-telemetry" }
+bss-clients = { path = "crates/bss-clients" }
+bss-models = { path = "crates/bss-models" }
+bss-knowledge = { path = "crates/bss-knowledge" }
+bss-cockpit = { path = "crates/bss-cockpit" }
+bss-orchestrator = { path = "crates/bss-orchestrator" }
+bss-branding = { path = "crates/bss-branding" }
+bss-portal-auth = { path = "crates/bss-portal-auth" }
+bss-portal-ui = { path = "crates/bss-portal-ui" }
+bss-webhooks = { path = "crates/bss-webhooks" }
+
+# Lints applied workspace-wide. Individual crates opt in with
+# `[lints] workspace = true`. clippy runs with `-D warnings` in CI.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# Doctrine (doc 02 §4): no unwrap/expect/panic in non-test code. These are
+# `warn` here and promoted to hard errors by `cargo clippy -- -D warnings`.
+unwrap_used = "warn"
+expect_used = "warn"

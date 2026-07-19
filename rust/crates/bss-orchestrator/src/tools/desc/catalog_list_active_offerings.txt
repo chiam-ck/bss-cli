@@ -1,0 +1,10 @@
+List offerings sellable at a given moment, sorted by lowest active price.
+
+    Args:
+        at: Optional ISO-8601 instant. Defaults to now via ``bss_clock``.
+
+    Returns:
+        List of offering dicts that pass time-bound + lifecycle + sellable filters.
+
+    Raises:
+        (none expected — read tool)

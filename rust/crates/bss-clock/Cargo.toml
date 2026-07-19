@@ -1,0 +1,20 @@
+[package]
+name = "bss-clock"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Process-local scenario clock (wall/frozen) + admin router. Port of packages/bss-clock."
+
+[lints]
+workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+arc-swap = { workspace = true }
+serde_json = { workspace = true }
+axum = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tower = { workspace = true }

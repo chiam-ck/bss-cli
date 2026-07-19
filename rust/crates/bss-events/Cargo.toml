@@ -1,0 +1,31 @@
+[package]
+name = "bss-events"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Transactional-outbox event plane: staging, relay drain, safe-consumer retry/park + topology contract. Port of packages/bss-events. lapin/sqlx binding lands with the conformance service."
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+sqlx = { workspace = true }
+axum = { workspace = true }
+lapin = { workspace = true }
+tokio = { workspace = true }
+tokio-executor-trait = { workspace = true }
+tokio-reactor-trait = { workspace = true }
+futures-util = { workspace = true }
+tracing = { workspace = true }
+bss-clock = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-telemetry = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

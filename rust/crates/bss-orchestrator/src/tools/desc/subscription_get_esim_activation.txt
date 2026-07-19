@@ -1,0 +1,13 @@
+Return the LPA activation-code bundle for a subscription's eSIM. Use
+    this for first-time QR display after activation, or when the customer
+    needs to re-install the eSIM profile.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        ``{subscriptionId, iccid, imsi, activationCode, msisdn}``. The
+        ``activationCode`` is the LPA string (``LPA:1$...``).
+
+    Raises:
+        NotFound: no eSIM attached to this subscription.

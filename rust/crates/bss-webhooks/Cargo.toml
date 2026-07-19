@@ -1,0 +1,25 @@
+[package]
+name = "bss-webhooks"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Shared webhook substrate for BSS-CLI provider integrations (v0.14). Rust port of packages/bss-webhooks — HMAC signature verification (svix/stripe/didit_hmac), per-provider payload redaction, and idempotency-key construction. The DB-backed WebhookEventStore/ExternalCallStore land with the P6b portal consumer."
+
+[lints]
+workspace = true
+
+[lib]
+name = "bss_webhooks"
+path = "src/lib.rs"
+
+[dependencies]
+serde_json = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+base64 = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true }

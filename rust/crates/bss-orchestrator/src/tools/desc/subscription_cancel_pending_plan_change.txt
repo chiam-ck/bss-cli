@@ -1,0 +1,10 @@
+Cancel a pending plan change. Idempotent — no-op if nothing is pending.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        Updated subscription dict with pending fields cleared.
+
+    Raises:
+        NotFound: unknown subscription.

@@ -1,0 +1,21 @@
+[package]
+name = "bss-branding"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Operator branding read-path + palette definitions (v1.8). Rust port of packages/bss-branding — config hot-reload, THEMES, marks, css block, logo asset sniffing. Writes stay in bss_cockpit.config."
+
+[lints]
+workspace = true
+
+[lib]
+name = "bss_branding"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+toml = "0.8"
+indexmap = { version = "2" }
+tracing = { workspace = true }

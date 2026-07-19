@@ -1,4 +1,4 @@
-.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
+.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate rust-migrate rust-fmt rust-lint rust-test rust-doctrine-check seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
 
 help:
 	@echo "  up                  — 10 BSS services (BYOI Postgres/RabbitMQ)"
@@ -421,6 +421,26 @@ fmt:
 lint:
 	uv run ruff check .
 
+# --- Rust (2.0) dev loop. The Python targets above run the oracle; these drive the
+# Rust workspace. At final cutover (Phase 8) the canonical names re-point to these.
+# cargo isn't on PATH by default in make's shell — source the toolchain env first.
+CARGO_ENV := . "$$HOME/.cargo/env" 2>/dev/null || true
+
+rust-fmt:
+	@$(CARGO_ENV); cd rust && cargo fmt --all --check
+
+rust-lint:
+	@$(CARGO_ENV); cd rust && cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+rust-test:
+	@$(ENV_SOURCE); $(CARGO_ENV); cd rust && cargo test --workspace
+
+# Rust counterpart to `doctrine-check`: the greppable doctrine guards over rust/.
+# (Structural guards are enforced by construction/clippy; "test" guards run via
+# `rust-test`. See phases/2.0/02-TECH-MAPPING.md §4.)
+rust-doctrine-check:
+	@bash scripts/rust_doctrine_check.sh
+
 # mypy can't run as a single `mypy .` in this workspace: every service
 # deliberately shares the `app` package name (same reason `make test`
 # isolates PYTHONPATH per directory), so root-level checking dies on
@@ -445,6 +465,13 @@ ENV_SOURCE := if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
 migrate:
 	@$(ENV_SOURCE); cd packages/bss-models && uv run --package bss-models alembic upgrade head
+
+# Phase 8 (2.0): the sqlx migrator replaces Alembic for the all-Rust stack. Fresh
+# install → applies rust/migrations/; existing (Alembic-created) DB → run once with
+# `-- --baseline` to stamp the baseline as applied without re-running it. See
+# docs/runbooks/rust-schema-baseline.md.
+rust-migrate:
+	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cd rust && cargo run --quiet -p bss-cli -- admin migrate $(ARGS)
 
 seed:
 	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.main

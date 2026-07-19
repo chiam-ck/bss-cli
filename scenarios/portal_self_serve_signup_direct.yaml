@@ -68,7 +68,12 @@ steps:
     base_url: "{{ portal_base }}"
     expect:
       status: 200
-      body_contains: ["bss-cli self-serve", "Sign in", "Browse plans"]
+      # The page renders "<brand> self-serve" where <brand> is operator-
+      # configurable (v1.8 branding). Asserting a specific brand is a stale
+      # test target — the tech-vm runs a custom brand — so we pin only the
+      # stable "self-serve" tagline plus the two structural CTAs. Confirmed a
+      # stale assertion, not a behaviour change (Rust 2.0 port, P6 acceptance).
+      body_contains: ["self-serve", "Sign in", "Browse plans"]
 
   - name: visit /plans
     http: GET /plans

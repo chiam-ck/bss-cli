@@ -1,0 +1,11 @@
+List CSR/support agents. Used before case/ticket assignment to pick a
+    valid assignee.
+
+    Args:
+        state: Optional filter — typically ``"active"``.
+
+    Returns:
+        List of agent dicts ``{id, name, email, state, roles}``.
+
+    Raises:
+        (none expected — read tool)

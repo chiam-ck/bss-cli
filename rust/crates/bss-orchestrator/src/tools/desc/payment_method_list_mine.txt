@@ -1,0 +1,11 @@
+List the logged-in customer's cards on file.
+
+    Args:
+        (none — customer_id is bound from auth_context.current().actor.)
+
+    Returns:
+        List of payment method dicts ``{id, customerId, brand, last4,
+        expMonth, expYear, isDefault}``. Only the actor's methods.
+
+    Raises:
+        chat.no_actor_bound: invoked outside a chat-scoped session.

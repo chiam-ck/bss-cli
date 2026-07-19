@@ -1,0 +1,32 @@
+[package]
+name = "bss-portal-auth"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Email-based portal identity for the self-serve portal (v0.8+). Rust port of packages/bss-portal-auth — token primitives (HMAC-pepper), config, startup pepper validation, public dataclasses. DB-backed service layer + email adapters land in later P6a sub-slices."
+
+[lints]
+workspace = true
+
+[lib]
+name = "bss_portal_auth"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+chrono = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
+sqlx = { workspace = true }
+serde_json = { workspace = true }
+
+bss-branding = { workspace = true }
+bss-clock = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

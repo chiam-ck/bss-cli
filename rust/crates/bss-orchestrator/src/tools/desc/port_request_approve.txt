@@ -1,0 +1,15 @@
+Approve a port request — completes the MNP flow.
+
+    Port-in: donor MSISDN gets seeded into the pool (assigned to
+    target_subscription_id if set, else available for normal
+    signup). Port-out: the donor MSISDN flips to terminal
+    ported_out and the target subscription is terminated.
+
+    Args:
+        port_request_id: PORT-NNN identifier.
+
+    Returns:
+        Updated port request dict (state=completed).
+
+    Raises:
+        PolicyViolation: invalid state for this transition.

@@ -1,0 +1,13 @@
+Resolve the most-recent trace for an order via audit.domain_event,
+    then fetch + summarize from Jaeger. Use this to investigate "what
+    happened during this order's processing".
+
+    Args:
+        order_id: Commercial Order ID with the ORD- prefix (opaque suffix).
+
+    Returns:
+        Summary dict per ``trace.get``, plus ``orderId``. ``error`` field
+        when no trace_id was recorded (pre-v0.2 order) or Jaeger missing.
+
+    Raises:
+        ToolException: audit-events endpoint unreachable.

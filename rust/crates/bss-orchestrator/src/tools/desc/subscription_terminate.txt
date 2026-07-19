@@ -1,0 +1,21 @@
+**DESTRUCTIVE — releases MSISDN + eSIM, no undo.** Gated by
+    ``safety.py``. Only call this when the user explicitly asked to
+    terminate THIS subscription by name. Never use as a "fix" for a
+    blocked / exhausted / failing subscription — for those, the right
+    tool is ``subscription.purchase_vas`` (non-destructive, adds
+    allowance, unblocks).
+
+    Effects: subscription state → ``terminated``, eSIM profile released
+    back to inventory, MSISDN released back to inventory, customer's
+    line is gone. Cannot be reversed; the customer would have to sign
+    up again and would NOT get the same number back.
+
+    Args:
+        subscription_id: Subscription ID with the SUB- prefix (opaque suffix).
+
+    Returns:
+        Updated subscription dict with ``state="terminated"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``subscription.terminate.already_terminated``.

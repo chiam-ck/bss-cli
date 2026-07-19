@@ -1,0 +1,10 @@
+Return the current KYC state + expiry for a customer.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+
+    Returns:
+        ``{"state": "verified"|"unverified"|"expired", "verifiedAt", "expiresAt"}``.
+
+    Raises:
+        NotFound: no customer with this ID.

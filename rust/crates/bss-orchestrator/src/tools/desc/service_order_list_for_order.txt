@@ -1,0 +1,11 @@
+List service orders decomposed from a commercial order. In v0.1 there's
+    always exactly one SO per COM order.
+
+    Args:
+        commercial_order_id: Commercial Order ID with the ORD- prefix (opaque suffix).
+
+    Returns:
+        List of service order dicts.
+
+    Raises:
+        (none expected — read tool)

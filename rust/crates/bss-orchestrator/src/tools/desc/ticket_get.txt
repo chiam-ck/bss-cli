@@ -1,0 +1,10 @@
+Read a trouble ticket with full state history.
+
+    Args:
+        ticket_id: Ticket ID with the TKT- prefix (opaque suffix).
+
+    Returns:
+        Ticket dict including ``stateHistory`` and ``assignedAgent``.
+
+    Raises:
+        NotFound: no ticket with this ID.

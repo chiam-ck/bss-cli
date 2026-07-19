@@ -1,0 +1,11 @@
+Read the interaction log for a customer, newest first.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        limit: Max rows to return (default 50).
+
+    Returns:
+        List of interaction dicts ``{id, createdAt, channel, actor, action, note}``.
+
+    Raises:
+        (none expected — read tool)

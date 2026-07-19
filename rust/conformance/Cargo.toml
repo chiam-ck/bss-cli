@@ -1,0 +1,26 @@
+[package]
+name = "conformance"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Phase 0 exit harness: wires all platform crates against the LIVE stack (Postgres/RabbitMQ via the Python relay). Run manually with `cargo run -p conformance`; never runs in CI."
+
+[lints]
+workspace = true
+
+[dependencies]
+sqlx = { workspace = true }
+axum = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+bss-db = { workspace = true }
+bss-clock = { workspace = true }
+bss-context = { workspace = true }
+bss-middleware = { workspace = true }
+bss-events = { workspace = true }
+bss-telemetry = { workspace = true }

@@ -1,0 +1,26 @@
+Schedule a plan change on one of the logged-in customer's
+    subscriptions. Applies at the next renewal — **no proration**.
+
+    The new offering's price is snapshotted now; renewal day charges
+    the snapshot regardless of catalog moves in between. Tell the
+    customer the renewal date and that the current plan continues
+    until then.
+
+    Args:
+        subscription_id: the actor-owned subscription id (opaque suffix).
+        new_offering_id: Target offering (e.g. ``PLAN_L``). Must be
+            in the active catalog and different from the current
+            plan.
+
+    Returns:
+        Updated subscription dict with ``pendingOfferingId`` /
+        ``pendingOfferingPriceId`` / ``pendingEffectiveAt`` populated.
+
+    Raises:
+        policy.subscription.not_owned_by_actor: subscription belongs
+            to another customer.
+        chat.no_actor_bound: invoked outside a chat-scoped session.
+        PolicyViolationFromServer: e.g.
+            ``subscription.plan_change.same_offering`` /
+            ``subscription.plan_change.already_pending`` /
+            ``subscription.plan_change.target_not_sellable_now``.

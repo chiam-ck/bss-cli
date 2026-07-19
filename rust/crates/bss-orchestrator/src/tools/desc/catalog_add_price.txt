@@ -1,0 +1,19 @@
+Admin: insert a new product_offering_price row. Hidden from LLM.
+
+    Args:
+        offering_id: The offering to attach the new price to.
+        price_id: Caller-supplied unique id for the new row.
+        amount: Recurring price amount as a string.
+        currency: ISO-4217.
+        valid_from: Optional ISO-8601. NULL = active immediately.
+        valid_to: Optional ISO-8601. NULL = no end.
+        retire_current: If True, every existing open-ended row on the
+            offering gets stamped with valid_to so the new row takes over.
+
+    Returns:
+        TMF620 price dict.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``catalog.offering.not_found``.
+            - ``catalog.price.already_exists``.

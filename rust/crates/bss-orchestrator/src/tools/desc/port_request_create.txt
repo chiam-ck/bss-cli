@@ -1,0 +1,18 @@
+Open a new port request.
+
+    Args:
+        direction: port_in (customer brings number to us) or
+            port_out (customer takes number to a competitor).
+        donor_carrier: Carrier the number is moving from.
+        donor_msisdn: The MSISDN being ported.
+        requested_port_date: ISO-8601 date (YYYY-MM-DD).
+        target_subscription_id: Required for port_out; optional for
+            port_in (the subscription may not exist yet at the
+            point the port-in is logged).
+
+    Returns:
+        Newly-created port request dict.
+
+    Raises:
+        PolicyViolation: donor MSISDN already has an open port request,
+            invalid direction, or port_out missing target_subscription_id.

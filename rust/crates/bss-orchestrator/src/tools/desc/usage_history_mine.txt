@@ -1,0 +1,20 @@
+Read recent usage for the logged-in customer, optionally
+    narrowed to one of their subscriptions.
+
+    Args:
+        subscription_id: Optional subscription id (SUB-...) to narrow the query to one
+            of the customer's lines. Cross-customer attempts return
+            ``policy.subscription.not_owned_by_actor``. When omitted,
+            usage across every line owned by the customer is returned.
+        event_type: Optional ``data`` / ``voice_minutes`` / ``sms``
+            filter.
+        since: Optional ISO-8601 lower bound.
+        limit: Max rows (default 100, server cap 1000).
+
+    Returns:
+        List of usage dicts, newest first.
+
+    Raises:
+        policy.subscription.not_owned_by_actor: ``subscription_id``
+            belongs to another customer.
+        chat.no_actor_bound: invoked outside a chat-scoped session.

@@ -1,0 +1,10 @@
+Freeze the scenario clock. NOT IMPLEMENTED in v0.1.
+
+    Args:
+        at: Optional ISO-8601 instant to freeze at; defaults to ``now``.
+
+    Returns:
+        v0.1: structured ``NOT_IMPLEMENTED`` payload.
+
+    Raises:
+        (none in v0.1)

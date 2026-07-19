@@ -1,0 +1,10 @@
+Read an order with its items and current state.
+
+    Args:
+        order_id: Order ID with the ORD- prefix (opaque suffix).
+
+    Returns:
+        Order dict.
+
+    Raises:
+        NotFound: unknown order.

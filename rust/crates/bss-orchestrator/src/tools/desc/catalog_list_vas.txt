@@ -1,0 +1,12 @@
+List all VAS (Value-Added Service) offerings — data top-ups, day passes, etc.
+    Call this when the user asks to top up a blocked subscription so you can
+    pick the right ``vasOfferingId`` for ``subscription.purchase_vas``.
+
+    Args:
+        (none)
+
+    Returns:
+        List of VAS dicts ``{id, name, price, bundleDelta}``.
+
+    Raises:
+        (none expected — read tool)

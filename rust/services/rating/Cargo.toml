@@ -1,0 +1,43 @@
+[package]
+name = "rating"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Rating service (Phase 1 pilot). Stateless pure rate_usage + usage.recorded → usage.rated consumer. Port of services/rating. The per-service porting pattern is stamped here first."
+
+[lints]
+workspace = true
+
+[lib]
+name = "rating"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rating"
+path = "src/main.rs"
+
+[dependencies]
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+futures-util = { workspace = true }
+lapin = { workspace = true }
+
+bss-clock = { workspace = true }
+bss-context = { workspace = true }
+bss-db = { workspace = true }
+bss-middleware = { workspace = true }
+bss-events = { workspace = true }
+bss-telemetry = { workspace = true }
+bss-clients = { workspace = true }
+bss-models = { workspace = true }
+
+[dev-dependencies]
+reqwest = { workspace = true }

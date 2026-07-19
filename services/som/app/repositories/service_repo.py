@@ -33,6 +33,31 @@ class ServiceRepository:
         result = await self._s.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_for_update(self, service_id: str) -> Service | None:
+        """Like :meth:`get`, but takes a ``FOR UPDATE`` row lock on the CFS.
+
+        The provisioning task handlers (completed/failed/stuck) do a
+        read-modify-write on the CFS ``characteristics`` JSONB (``pendingTasks``).
+        The aio-pika consumer runs callbacks concurrently (prefetch 5), each in
+        its own session/transaction, so an unlocked read lets two simultaneous
+        ``provisioning.task.completed`` events clobber each other's pendingTasks
+        update. Locking the row here serializes the RMW: the second handler
+        blocks until the first commits. ``FOR UPDATE`` applies to the primary
+        Service row only; ``selectinload`` runs its own unlocked SELECTs, which
+        is fine — we only need to serialize on the CFS row.
+        """
+        stmt = (
+            select(Service)
+            .options(
+                selectinload(Service.children).selectinload(Service.children),
+                selectinload(Service.state_history),
+            )
+            .where(Service.id == service_id)
+            .with_for_update()
+        )
+        result = await self._s.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_by_subscription(self, subscription_id: str) -> list[Service]:
         stmt = (
             select(Service)

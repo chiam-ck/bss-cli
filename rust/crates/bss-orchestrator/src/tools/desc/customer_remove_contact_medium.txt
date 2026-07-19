@@ -1,0 +1,14 @@
+Remove a specific contact medium from a customer. DESTRUCTIVE — the
+    ``safety.py`` wrapper will block this without ``--allow-destructive``.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        medium_id: Contact Medium ID with the CM- prefix (opaque suffix). Obtain via ``customer.get``.
+
+    Returns:
+        ``{"id": "CM-NNN", "removed": true}`` on success.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``customer.contact_medium.last_remaining``: can't remove the
+              customer's only contact medium.

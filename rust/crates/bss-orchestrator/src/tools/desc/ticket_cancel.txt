@@ -1,0 +1,12 @@
+Cancel a ticket before resolution. DESTRUCTIVE — ``safety.py`` blocks
+    this without ``--allow-destructive``.
+
+    Args:
+        ticket_id: Ticket ID with the TKT- prefix (opaque suffix).
+
+    Returns:
+        Updated ticket dict with ``state="cancelled"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``ticket.cancel.already_resolved``: already resolved — close instead.

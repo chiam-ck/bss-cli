@@ -1,0 +1,11 @@
+Close a resolved ticket.
+
+    Args:
+        ticket_id: Ticket ID with the TKT- prefix (opaque suffix).
+
+    Returns:
+        Updated ticket dict with ``state="closed"``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``ticket.close.must_be_resolved_first``.

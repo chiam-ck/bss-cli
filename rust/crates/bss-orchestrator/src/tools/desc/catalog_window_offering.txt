@@ -1,0 +1,13 @@
+Admin: set valid_from / valid_to on an existing offering. Hidden from LLM.
+
+    Args:
+        offering_id: The offering to time-bound.
+        valid_from: Optional ISO-8601 (NULL clears).
+        valid_to: Optional ISO-8601 (NULL clears).
+
+    Returns:
+        Updated TMF620 offering dict.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``catalog.offering.not_found``.

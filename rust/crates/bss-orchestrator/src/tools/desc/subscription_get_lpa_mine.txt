@@ -1,0 +1,17 @@
+Return the LPA activation-code bundle for one of the logged-in
+    customer's eSIMs. Use when the customer asks "how do I redownload
+    my eSIM?" — the bundle includes the activation code and QR
+    payload.
+
+    Args:
+        subscription_id: the actor-owned subscription id (opaque suffix).
+
+    Returns:
+        ``{subscriptionId, iccid, imsi, activationCode, msisdn}``.
+        ``activationCode`` is the LPA string (``LPA:1$...``).
+
+    Raises:
+        policy.subscription.not_owned_by_actor: subscription belongs
+            to another customer.
+        chat.no_actor_bound: invoked outside a chat-scoped session.
+        NotFound: no eSIM attached to this subscription.

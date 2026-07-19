@@ -1,0 +1,16 @@
+Tokenise a card PAN (dev tokenizer) and attach it as a payment method.
+    In production, the PAN would be tokenised client-side (Stripe, etc.) —
+    this tool is the sandbox convenience: tokenize + attach in one call.
+
+    Args:
+        customer_id: Customer ID with the CUST- prefix (opaque suffix).
+        card_number: 16-digit PAN. Any number works in v0.1 UNLESS it
+            contains ``FAIL`` or ``DECLINE`` (will be rejected by the mock).
+
+    Returns:
+        Payment method dict ``{id, customerId, brand, last4, expMonth, expYear, isDefault}``.
+
+    Raises:
+        PolicyViolationFromServer:
+            - ``payment.add_card.customer_must_exist``: create the customer first.
+            - ``payment.add_card.token_invalid``: card rejected by mock tokeniser.
