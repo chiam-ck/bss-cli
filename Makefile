@@ -1,4 +1,4 @@
-.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate rust-migrate rust-fmt rust-lint rust-test rust-doctrine-check seed seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock doctrine-check python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
+.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed doctrine-check rust-migrate rust-seed rust-fmt rust-lint rust-test rust-doctrine-check py-test py-fmt py-lint py-migrate py-seed py-doctrine-check seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
 
 help:
 	@echo "  up                  — 10 BSS services (BYOI Postgres/RabbitMQ)"
@@ -7,22 +7,22 @@ help:
 	@echo "  up-core             — minimal + com + som + subscription + provisioning-sim"
 	@echo "  down                — stop everything"
 	@echo "  build               — build all service images"
-	@echo "  migrate             — alembic upgrade head"
-	@echo "  seed                — seed reference data (3 plans + 4 VAS + 1000 MSISDNs + 1000 eSIMs)"
+	@echo "  migrate             — (2.0) bss admin migrate (Rust sqlx); py-migrate = alembic"
+	@echo "  seed                — (2.0) bss admin seed (Rust); py-seed = Python bss-seed. 3 plans + 4 VAS + 1000 MSISDNs + 1000 eSIMs"
 	@echo "  seed-demo           — synced demo seed: 3 customers + 2 promos across BSS + loyalty"
 	@echo "  seed-demo-reset     — surgical reverse of seed-demo (demo-prefix only; spares operator data)"
 	@echo "  loyalty-reset       — TRUNCATE loyalty.* + audit.* and re-stamp alembic head"
 	@echo "  demo-restore        — THE button: reset-db + loyalty-reset + seed-demo (BSS + loyalty in lockstep)"
 	@echo "  knowledge-reindex   — v0.20+ reindex doc corpus into knowledge.doc_chunk"
-	@echo "  test                — run pytest"
-	@echo "  fmt                 — format with ruff"
-	@echo "  lint                — lint with ruff + mypy"
+	@echo "  test                — (2.0) cargo test --workspace; py-test = pytest sweep"
+	@echo "  fmt                 — (2.0) cargo fmt --check; py-fmt = ruff format"
+	@echo "  lint                — (2.0) cargo clippy -D warnings; py-lint = ruff check"
 	@echo "  scenarios           — run every scenario in ./scenarios (including LLM ask: steps)"
 	@echo "  scenarios-hero      — run only the three hero ship-gate scenarios"
 	@echo "  e2e                 — v1.4 Playwright suite in mock-providers mode (CLEAN=1 for full wipe)"
 	@echo "  e2e-down            — manually tear down a stuck e2e override stack"
 	@echo "  check-clock         — grep guard: all datetime.now sites route through bss-clock"
-	@echo "  doctrine-check      — run all v0.6+ grep guards (clock, channel, portals, no-bypass)"
+	@echo "  doctrine-check      — (2.0) Rust grep guards over rust/; py-doctrine-check = Python guards"
 	@echo "  python-check        — warn if active Python is outside the supported 3.12 range"
 
 up: dev-mailbox-dir
@@ -66,7 +66,11 @@ python-check:
 		*)   echo "⚠ python $$v — outside supported 3.12 range. Recreate venv: uv python install 3.12.13 && uv venv --python 3.12.13" ;; \
 	esac
 
-test:
+# Canonical (2.0 cutover): `test` runs the Rust workspace suite; the Python
+# per-package pytest sweep is preserved as `py-test` (the oracle) until the archive.
+test: rust-test
+
+py-test:
 	@failed=0; \
 	for dir in packages/bss-clients packages/bss-admin packages/bss-clock packages/bss-events packages/bss-telemetry packages/bss-middleware packages/bss-webhooks packages/bss-portal-ui packages/bss-portal-auth packages/bss-cockpit services/catalog services/crm services/payment services/subscription services/com services/som services/provisioning-sim services/mediation services/rating orchestrator cli portals/self-serve portals/csr scenarios/soak; do \
 		printf "\n══ $$dir ══\n"; \
@@ -93,7 +97,11 @@ check-clock:
 	fi; \
 	echo "✓ all datetime.now sites route through bss_clock"
 
-doctrine-check: check-clock
+# Canonical (2.0 cutover): `doctrine-check` runs the Rust grep guards; the Python
+# guards are preserved as `py-doctrine-check` (the oracle) until the archive.
+doctrine-check: rust-doctrine-check
+
+py-doctrine-check: check-clock
 	@# v0.6 wrapper around all grep-guard doctrine checks.
 	@# Adds: portal-handlers don't write via bss-clients on the chat
 	@# surface (v0.11+ doctrine, narrowed from the earlier v0.4–v0.10
@@ -415,10 +423,16 @@ doctrine-check: check-clock
 	fi; \
 	echo "✓ settings.toml stays behind bss_cockpit.config + bss_branding"
 
-fmt:
+# Canonical (2.0 cutover): fmt/lint drive the Rust workspace; the Python (ruff)
+# tooling is preserved as py-fmt / py-lint (the oracle) until the Python archive.
+fmt: rust-fmt
+
+py-fmt:
 	uv run ruff format .
 
-lint:
+lint: rust-lint
+
+py-lint:
 	uv run ruff check .
 
 # --- Rust (2.0) dev loop. The Python targets above run the oracle; these drive the
@@ -463,7 +477,11 @@ lint-types:
 # exports every var until `set +a`, so children (alembic, psql, bss-seed) inherit them.
 ENV_SOURCE := if [ -f .env ]; then set -a; . ./.env; set +a; fi
 
-migrate:
+# Canonical (2.0 cutover): `migrate` runs the Rust sqlx migrator; the Python
+# Alembic path is preserved as `py-migrate` (the oracle) until the Python archive.
+migrate: rust-migrate
+
+py-migrate:
 	@$(ENV_SOURCE); cd packages/bss-models && uv run --package bss-models alembic upgrade head
 
 # Phase 8 (2.0): the sqlx migrator replaces Alembic for the all-Rust stack. Fresh
@@ -473,8 +491,13 @@ migrate:
 rust-migrate:
 	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cd rust && cargo run --quiet -p bss-cli -- admin migrate $(ARGS)
 
-seed:
+seed: rust-seed
+
+py-seed:
 	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.main
+
+rust-seed:
+	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cd rust && cargo run --quiet -p bss-cli -- admin seed
 
 # v1.3.1 — synced demo seed. Creates a small coherent demo dataset across
 # BSS (customers, promotions, eligibility) and loyalty-cli (registered

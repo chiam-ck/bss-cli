@@ -7,7 +7,17 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — **Phase 8: items 1–6 DONE; only the 14-day SOAK (→ 2026-08-02) + the final-cutover batch remain before `v2.0.0`**
+## ⇢ HANDOFF (next session) — **CUTOVER DONE: `2.0` merged to `main` (Rust is mainline, `c187f96`); live DB sqlx-stamped; make targets re-pointed. Operator now testing open-endedly; only the RELEASE (Python archive + `v2.0.0` tag) is held for their go-ahead.**
+
+**2.0 cutover landed 2026-07-19** (DECISIONS 2026-07-19 "2.0 Cutover"). The fixed
+14-day soak (`07-SOAK.md`) was replaced by the operator with an open-ended "test until
+ready" gate. Done: (a) `git merge --no-ff 2.0 → main` (`c187f96`, Rust mainline, Python
+tree kept in-tree as the oracle); (b) `bss admin migrate --baseline` stamped the live
+tech-vm DB (`_sqlx_migrations` version=1; Alembic frozen); (c) canonical `make
+test/fmt/lint/migrate/seed/doctrine-check` re-pointed to Rust, Python preserved as
+`py-*`. **HELD for the release:** archive/remove the Python source + `git tag -a
+v2.0.0`. Bug fixes now land on `main`; revert path `git revert -m 1 c187f96`. When the
+operator says ship: run the release batch (checklist in `07-SOAK.md` close-out).
 
 **Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
 (s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
