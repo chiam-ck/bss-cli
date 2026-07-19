@@ -134,22 +134,36 @@ impl MqChannel {
     /// Publish `payload` as a persistent JSON message with routing key
     /// `routing_key`. Mirrors the inline `events/publisher.publish` message:
     /// `content_type=application/json`, persistent delivery, no `message_id`.
+    /// Carries the current span's `traceparent` so a consumer continues the trace.
     pub async fn publish_json(
         &self,
         routing_key: &str,
         payload: &Value,
     ) -> Result<(), lapin::Error> {
         let body = serde_json::to_vec(payload).unwrap_or_else(|_| b"{}".to_vec());
+        let props = build_props(None, bss_telemetry::current_traceparent());
+        self.publish_on(EXCHANGE_NAME, routing_key, &body, props)
+            .await
+    }
+
+    /// The low-level publish: `basic_publish` on `exchange` with `routing_key` and
+    /// pre-built `props`, awaiting the broker confirm/return. Reconnects the
+    /// channel on demand via [`MqChannel::healthy_channel`].
+    async fn publish_on(
+        &self,
+        exchange: &str,
+        routing_key: &str,
+        body: &[u8],
+        props: BasicProperties,
+    ) -> Result<(), lapin::Error> {
         self.healthy_channel()
             .await?
             .basic_publish(
-                EXCHANGE_NAME,
+                exchange,
                 routing_key,
                 BasicPublishOptions::default(),
-                &body,
-                BasicProperties::default()
-                    .with_content_type("application/json".into())
-                    .with_delivery_mode(2), // persistent
+                body,
+                props,
             )
             .await?
             .await?; // await the broker confirm/return
@@ -206,33 +220,29 @@ impl MqChannel {
         message_id: &str,
     ) -> Result<(), lapin::Error> {
         let body = serde_json::to_vec(payload).unwrap_or_else(|_| b"{}".to_vec());
-        self.publish_bytes_with_id(routing_key, &body, message_id)
-            .await
+        self.publish_bytes_with_id(
+            routing_key,
+            &body,
+            message_id,
+            bss_telemetry::current_traceparent().as_deref(),
+        )
+        .await
     }
 
     /// Publish pre-serialized `body` bytes with an AMQP `message_id` — the relay's
-    /// drain path (it already serialized the payload).
+    /// drain path (it already serialized the payload). `traceparent`, when present,
+    /// re-seeds the trace from the trace id the relay read off the outbox row (the
+    /// relay publishes out of request context, so there is no live span to inject).
     pub async fn publish_bytes_with_id(
         &self,
         routing_key: &str,
         body: &[u8],
         message_id: &str,
+        traceparent: Option<&str>,
     ) -> Result<(), lapin::Error> {
-        self.healthy_channel()
-            .await?
-            .basic_publish(
-                EXCHANGE_NAME,
-                routing_key,
-                BasicPublishOptions::default(),
-                body,
-                BasicProperties::default()
-                    .with_content_type("application/json".into())
-                    .with_delivery_mode(2)
-                    .with_message_id(ShortString::from(message_id)),
-            )
-            .await?
-            .await?;
-        Ok(())
+        let props = build_props(Some(message_id), traceparent.map(str::to_string));
+        self.publish_on(EXCHANGE_NAME, routing_key, body, props)
+            .await
     }
 
     /// Declare the shared retry (dead-letter) exchange — a durable direct
@@ -378,13 +388,29 @@ impl MqChannel {
             props = props.with_message_id(ShortString::from(id));
         }
         // Default (nameless) exchange routes by queue name.
-        self.healthy_channel()
-            .await?
-            .basic_publish("", &parked, BasicPublishOptions::default(), body, props)
-            .await?
-            .await?;
-        Ok(())
+        self.publish_on("", &parked, body, props).await
     }
+}
+
+/// Build the standard persistent-JSON publish properties: content-type, delivery
+/// mode 2, the optional AMQP `message_id`, and — when present — a `traceparent`
+/// message header so a consumer can continue the trace.
+fn build_props(message_id: Option<&str>, traceparent: Option<String>) -> BasicProperties {
+    let mut props = BasicProperties::default()
+        .with_content_type("application/json".into())
+        .with_delivery_mode(2);
+    if let Some(id) = message_id {
+        props = props.with_message_id(ShortString::from(id));
+    }
+    if let Some(tp) = traceparent {
+        let mut headers = FieldTable::default();
+        headers.insert(
+            bss_telemetry::TRACEPARENT.into(),
+            AMQPValue::LongString(LongString::from(tp)),
+        );
+        props = props.with_headers(headers);
+    }
+    props
 }
 
 fn truncate(s: &str, max: usize) -> String {

@@ -11,9 +11,11 @@
 #![forbid(unsafe_code)]
 
 mod layer;
+mod otel;
 mod token_map;
 
 pub use layer::{require_api_token, AUTH_INVALID_TOKEN, AUTH_MISSING_TOKEN};
+pub use otel::otel_http_span;
 pub use token_map::{
     hash_token, identity_from_env_var, load_token_map, validate_token_map,
     validate_token_map_present, TokenMap, TokenMapInvalid,

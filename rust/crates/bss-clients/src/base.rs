@@ -14,6 +14,7 @@ use std::time::Duration;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Method;
 use serde_json::Value;
+use tracing::Instrument;
 
 use crate::auth::{AuthProvider, NoAuthProvider};
 use crate::errors::ClientError;
@@ -54,8 +55,29 @@ impl BssClient {
     }
 
     /// Send a request and map the outcome to a typed result. `body` is sent as
-    /// JSON when present. `timeout` overrides the default for this call.
+    /// JSON when present. `timeout` overrides the default for this call. Wrapped in
+    /// a CLIENT span whose `traceparent` is injected on the wire (in
+    /// [`BssClient::build_headers`]), so the callee's server span continues this
+    /// trace — the outbound half of the hand-stitched propagation.
     pub async fn request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<&Value>,
+        timeout: Option<Duration>,
+    ) -> Result<reqwest::Response, ClientError> {
+        let span = tracing::info_span!(
+            "http.client",
+            otel.name = format!("{} {}", method.as_str(), path),
+            otel.kind = "client",
+        );
+        self.send_request(method, path, body, timeout)
+            .instrument(span)
+            .await
+    }
+
+    /// The request body, run inside the CLIENT span created by [`BssClient::request`].
+    async fn send_request(
         &self,
         method: Method,
         path: &str,
@@ -87,6 +109,11 @@ impl BssClient {
         let ctx = bss_context::current();
         for (name, value) in ctx.outbound_headers() {
             insert_str(&mut headers, name, &value, /* overwrite */ false);
+        }
+        // W3C trace context off the active CLIENT span (set-default: never clobber
+        // an explicit traceparent). Absent when no OTel provider is installed.
+        if let Some(tp) = bss_telemetry::current_traceparent() {
+            insert_str(&mut headers, bss_telemetry::TRACEPARENT, &tp, false);
         }
         headers
     }

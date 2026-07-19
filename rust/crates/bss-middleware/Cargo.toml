@@ -15,7 +15,9 @@ serde_json = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 subtle = { workspace = true }
+tracing = { workspace = true }
 bss-context = { workspace = true }
+bss-telemetry = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

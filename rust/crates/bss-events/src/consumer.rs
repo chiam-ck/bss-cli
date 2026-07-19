@@ -60,6 +60,7 @@ use futures_util::StreamExt;
 use lapin::options::{BasicAckOptions, BasicNackOptions};
 use lapin::types::AMQPValue;
 use sqlx::PgPool;
+use tracing::Instrument;
 
 use crate::MqChannel;
 
@@ -127,7 +128,18 @@ pub async fn bind_consumer(
             }
         };
 
-        match process_one(
+        // Continue the originating trace: the publisher (relay or inline) stamped a
+        // `traceparent` message header off the trace that staged the event, so the
+        // handler's own staged events + downstream S2S calls stay in one trace.
+        let span = tracing::info_span!(
+            "mq.consume",
+            otel.name = format!("consume {queue_name}"),
+            otel.kind = "consumer",
+            messaging.destination = queue_name,
+        );
+        bss_telemetry::continue_trace(&span, traceparent(&delivery).as_deref());
+
+        let outcome = process_one(
             &pool,
             inbox_schema,
             queue_name,
@@ -135,8 +147,10 @@ pub async fn bind_consumer(
             message_id.as_deref(),
             body,
         )
-        .await
-        {
+        .instrument(span)
+        .await;
+
+        match outcome {
             Ok(_) => ack(&delivery, queue_name).await,
             Err(reason) => {
                 let deaths = lapin_death_count(&delivery);
@@ -232,6 +246,18 @@ async fn process_one(
 async fn ack(delivery: &lapin::message::Delivery, queue: &str) {
     if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
         tracing::warn!(error = %e, queue, "mq.ack.failed");
+    }
+}
+
+/// Read the W3C `traceparent` message header the publisher stamped, if any, so
+/// the consume span can continue the originating trace. Tolerant of the header
+/// arriving as either AMQP string type.
+fn traceparent(delivery: &lapin::message::Delivery) -> Option<String> {
+    let headers = delivery.properties.headers().as_ref()?;
+    match headers.inner().get(bss_telemetry::TRACEPARENT) {
+        Some(AMQPValue::LongString(s)) => Some(s.to_string()),
+        Some(AMQPValue::ShortString(s)) => Some(s.to_string()),
+        _ => None,
     }
 }
 

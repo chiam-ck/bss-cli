@@ -25,6 +25,7 @@ tracing = { workspace = true }
 bss-clock = { workspace = true }
 bss-context = { workspace = true }
 bss-db = { workspace = true }
+bss-telemetry = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

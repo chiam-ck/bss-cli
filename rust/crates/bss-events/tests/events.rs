@@ -92,6 +92,7 @@ impl EventPublisher for FakePublisher {
         routing_key: &str,
         message_id: &str,
         body: Vec<u8>,
+        _traceparent: Option<String>,
     ) -> Result<(), String> {
         if self.fail_routing_keys.iter().any(|k| k == routing_key) {
             return Err("broker down".to_string());
@@ -109,6 +110,7 @@ fn row(id: i64, event_id: &str, event_type: &str, payload: serde_json::Value) ->
         event_id: event_id.to_string(),
         event_type: event_type.to_string(),
         payload,
+        trace_id: None,
     }
 }
 

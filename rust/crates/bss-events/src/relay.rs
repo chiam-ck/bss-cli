@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 
 /// Drain query: unpublished rows, oldest first, lock-skipping for multi-replica.
 pub const DRAIN_SQL: &str = "\
-    SELECT id, event_id, event_type, payload \
+    SELECT id, event_id, event_type, payload, trace_id \
     FROM audit.domain_event \
     WHERE NOT published_to_mq \
     ORDER BY occurred_at ASC, id ASC \
@@ -59,6 +59,9 @@ pub struct OutboxRow {
     pub event_id: String,
     pub event_type: String,
     pub payload: Value,
+    /// The trace id captured when the row was staged; re-seeds the MQ message's
+    /// `traceparent` so the consumer continues the originating trace.
+    pub trace_id: Option<String>,
 }
 
 /// What to do with a row after attempting to publish it.
@@ -74,12 +77,14 @@ pub enum RowOutcome {
 /// conformance service; tests use a fake.
 pub trait EventPublisher {
     /// Publish `body` with `routing_key` (= `event_type`) and `message_id`
-    /// (= `event_id`, the inbox dedup key).
+    /// (= `event_id`, the inbox dedup key). `traceparent`, when present, is set as
+    /// a message header so the consumer continues the originating trace.
     fn publish(
         &self,
         routing_key: &str,
         message_id: &str,
         body: Vec<u8>,
+        traceparent: Option<String>,
     ) -> impl Future<Output = Result<(), String>>;
 }
 
@@ -96,8 +101,12 @@ pub async fn drain_batch<P: EventPublisher>(rows: &[OutboxRow], publisher: &P) -
             row.payload.clone()
         };
         let body = serde_json::to_vec(&payload).unwrap_or_else(|_| b"{}".to_vec());
+        let traceparent = row
+            .trace_id
+            .as_deref()
+            .and_then(bss_telemetry::traceparent_for_trace_id);
         match publisher
-            .publish(&row.event_type, &row.event_id, body)
+            .publish(&row.event_type, &row.event_id, body, traceparent)
             .await
         {
             Ok(()) => outcomes.push(RowOutcome::Published { id: row.id }),
@@ -133,9 +142,10 @@ impl EventPublisher for LapinPublisher {
         routing_key: &str,
         message_id: &str,
         body: Vec<u8>,
+        traceparent: Option<String>,
     ) -> Result<(), String> {
         self.0
-            .publish_bytes_with_id(routing_key, &body, message_id)
+            .publish_bytes_with_id(routing_key, &body, message_id, traceparent.as_deref())
             .await
             .map_err(|e| e.to_string())
     }
@@ -180,6 +190,7 @@ pub async fn drain_once(
                 .ok()
                 .flatten()
                 .unwrap_or(Value::Null),
+            trace_id: r.try_get::<Option<String>, _>("trace_id").ok().flatten(),
         })
         .collect();
 

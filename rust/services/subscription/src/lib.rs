@@ -33,7 +33,7 @@ use bss_admin::{admin_reset_router, ResetPlan, TableReset};
 use bss_clock::clock_admin_router;
 use bss_context::propagate_context;
 use bss_events::audit_events_router;
-use bss_middleware::{require_api_token, TokenMap};
+use bss_middleware::{otel_http_span, require_api_token, TokenMap};
 
 use crate::state::AppState;
 
@@ -57,6 +57,7 @@ pub fn create_app(state: AppState, token_map: Arc<TokenMap>) -> Router {
         .nest("/audit-api/v1", audit_events_router(pool))
         .layer(from_fn(propagate_context))
         .layer(from_fn_with_state(token_map, require_api_token))
+        .layer(from_fn(otel_http_span))
 }
 
 /// Operational-data reset — wipes the `subscription` schema (children first). Port

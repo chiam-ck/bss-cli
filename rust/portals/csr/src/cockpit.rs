@@ -698,7 +698,13 @@ async fn run_turn(
         };
         bss_context::scope(
             turn_ctx,
-            astream_once_to(&mut model, &registry, &drive.user_message, &config, &mut sink),
+            astream_once_to(
+                &mut model,
+                &registry,
+                &drive.user_message,
+                &config,
+                &mut sink,
+            ),
         )
         .await;
     }

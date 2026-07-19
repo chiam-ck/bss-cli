@@ -602,10 +602,12 @@ dependencies = [
  "axum",
  "bss-context",
  "bss-db",
+ "bss-telemetry",
  "chrono",
  "reqwest",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -670,6 +672,7 @@ dependencies = [
  "bss-clock",
  "bss-context",
  "bss-db",
+ "bss-telemetry",
  "chrono",
  "futures-util",
  "lapin",
@@ -707,12 +710,14 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "bss-context",
+ "bss-telemetry",
  "hmac",
  "serde_json",
  "sha2",
  "subtle",
  "tokio",
  "tower",
+ "tracing",
 ]
 
 [[package]]

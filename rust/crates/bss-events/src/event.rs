@@ -32,7 +32,9 @@ pub struct DomainEvent {
 
 /// Build a domain event to stage, stamping context off `ctx` and time off the
 /// scenario clock. `payload` defaults to `{}` when `None` (Python `payload or {}`).
-/// `trace_id` is `None` until the OTel bootstrap lands (conformance step).
+/// `trace_id` is captured from the active OTel span (the inbound HTTP span or the
+/// MQ consumer span), so `trace.for_order`/`trace.for_subscription` can resolve
+/// the aggregate's trace; `None` when no valid span is active (unit tests).
 pub fn stage_event(
     ctx: &RequestCtx,
     event_type: impl Into<String>,
@@ -46,7 +48,7 @@ pub fn stage_event(
         aggregate_type: aggregate_type.into(),
         aggregate_id: aggregate_id.into(),
         occurred_at: bss_clock::now(),
-        trace_id: None,
+        trace_id: bss_telemetry::current_trace_id(),
         actor: ctx.actor.clone(),
         channel: ctx.channel.clone(),
         tenant_id: ctx.tenant.clone(),
