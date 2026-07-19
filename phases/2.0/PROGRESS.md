@@ -7,7 +7,7 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — Phase 7 DONE; P6 acceptance 18/19; next = full-stack rebuild
+## ⇢ HANDOFF (next session) — Phase 7 DONE; **P6 acceptance 19/19 COMPLETE (OTel conformance landed)**
 
 **Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
 (s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
@@ -15,43 +15,43 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 executor, audit.*/portal.* verbs) + `bss onboard` + `bss admin seed`. 45 CLI unit tests,
 clippy clean, all pushed to `2.0`.
 
-**P6 acceptance — hero suite 18/19 GREEN (2026-07-19).** Deployed the Rust portals
-(they were code-complete but never containerized) and drove the full hero suite against
-them. 7 real Rust-port bugs found + fixed (all committed):
-- `57ab14a` usage.simulate never registered → 3 deterministic heroes
-- `9ab7cf3` **containerize the Rust portals** (new Dockerfiles `rust/portals/{self-serve,csr}/`,
-  `docker-compose.rust.yml` entries, `.dockerignore` rust/target). Builder rust:1.97-slim
-  (image 0.25 MSRV 1.88 + moxcms edition 2024); `BSS_PORTAL_*_PORT=8000`.
-- `204e253` cancel-415 (RawForm→Bytes) + %2F query encoding
-- `769efa9` signup_progress.html minijinja `.index()` → namespace loop
-- `e88c36f` self-serve channel=portal-self-serve (session middleware bss_context::scope)
-- `351b803` csr /cockpit/new persists the label
-- `c350aeb` csr turn bss_context::scope channel=portal-csr
+**P6 acceptance — HERO SUITE 19/19 GREEN (2026-07-19).** The final red hero,
+`trace_customer_signup_swimlane`, is now passing: the OTel trace-conformance work is done.
+Deterministic subset re-run **11/11 PASS** (no regression); the 8 portal/LLM heroes were
+green the prior session and are unaffected (the trace changes are additive). Providers
+RESTORED to stripe/resend; stack all 200; working tree clean; all pushed to `2.0`.
 
-Full detail + the mailbox-perms gotcha in memory **[[p6-acceptance-state]]**. Providers
-RESTORED to stripe/resend; stack all 200; working tree clean.
+**OTel conformance (commits `5ca792f` + `ca8b572`).** Rust has no auto-instrumentors, so
+the distributed trace is hand-stitched at four seams, with ALL OpenTelemetry API kept in
+`bss-telemetry::propagation` (seam crates only touch tracing + bss-telemetry):
+- `bss-middleware::otel_http_span` — inbound server span, adopts the caller's traceparent,
+  wired OUTERMOST in all 9 services. Current for the handler → staged events get its trace id.
+- `bss-clients::request` — CLIENT span per S2S call + traceparent injected on the wire.
+- `bss-events` — `stage_event` stamps `current_trace_id()`; relay carries the stored
+  trace_id out of request context and re-seeds the MQ message traceparent; consumers
+  (`bind_consumer` + the custom prov-sim/rating loops) extract it and span the handler.
+- **Two bugs the first live run caught (`ca8b572`):** every service's
+  `INSERT INTO audit.domain_event` had OMITTED the trace_id column (written when it was
+  always None) → captured-but-never-persisted → NULL, which starved both trace.for_order
+  AND the relay re-seed; and prov-sim/rating drive custom consume loops that never got the
+  consumer span. Fixed both.
+- Result: order.completed's trace resolves to **34 spans / 8 services / 0 errors**
+  (gate >=30/>=5/0). Full detail in memory **[[p6-acceptance-state]]**.
 
-**THE ONE OPEN HERO — `trace_customer_signup_swimlane` — is the deferred OTel
-conformance, NOT a quick fix.** No Rust service emits per-request spans (zero
-`#[instrument]`/`TraceLayer` under `services/`), so `audit.domain_event.trace_id` stays
-None + Jaeger has no spans; scenario wants spanCount≥30/serviceCount≥5. Fix = bss-clients
-inject W3C traceparent + all 9 services extract+span (shared layer in bss-middleware) +
-bss-events capture `Context::current()` trace-id + full-stack rebuild. Own phase-sized
-effort. See [[p6-acceptance-state]].
+**Rebuild reminders (this is the long pole — ~20–30 min).** Each backend Dockerfile does
+`COPY . . && cargo build --release -p <svc>` on `rust:1.80-slim` with NO cross-build cache,
+so any shared-crate change means rebuilding every affected service:
+`COMPOSE_PARALLEL_LIMIT=2 docker compose -f docker-compose.yml -f docker-compose.rust.yml
+build <svcs>` then `up -d --force-recreate --no-deps <svcs>`. The MqChannel reconnection
+fix shipped to all backend services in these rebuilds too. Portal images use repo-root
+build context. Host ports: catalog 8001, crm 8002, payment 8003, com 8004, som 8005,
+subscription 8006, mediation 8007, rating 8008, prov-sim 8010, self-serve 9001, cockpit
+9002. Verification flips payment→mock (+ email→logging + kyc→prebaked when a scenario needs
+them), restores after ([[verification-uses-mock-providers]]).
 
-**RECOMMENDED NEXT STEP: the full-stack rebuild** (deploy the MqChannel reconnection fix
-to all 9 `:rust` services — committed in bss-events, live only on payment/som/prov-sim;
-`docker compose -f docker-compose.yml -f docker-compose.rust.yml build` then `up -d`).
-High value (async-plane resilience), low risk, and it's the SAME rebuild the OTel work
-needs. Then (optionally, as its own effort) the OTel conformance → 19/19.
-
-**Deploy reminders:** portal images use repo-root build context; recreate a service with
-BOTH compose files (`-f docker-compose.yml -f docker-compose.rust.yml up -d --no-deps
---force-recreate <svc>`). Host ports: catalog 8001, crm 8002, payment 8003, com 8004,
-som 8005, subscription 8006, mediation 8007, rating 8008, prov-sim 8010, self-serve 9001,
-cockpit 9002. Verification flips payment→mock + email→logging + kyc→prebaked, restores
-after ([[verification-uses-mock-providers]]); dev mailbox at `./.dev-mailbox/` (rm the
-file if a prior run left it owned by a different uid — distroless runs as 65532).
+**NEXT:** P6 is closed and the Phase 7 section header is flipped to ✅. Remaining migration
+scope is Phase 8 (finalization: `--healthcheck` flag, cargo-chef dep caching to speed
+rebuilds, any convenience wrappers).
 
 ---
 
@@ -91,7 +91,7 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 
 ---
 
-## Phase 7 — CLI + REPL + scenario engine — 🚧 IN PROGRESS (started 2026-07-18)
+## Phase 7 — CLI + REPL + scenario engine — ✅ DONE (2026-07-18; P6 acceptance 19/19 closed 2026-07-19)
 
 The `bss` binary: a clap command tree (~19 groups, mostly thin `bss-clients`
 calls), `bss ask` (single-shot LLM), the reedline REPL (the canonical operator
