@@ -1,12 +1,12 @@
 .PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed doctrine-check rust-migrate rust-seed rust-fmt rust-lint rust-test rust-doctrine-check py-test py-fmt py-lint py-migrate py-seed py-doctrine-check seed-demo seed-demo-reset loyalty-reset demo-restore knowledge-reindex reset-db check-clock python-check scenarios scenarios-hero scenarios-site-demo e2e e2e-down
 
 help:
-	@echo "  up                  — 10 BSS services (BYOI Postgres/RabbitMQ)"
-	@echo "  up-all              — services + Postgres + RabbitMQ + Jaeger"
-	@echo "  up-minimal          — catalog + crm + payment only"
-	@echo "  up-core             — minimal + com + som + subscription + provisioning-sim"
-	@echo "  down                — stop everything"
-	@echo "  build               — build all service images"
+	@echo "  up                  — FULL stack (9 services + 2 portals), BYOI: uses your EXTERNAL Postgres/RabbitMQ/Jaeger. ← default"
+	@echo "  up-all              — FULL stack + BUNDLED LOCAL Postgres/RabbitMQ/Jaeger (only if you have no external infra)"
+	@echo "  up-minimal          — subset: catalog + crm + payment only"
+	@echo "  up-core             — subset: up-minimal + com + som + subscription + provisioning-sim"
+	@echo "  down                — stop everything (app + any bundled infra)"
+	@echo "  build               — build all Rust service + portal images"
 	@echo "  migrate             — (2.0) bss admin migrate (Rust sqlx); py-migrate = alembic"
 	@echo "  seed                — (2.0) bss admin seed (Rust); py-seed = Python bss-seed. 3 plans + 4 VAS + 1000 MSISDNs + 1000 eSIMs"
 	@echo "  seed-demo           — synced demo seed: 3 customers + 2 promos across BSS + loyalty"
@@ -25,8 +25,13 @@ help:
 	@echo "  doctrine-check      — (2.0) Rust grep guards over the workspace; py-doctrine-check = Python guards"
 	@echo "  python-check        — warn if active Python is outside the supported 3.12 range"
 
-# 2.0: the all-Rust images are the default stack. `make up*` runs the Rust overlay;
-# for the Python oracle drop it (`docker compose -f docker-compose.yml ...`).
+# 2.0: the all-Rust images are the default stack (`make up*` runs the Rust overlay;
+# for the Python oracle drop it: `docker compose -f docker-compose.yml ...`).
+#
+# `up`  vs `up-all` — the ONLY difference is where Postgres/RabbitMQ/Jaeger live:
+#   `up`     = full app stack, BYOI  → your EXTERNAL infra (BSS_DB_URL / BSS_MQ_URL / OTLP in .env).
+#   `up-all` = full app stack + BUNDLED LOCAL infra (adds docker-compose.infra.yml).
+# The "-all" means "+ bundled infra", NOT "more app containers" — both start all 11.
 COMPOSE := docker compose -f docker-compose.yml -f docker-compose.rust.yml
 
 up: dev-mailbox-dir
