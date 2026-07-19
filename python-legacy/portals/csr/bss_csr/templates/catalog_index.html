@@ -1,0 +1,102 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, handoff, flashes, panel %}
+{% block title_suffix %} · Catalog{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  {{ flashes(flash, err) }}
+
+  <header class="crm-page-toolbar">
+    <h1 class="cockpit-page-title">Product catalog</h1>
+  </header>
+
+  {% call panel("Plans", plans | length) %}
+    {% if plans %}
+    <table class="crm-table">
+      <thead>
+        <tr><th>ID</th><th>Name</th><th>Price</th><th>Data</th><th>Voice</th><th>SMS</th><th>Roaming</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        {% for p in plans %}
+        <tr>
+          <td><a href="/catalog/{{ p.id }}"><code>{{ p.id }}</code></a></td>
+          <td><a href="/catalog/{{ p.id }}" class="crm-row-link">{{ p.name }}</a></td>
+          <td class="num">{{ p.price }}</td>
+          <td class="num">{{ p.data }}</td>
+          <td class="num">{{ p.voice }}</td>
+          <td class="num">{{ p.sms }}</td>
+          <td class="num">{{ p.roaming }}</td>
+          <td>{{ badge(p.lifecycle) }}{% if not p.sellable %} <span class="crm-muted">(not sellable)</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">Catalog is empty.</p>
+    {% endif %}
+    <details class="crm-inline-form">
+      <summary>Add an offering</summary>
+      <form method="post" action="/catalog/offering" class="crm-form">
+        <label><span>ID</span><input type="text" name="offering_id" placeholder="PLAN_XL" required /></label>
+        <label><span>Name</span><input type="text" name="name" required /></label>
+        <label><span>Monthly price (SGD)</span><input type="text" name="amount" placeholder="42" required /></label>
+        <label><span>Data (MB)</span><input type="number" name="data_mb" min="0" placeholder="20480" /></label>
+        <label><span>Voice (min)</span><input type="number" name="voice_minutes" min="0" placeholder="600" /></label>
+        <label><span>SMS</span><input type="number" name="sms_count" min="0" placeholder="500" /></label>
+        <label><span>Roaming (MB)</span><input type="number" name="data_roaming_mb" min="0" placeholder="2048" /></label>
+        <button type="submit" class="btn-primary">Add offering</button>
+      </form>
+    </details>
+  {% endcall %}
+
+  {% call panel("VAS top-ups", vas | length) %}
+    {% if vas %}
+    <table class="crm-table">
+      <thead><tr><th>ID</th><th>Name</th><th>Price</th><th>Allowance</th><th>Expiry</th></tr></thead>
+      <tbody>
+        {% for v in vas %}
+        <tr>
+          <td><code>{{ v.id }}</code></td>
+          <td>{{ v.name }}</td>
+          <td class="num">{{ v.price }}</td>
+          <td class="num">{{ v.allowance }}</td>
+          <td class="num">{{ v.expiry }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No VAS offerings.</p>
+    {% endif %}
+  {% endcall %}
+
+  {% call panel("Promotions", promotions | length) %}
+    {% if promotions %}
+    <table class="crm-table">
+      <thead><tr><th>ID</th><th>Name</th><th>Code</th><th>Discount</th><th>Audience</th><th>State</th><th>Valid to</th></tr></thead>
+      <tbody>
+        {% for p in promotions %}
+        <tr>
+          <td><code>{{ p.id }}</code></td>
+          <td>{{ p.name }}</td>
+          <td><code>{{ p.code }}</code></td>
+          <td>{{ p.discount }}</td>
+          <td>{{ p.audience }}</td>
+          <td>{{ badge(p.state) }}</td>
+          <td><code>{{ p.valid_to }}</code></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No promotions.</p>
+    {% endif %}
+    <div class="crm-actions" style="margin-top:12px">
+      {{ handoff("Assign a promo", "Assign promotion  to customer CUST-") }}
+    </div>
+    <p class="crm-muted">Promo assignment stays conversational: <code>bss promo assign</code>
+    composes the loyalty pairing (v1.3) on top of the catalog write — a bare form here
+    would silently skip the loyalty mint.</p>
+  {% endcall %}
+</section>
+{% endblock %}

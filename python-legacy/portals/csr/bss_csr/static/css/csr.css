@@ -1,0 +1,1596 @@
+/* CSR portal — page-specific styles.
+   Palette + layout + agent log widget come from
+   bss_portal_ui/static/css/portal_base.css (loaded first via base.html). */
+
+/* ─── Login ──────────────────────────────────────────────── */
+
+.login-shell {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 48px 16px;
+}
+.login-form {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 32px 36px;
+  width: 100%;
+  max-width: 420px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.login-form h1 { margin: 0; font-size: 22px; }
+.login-note { color: var(--fg-muted); font-size: 13px; margin: 0; }
+.login-form label {
+  display: flex; flex-direction: column; gap: 4px;
+  color: var(--fg-muted); font-size: 13px;
+}
+.login-form input {
+  background: var(--bg-code); border: 1px solid var(--border);
+  color: var(--fg); font-family: var(--mono);
+  padding: 10px 12px; border-radius: 4px; outline: none;
+  font-size: 14px;
+}
+.login-form input:focus { border-color: var(--accent); }
+.login-form button {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 10px 14px;
+  font-family: var(--mono); font-weight: 600;
+  border-radius: 4px; cursor: pointer; font-size: 14px;
+}
+.login-form button:hover { background: var(--accent-bright); }
+
+/* Header logout button styled like a nav link */
+.nav-link-btn {
+  background: transparent; border: none;
+  color: var(--fg-muted); font-size: 13px;
+  padding: 4px 8px; cursor: pointer;
+  font-family: var(--mono);
+}
+.nav-link-btn:hover { color: var(--accent-error); }
+
+/* ─── Search ─────────────────────────────────────────────── */
+
+.search-form {
+  display: flex; gap: 12px;
+  margin-bottom: 24px;
+}
+.search-form input {
+  flex: 1;
+  background: var(--bg-code); border: 1px solid var(--border);
+  color: var(--fg); font-family: var(--mono);
+  padding: 10px 14px; border-radius: 4px; outline: none;
+  font-size: 14px;
+}
+.search-form input:focus { border-color: var(--accent); }
+.search-form button {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 10px 18px;
+  font-family: var(--mono); font-weight: 600;
+  border-radius: 4px; cursor: pointer;
+}
+
+.search-results {
+  width: 100%; border-collapse: collapse;
+  font-size: 14px;
+}
+.search-results th, .search-results td {
+  text-align: left; padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.search-results th {
+  color: var(--fg-muted); font-weight: 500;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.search-results tr:hover td { background: var(--bg-inset); }
+.search-results a { color: var(--fg); text-decoration: none; }
+.search-results a:hover { color: var(--accent); }
+
+/* ─── Customer 360 ───────────────────────────────────────── */
+
+.customer-summary {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+}
+.customer-summary-row {
+  display: flex; align-items: baseline; gap: 16px;
+  margin-bottom: 12px;
+}
+.customer-summary-row .page-title { margin: 0; }
+.customer-id { color: var(--accent-alt); font-size: 14px; }
+
+.customer-summary-meta {
+  display: grid;
+  grid-template-columns: repeat(5, auto);
+  gap: 4px 28px;
+  margin: 0;
+  font-family: var(--mono); font-size: 13px;
+}
+.customer-summary-meta dt {
+  color: var(--fg-muted); text-transform: uppercase;
+  letter-spacing: 0.5px; font-size: 11px;
+}
+.customer-summary-meta dd { margin: 0 0 4px 0; }
+.status-active { color: var(--accent); }
+.status-suspended, .status-blocked { color: var(--accent-error); }
+
+/* Ask form */
+.ask-form {
+  background: var(--bg-inset);
+  border: 1px solid var(--accent-dim);
+  border-radius: 6px;
+  padding: 18px 20px;
+  margin-bottom: 28px;
+}
+.ask-label {
+  display: block;
+  color: var(--accent); font-family: var(--mono);
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.ask-row {
+  display: flex; gap: 10px;
+}
+.ask-row input {
+  flex: 1;
+  background: var(--bg-code); border: 1px solid var(--border);
+  color: var(--fg); font-family: var(--mono);
+  padding: 10px 14px; border-radius: 4px; outline: none;
+  font-size: 14px;
+}
+.ask-row input:focus { border-color: var(--accent); }
+.ask-row button {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 10px 22px;
+  font-family: var(--mono); font-weight: 600;
+  border-radius: 4px; cursor: pointer;
+  font-size: 14px;
+}
+.ask-hint {
+  color: var(--fg-dim); font-size: 12px; font-family: var(--mono);
+  margin: 10px 0 0 0;
+}
+
+/* 360 sections */
+.three-sixty-section { margin-top: 28px; }
+.three-sixty-section h2 {
+  color: var(--fg-muted);
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
+  margin: 0 0 12px 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+}
+
+/* Subscription cards */
+.sub-card {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+}
+.sub-card--blocked { border-color: var(--accent-error); }
+.sub-card--active { border-left: 3px solid var(--accent); }
+.sub-card header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 8px;
+}
+.sub-id { color: var(--accent-alt); font-size: 13px; }
+.sub-state {
+  font-family: var(--mono); font-size: 12px;
+  padding: 2px 8px; border-radius: 3px;
+  background: var(--bg-code); color: var(--fg-muted);
+}
+.sub-card--active .sub-state { color: var(--accent); }
+.sub-card--blocked .sub-state { color: var(--accent-error); }
+.sub-meta { display: flex; gap: 16px; font-size: 14px; margin-bottom: 8px; }
+.sub-meta strong { color: var(--accent); font-family: var(--mono); }
+.sub-balances {
+  list-style: none; margin: 8px 0 0 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 14px;
+  font-family: var(--mono); font-size: 12px;
+}
+.sub-balances li { display: flex; gap: 4px; }
+.balance-label { color: var(--fg-muted); }
+.balance-value { color: var(--fg); }
+.sub-footer { color: var(--fg-dim); font-size: 12px; margin-top: 8px; font-family: var(--mono); }
+
+/* Case cards */
+.case-card {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px; margin-bottom: 10px;
+}
+.case-card header {
+  display: flex; gap: 10px; align-items: baseline;
+  margin-bottom: 6px;
+}
+.case-card a { color: var(--accent-alt); text-decoration: none; }
+.case-card a:hover { color: var(--accent); }
+.case-state {
+  font-family: var(--mono); font-size: 12px;
+  padding: 1px 6px; border-radius: 3px;
+  background: var(--bg-code); color: var(--fg-muted);
+}
+.case-priority {
+  font-family: var(--mono); font-size: 12px; color: var(--accent-alt);
+}
+.case-subject { margin: 4px 0; font-size: 14px; }
+.case-card footer { color: var(--fg-dim); font-size: 12px; font-family: var(--mono); }
+.case-clean { color: var(--accent-dim); }
+
+/* Payment methods */
+.payment-list { list-style: none; padding: 0; margin: 0; }
+.payment-card {
+  display: flex; gap: 12px; align-items: center;
+  padding: 8px 14px; margin-bottom: 6px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono); font-size: 13px;
+}
+.payment-brand { color: var(--accent-alt); width: 60px; }
+.payment-pan { color: var(--fg); }
+.payment-exp { color: var(--fg-muted); font-size: 12px; }
+.payment-default {
+  margin-left: auto;
+  font-size: 11px; color: var(--accent);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+/* Interactions */
+.interactions-table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.interactions-table th, .interactions-table td {
+  text-align: left; padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.interactions-table th {
+  color: var(--fg-muted); font-weight: 500;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.interactions-table code { font-size: 12px; padding: 1px 4px; }
+.channel {
+  font-family: var(--mono); font-size: 12px;
+  padding: 1px 6px; border-radius: 3px;
+  background: var(--bg-code);
+}
+.channel-portal_csr { color: var(--accent); }
+.channel-portal_self_serve { color: var(--accent-alt); }
+.channel-llm { color: #cbb6e8; }
+.channel-cli { color: var(--fg-muted); }
+
+/* ─── Case thread ────────────────────────────────────────── */
+
+.back-link {
+  color: var(--fg-muted); text-decoration: none;
+  font-family: var(--mono); font-size: 13px;
+  display: inline-block; margin-bottom: 16px;
+}
+.back-link:hover { color: var(--accent); }
+
+.case-header { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.case-header-row { display: flex; align-items: baseline; gap: 16px; margin-bottom: 12px; }
+.case-header-row .page-title { margin: 0; }
+
+.tickets-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tickets-table th, .tickets-table td {
+  text-align: left; padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.tickets-table th {
+  color: var(--fg-muted); font-weight: 500;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+
+.notes-thread { list-style: none; padding: 0; margin: 0; }
+.notes-thread li {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 10px;
+}
+.notes-thread header {
+  display: flex; gap: 12px; align-items: baseline;
+  margin-bottom: 6px;
+  font-family: var(--mono); font-size: 12px;
+}
+.note-author { color: var(--accent-alt); font-weight: 600; }
+.note-at { color: var(--fg-muted); }
+.note-body { margin: 0; font-size: 14px; line-height: 1.5; }
+
+/* ============================================================
+   v0.13.1 — Operator cockpit (chat-shaped, full-bleed redesign)
+   ============================================================ */
+
+/* v1.6.1 — fixed-viewport app shell. The PAGE never scrolls; panes
+   scroll internally, so the chat compose box is always on screen.
+
+   Height source, in fallback order:
+   1. --app-height — set from window.visualViewport by the inline
+      script in cockpit_layout.html. The ONLY value that shrinks for
+      the iPadOS soft keyboard / accessory bar (dvh does NOT — iOS
+      pans the visual viewport instead of resizing the layout one,
+      which is exactly the "field cut in half" bug).
+   2. 100dvh — tracks Safari's collapsing toolbars.
+   3. 100vh — everything older.
+   The header is a flex row, never a hardcoded px subtraction. */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  display: flex; flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  height: var(--app-height, 100dvh);
+  overflow: hidden;
+  overscroll-behavior: none;
+  /* iPad home-indicator / notch clearance (viewport-fit=cover). */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+}
+
+/* ── Top nav ──────────────────────────────────────────────── */
+
+.cockpit-header {
+  flex: 0 0 auto; z-index: 50;
+  display: flex; align-items: center; gap: 24px;
+  padding: 10px 24px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.cockpit-header-left { flex: 0 0 auto; }
+.cockpit-header-nav {
+  flex: 1;
+  display: flex; align-items: center; gap: 4px;
+}
+.cockpit-header-right { flex: 0 0 auto; color: var(--fg-muted); font-family: var(--mono); font-size: 12px; }
+
+.cockpit-brand {
+  display: flex; align-items: baseline; gap: 8px;
+  text-decoration: none; color: var(--fg);
+  font-family: var(--mono);
+}
+.cockpit-brand-mark { color: var(--accent); font-size: 12px; }
+.cockpit-brand-name { font-weight: 600; letter-spacing: 0.5px; }
+.cockpit-brand-tag { color: var(--fg-muted); font-size: 12px; }
+/* v1.8 — uploaded operator logo replaces .cockpit-brand-mark. */
+.cockpit-brand-logo { height: 20px; width: auto; display: block; align-self: center; }
+
+.cockpit-nav-link {
+  padding: 6px 12px; border-radius: 4px;
+  text-decoration: none; color: var(--fg-muted);
+  font-family: var(--mono); font-size: 13px;
+}
+.cockpit-nav-link:hover { color: var(--fg); background: var(--bg-inset); }
+.cockpit-nav-link.is-active { color: var(--accent); background: var(--bg-inset); }
+.cockpit-nav-form { margin-left: 8px; display: inline-flex; }
+.cockpit-nav-cta {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 6px 14px; border-radius: 4px;
+  font-family: var(--mono); font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.cockpit-nav-cta:hover { background: var(--accent-bright); }
+
+.cockpit-meta { font-family: var(--mono); font-size: 12px; }
+.cockpit-link-btn {
+  background: transparent; border: none;
+  color: var(--accent); font-family: var(--mono); font-size: 13px;
+  cursor: pointer; padding: 0;
+}
+.cockpit-link-btn:hover { color: var(--accent-bright); }
+
+/* ── Page shell ──────────────────────────────────────────── */
+
+.cockpit-main {
+  /* The single internal scroll region for list/detail pages; the
+     thread page opts out (its stream pane scrolls instead). */
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  overflow-y: auto;
+}
+/* v1.8 — product-attribution footnote ("bss-cli vX.Y.Z"), demoted
+   from the header. Fixed-height flex child so the 100dvh shell
+   still never scrolls; NEVER carries the operator brand. */
+.cockpit-footer {
+  flex: 0 0 auto;
+  padding: 2px 14px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.6;
+  text-align: right;
+}
+.cockpit-page {
+  flex: 1; display: flex; flex-direction: column;
+  /* v0.20.1 — widened from 960px. Operator monitors are typically
+     1440px+; the prior cap left ~480px of blank space per side and
+     squeezed the chat canvas. 1280px keeps a comfortable reading
+     measure on 4K without forcing full-bleed. */
+  max-width: 1280px; width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px;
+  box-sizing: border-box;
+}
+.cockpit-page-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 16px; margin-bottom: 24px;
+}
+.cockpit-page-title { margin: 0; font-size: 22px; }
+.cockpit-empty {
+  padding: 24px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--fg-muted);
+  text-align: center;
+}
+.cockpit-text-link { color: var(--accent); text-decoration: none; }
+.cockpit-text-link:hover { color: var(--accent-bright); text-decoration: underline; }
+
+/* ── Sessions index ──────────────────────────────────────── */
+
+.cockpit-hero {
+  text-align: center;
+  padding: 32px 16px 40px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.cockpit-hero-title {
+  margin: 0 0 8px;
+  font-size: 28px; font-weight: 600;
+  color: var(--fg);
+}
+.cockpit-hero-sub {
+  margin: 0 0 24px;
+  color: var(--fg-muted);
+  font-size: 15px;
+}
+.cockpit-hero-search {
+  display: flex; gap: 8px; justify-content: center;
+  max-width: 640px; margin: 0 auto;
+}
+.cockpit-hero-search input {
+  flex: 1;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  color: var(--fg); font-size: 15px;
+  padding: 12px 16px; border-radius: 6px; outline: none;
+}
+.cockpit-hero-search input:focus { border-color: var(--accent); }
+.cockpit-hero-search button {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 12px 20px; border-radius: 6px;
+  font-family: var(--mono); font-weight: 600; font-size: 14px; cursor: pointer;
+}
+.cockpit-hero-search button:hover { background: var(--accent-bright); }
+
+.sessions-section { display: flex; flex-direction: column; gap: 20px; }
+.sessions-section-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.sessions-section-header h2 { margin: 0; font-size: 14px; color: var(--fg-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+.cockpit-inline-new { display: inline-flex; }
+
+.sessions-group { display: flex; flex-direction: column; gap: 4px; }
+.sessions-group-label {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--fg-dim); margin: 8px 0 4px;
+}
+.sessions-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.sessions-row {
+  border-radius: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  transition: border-color 80ms ease, background 80ms ease;
+}
+.sessions-row:hover { border-color: var(--border-strong); background: var(--bg-inset); }
+.sessions-row-link {
+  display: block; padding: 12px 16px;
+  text-decoration: none; color: var(--fg);
+}
+.sessions-row-title { font-size: 14px; line-height: 1.4; margin-bottom: 4px; }
+.sessions-row-meta {
+  display: flex; gap: 12px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.sessions-row-focus { color: var(--accent); }
+.sessions-empty {
+  text-align: center; padding: 40px 16px;
+  color: var(--fg-muted);
+}
+.sessions-empty p { margin: 0 0 12px; }
+.cockpit-hint { font-size: 13px; color: var(--fg-dim); max-width: 520px; margin: 0 auto; }
+.cockpit-hint code { background: var(--bg-inset); padding: 1px 6px; border-radius: 3px; }
+
+/* ── Thread page ─────────────────────────────────────────── */
+
+.thread-page {
+  /* v0.20.1 — widened from 880px to match the wider cockpit-page
+     cap. The thread is the operator's primary canvas; reclaiming
+     the side gutters means more of the LLM's prose / tool-result
+     blocks fit on screen without horizontal scroll.
+     v1.6.1 — height comes from the flex app shell (no more
+     calc(100vh - 53px), which broke whenever the header wrapped
+     and on iPad's dynamic toolbars). The stream scrolls; header
+     and compose are always on screen. */
+  max-width: 1280px;
+  padding: 12px 24px 16px;
+  display: flex; flex-direction: column;
+  gap: 0;
+  flex: 1; min-height: 0;
+  height: auto;
+}
+
+.thread-header {
+  display: flex; gap: 16px; align-items: center;
+  padding: 8px 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+.thread-back {
+  text-decoration: none; color: var(--accent);
+  font-family: var(--mono); font-size: 13px;
+  white-space: nowrap;
+}
+.thread-back:hover { color: var(--accent-bright); }
+.thread-header-titles { flex: 1; min-width: 0; }
+.thread-title {
+  margin: 0; font-size: 16px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.thread-focus {
+  margin-top: 2px;
+  font-size: 12px; color: var(--fg-muted);
+}
+.thread-focus strong { color: var(--accent); font-weight: 500; }
+.thread-actions {
+  display: flex; gap: 8px; align-items: center;
+  flex-wrap: wrap; justify-content: flex-end;
+}
+.thread-focus-form {
+  display: inline-flex; gap: 4px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  border-radius: 6px; padding: 2px;
+}
+.thread-focus-form input {
+  background: transparent; border: none; outline: none;
+  color: var(--fg); font-family: var(--mono); font-size: 12px;
+  padding: 4px 8px; width: 140px;
+}
+.thread-action-form { margin: 0; }
+.thread-action-btn {
+  background: var(--bg-elev); color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: 6px;
+  font-family: var(--mono); font-size: 12px; cursor: pointer;
+}
+.thread-action-btn:hover { background: var(--bg-inset); border-color: var(--border-strong); }
+.thread-confirm-btn { color: var(--accent); }
+
+.thread-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.thread-empty {
+  margin: auto; max-width: 480px;
+  text-align: center; color: var(--fg-muted);
+  padding: 24px;
+}
+.thread-empty-title { font-size: 18px; color: var(--fg); margin: 0 0 12px; }
+.thread-empty-hint { font-size: 14px; line-height: 1.6; }
+.thread-empty-hint code {
+  background: var(--bg-inset); padding: 1px 6px; border-radius: 3px;
+  color: var(--accent); font-size: 13px;
+}
+
+.chat-bubble {
+  /* v0.20.1 — tighter typography + wider bubble cap. Operator
+     feedback: the 13.5px/1.5 + 78% combination wasted vertical
+     space and forced wraps mid-sentence on a 1280px canvas.
+     13px/1.45 keeps the bubble readable while reclaiming a line
+     or two on long answers; 92% lets a markdown table or env-var
+     list breathe before the wrap kicks in. */
+  max-width: 92%;
+  padding: 10px 14px; border-radius: 10px;
+  font-size: 12.5px; line-height: 1.45;
+  word-wrap: break-word;
+}
+.chat-bubble p { margin: 0 0 8px; }
+.chat-bubble p:last-child { margin-bottom: 0; }
+/* v0.19+ — assistant bubbles render LLM commentary, NOT canonical
+   data. Authoritative data lives in the deterministic tool-row block
+   below the bubble. So keep bubble formatting deliberately plain:
+   inline code is monospace + subtle bg with no accent color (the
+   global base.css rule colours <code> amber, which made the LLM's
+   freeform "Customer 360" prose visually competitive with the real
+   tool-result card — bad for the operator's eye, who would land on
+   the prettier fabrication first). Headings stay at base font size;
+   only weight changes. The visual hierarchy is now: tool-row block
+   (framed, monospace, accented) > assistant bubble (plain prose). */
+.chat-bubble code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px; border-radius: 3px;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--fg);  /* override global accent-amber so inline code
+                        in the bubble does NOT mimic an ID-pill. */
+}
+.chat-bubble ul, .chat-bubble ol { margin: 4px 0; padding-left: 20px; }
+.chat-bubble li { margin: 2px 0; }
+.chat-bubble strong { color: inherit; font-weight: 600; }
+.chat-bubble h3, .chat-bubble h4, .chat-bubble h5, .chat-bubble h6 {
+  margin: 6px 0 2px;
+  font-size: inherit; font-weight: 600;
+  color: inherit;
+}
+.chat-bubble pre {
+  background: var(--bg-code, rgba(0,0,0,0.3));
+  border: 1px solid var(--border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  padding: 10px 12px; margin: 6px 0;
+  overflow-x: auto;
+}
+.chat-bubble pre code {
+  background: transparent; padding: 0;
+  font-family: var(--mono); font-size: 12px;
+  white-space: pre;
+}
+.chat-table {
+  border-collapse: collapse;
+  margin: 6px 0;
+  font-size: 13px;
+  background: rgba(0,0,0,0.15);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.chat-table th, .chat-table td {
+  text-align: left;
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.chat-table th {
+  font-weight: 600;
+  background: rgba(0,0,0,0.2);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+}
+.chat-table tr:last-child td { border-bottom: none; }
+
+.chat-bubble-user {
+  align-self: flex-end;
+  background: var(--accent-dim);
+  color: #fff;
+}
+.chat-bubble-user code { background: rgba(0, 0, 0, 0.2); }
+
+.chat-bubble-assistant {
+  align-self: flex-start;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+.chat-bubble-error {
+  border-color: var(--accent-error);
+  color: var(--accent-error);
+}
+
+/* Legacy chat-tool-pill (still used by the customer-chat surface;
+   the cockpit surface uses .tool-row below). */
+.chat-tool-pill {
+  align-self: flex-start;
+  display: inline-flex; gap: 6px; align-items: center;
+  padding: 4px 10px; border-radius: 12px;
+  background: var(--bg-inset); border: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11px; color: var(--fg-muted);
+}
+.chat-tool-icon { color: var(--accent-alt); }
+
+/* v0.19+ Option-1 — unified cockpit tool-result block.
+   One HTML shape served by both the page-load transcript path AND
+   the SSE stream (routes/cockpit.py:_render_tool_row_as_pre). The
+   <details open> opens by default so the operator immediately sees
+   the answer; clicking the summary collapses old rows.
+   `white-space: pre` (NOT pre-wrap) is doctrine: column alignment
+   in the renderer's f-strings survives only when the browser
+   preserves every space and never wraps a row. The renderer keeps
+   rows under ~80 chars; `overflow-x: auto` covers narrow viewports.
+*/
+.tool-row {
+  align-self: stretch;
+  max-width: 100%;
+  margin: 2px 0;
+}
+.tool-row-summary {
+  display: inline-flex; gap: 6px; align-items: center;
+  padding: 3px 10px; border-radius: 10px;
+  background: var(--bg-inset); border: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11px; line-height: 1.4;
+  color: var(--fg-muted);
+  cursor: pointer; list-style: none;
+  user-select: none;
+  transition: background-color 0.12s ease;
+}
+.tool-row-summary::-webkit-details-marker { display: none; }
+.tool-row-summary:hover { background: var(--bg-elev); }
+.tool-row[open] .tool-row-summary {
+  background: var(--bg-elev);
+  border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+.tool-row-icon { color: var(--accent-alt); font-weight: 600; }
+.tool-row-name { color: var(--fg); }
+.tool-row-summary::after {
+  content: "▾";
+  margin-left: 4px;
+  color: var(--fg-dim);
+  font-size: 9px;
+  transition: transform 0.12s ease;
+}
+.tool-row:not([open]) .tool-row-summary::after {
+  transform: rotate(-90deg);
+}
+.tool-row-body {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--bg-code); border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 8px 8px 8px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.45;
+  color: var(--fg);
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.thread-stream-incoming {
+  display: flex; flex-direction: column; gap: 12px;
+}
+.thread-stream-status {
+  font-family: var(--mono); font-size: 11px; color: var(--fg-dim);
+  text-align: center;
+}
+
+.thread-compose {
+  position: relative;
+  display: flex; gap: 8px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border);
+}
+.thread-compose textarea {
+  flex: 1;
+  font-family: var(--sans, inherit); font-size: 14px; line-height: 1.5;
+  padding: 12px 14px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--fg);
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+}
+.thread-compose textarea:focus { border-color: var(--accent); }
+.thread-send-btn {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 0 24px; border-radius: 8px;
+  font-family: var(--mono); font-weight: 600; font-size: 14px; cursor: pointer;
+  align-self: stretch;
+}
+.thread-send-btn:hover { background: var(--accent-bright); }
+
+/* ── Search page ─────────────────────────────────────────── */
+
+.cockpit-search-form {
+  display: flex; gap: 8px;
+  flex: 1; max-width: 640px;
+}
+.cockpit-search-form input {
+  flex: 1;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  color: var(--fg); font-size: 14px;
+  padding: 10px 14px; border-radius: 6px; outline: none;
+}
+.cockpit-search-form input:focus { border-color: var(--accent); }
+.cockpit-search-form button {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 10px 18px; border-radius: 6px;
+  font-family: var(--mono); font-weight: 600; cursor: pointer;
+}
+
+.search-card-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.search-card {
+  display: flex; gap: 16px; align-items: center;
+  padding: 16px 20px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.search-card-main { flex: 1; min-width: 0; }
+.search-card-title {
+  display: flex; gap: 12px; align-items: baseline;
+  margin-bottom: 4px;
+}
+.search-card-name { font-size: 15px; font-weight: 600; }
+.search-card-id { color: var(--fg-muted); font-size: 12px; }
+.search-card-meta {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
+}
+.search-card-cta { margin: 0; }
+.cockpit-cta-btn {
+  background: var(--accent); color: var(--bg);
+  border: none; padding: 8px 16px; border-radius: 6px;
+  font-family: var(--mono); font-weight: 600; font-size: 13px; cursor: pointer;
+}
+.cockpit-cta-btn:hover { background: var(--accent-bright); }
+
+/* ── Settings page ───────────────────────────────────────── */
+
+.settings-page { gap: 24px; }
+.settings-block {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px 24px;
+  margin-bottom: 16px;
+}
+.settings-block h2 { margin: 0 0 8px; font-size: 16px; }
+.settings-meta { font-size: 13px; color: var(--fg-muted); margin: 0 0 12px; }
+.settings-block textarea {
+  width: 100%; box-sizing: border-box;
+  font-family: var(--mono); font-size: 13px;
+  padding: 10px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  resize: vertical;
+  outline: none;
+}
+.settings-block textarea:focus { border-color: var(--accent); }
+.settings-block button { margin-top: 12px; }
+.settings-flash {
+  padding: 8px 12px; background: var(--bg-inset);
+  border-left: 3px solid var(--accent);
+  font-family: var(--mono); font-size: 12px;
+}
+.settings-error {
+  padding: 8px 12px; background: var(--bg-inset);
+  border-left: 3px solid var(--accent-error);
+  font-family: var(--mono); font-size: 12px;
+  color: var(--accent-error);
+  white-space: pre-wrap;
+}
+.settings-diagnostics dl {
+  margin: 0; display: flex; flex-direction: column; gap: 6px;
+  font-family: var(--mono); font-size: 13px;
+}
+.settings-diagnostics dl > div { display: flex; gap: 12px; }
+.settings-diagnostics dt { color: var(--fg-muted); width: 140px; flex: 0 0 140px; }
+.settings-diagnostics dd { margin: 0; color: var(--fg); }
+
+
+/* ============================================================
+   v0.20.2 — Mobile responsiveness for the cockpit
+   ============================================================
+   The cockpit was desktop-only by design through v0.13–v0.20:
+   ``<meta name="viewport" content="width=1280">`` told phone
+   browsers to render the page as if the viewport were 1280px,
+   then the OS scaled the result down to fit the device. That
+   produced unreadably small text and tap targets that landed on
+   the wrong control. v0.20.2 switches the viewport to
+   ``width=device-width, initial-scale=1`` and adds the rules
+   below so a phone-sized viewport actually flows.
+
+   Two breakpoints:
+     ≤ 900px : tablet — top nav wraps, hide model name pill,
+               page padding tightens.
+     ≤ 600px : phone  — header collapses to a two-row stack,
+               nav links shrink, compose textarea grows tappable,
+               bubble padding tightens.
+*/
+
+@media (max-width: 900px) {
+  .cockpit-header {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 10px 16px;
+  }
+  /* The model-name pill on the right is operator confirmation
+     of the active LLM — useful, but redundant on small screens
+     (it's also visible in /settings). Hide to reclaim width. */
+  .cockpit-header-right { display: none; }
+  .cockpit-header-nav {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .cockpit-page { padding: 16px 12px; }
+  .thread-page { padding: 12px 14px 16px; }
+
+  .chat-bubble { max-width: 96%; padding: 9px 12px; }
+}
+
+@media (max-width: 600px) {
+  /* Stack the header: brand on row 1, nav on row 2. Brand-tag
+     ("operator cockpit · v0.20.2") becomes redundant noise on
+     a phone — the brand mark + name carry the identity. */
+  .cockpit-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .cockpit-brand-tag { display: none; }
+  .cockpit-header-nav {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .cockpit-nav-link { padding: 6px 10px; font-size: 12px; }
+  .cockpit-nav-cta {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Thread header: stack title row + actions row; compress the
+     focus-form input width so it doesn't push other controls off
+     screen. */
+  .thread-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 0 12px;
+  }
+  .thread-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .thread-focus-form input { width: 110px; }
+
+  /* Compose box: stack textarea above send button so the button
+     is full-width and easy to thumb-tap. */
+  .thread-compose {
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 0 0;
+  }
+  .thread-compose textarea {
+    font-size: 16px;     /* iOS Safari zooms-in below 16px on focus. */
+    min-height: 72px;
+  }
+  .thread-send-btn {
+    width: 100%;
+    padding: 12px 0;
+    align-self: stretch;
+  }
+
+  .chat-bubble { max-width: 100%; font-size: 13px; }
+
+  /* Tool-row body: tighten padding + cap height so a long ASCII
+     block doesn't dominate the phone viewport. Horizontal scroll
+     remains for over-wide rows; doctrine (white-space: pre) holds. */
+  .tool-row-body {
+    padding: 8px 10px;
+    font-size: 11.5px;
+    max-height: 320px;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   v1.6.1 — cockpit CRM design system
+   (customers / cases / orders / catalog / subscription detail)
+
+   Principles:
+   - one accent does the talking: interactive = green, danger = red,
+     everything else stays in the grey ramp. No browser-default blue.
+   - panels, not walls of text: every section sits in an elevated card
+     with a small-caps label, consistent 16px internal rhythm.
+   - three button weights: solid accent (primary action), outlined
+     (secondary verb), dashed ghost (chat handoff). Danger is solid red
+     and only ever lives inside a two-step confirm.
+   - tables are dense, mono for identifiers, numeric right-aligned.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Links: never default blue on this background ─────────── */
+
+.cockpit-main a { color: var(--accent); text-decoration: none; }
+.cockpit-main a:hover { color: var(--accent-bright); text-decoration: underline; }
+.cockpit-main a code { color: inherit; }
+
+/* ── Page scaffolding ─────────────────────────────────────── */
+
+.crm-page { gap: 16px; }
+.crm-page-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.crm-page-toolbar .cockpit-page-title { margin-right: auto; }
+
+/* Two-column detail layout: flowing main column + sticky-ish side
+   rail for identity/actions. Collapses to one column < 1080px. */
+.crm-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 16px;
+  align-items: start;
+}
+.crm-grid-main, .crm-grid-side {
+  display: flex; flex-direction: column; gap: 16px; min-width: 0;
+}
+
+/* ── Section panels ───────────────────────────────────────── */
+
+.crm-panel {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px 16px;
+}
+.crm-panel > h2 {
+  margin: 0 0 12px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--fg-muted);
+  display: flex; align-items: center; gap: 8px;
+}
+.crm-panel > h2 .crm-count {
+  color: var(--fg-dim); font-weight: 400; letter-spacing: 0;
+}
+.crm-panel .empty-state {
+  margin: 0; padding: 14px 0 4px;
+  color: var(--fg-dim); font-size: 13px; font-style: normal;
+}
+
+/* ── Detail header (entity title bar) ─────────────────────── */
+
+.crm-detail-header {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.crm-detail-title-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.crm-detail-title-row .page-title { margin: 0; font-size: 20px; }
+.crm-detail-id {
+  font-family: var(--mono); font-size: 13px;
+  color: var(--fg-muted);
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 5px; padding: 2px 8px;
+}
+.crm-meta-strip {
+  display: flex; flex-wrap: wrap; gap: 4px 24px;
+  margin: 0; font-size: 13px;
+}
+.crm-meta-strip > div { display: flex; gap: 8px; align-items: baseline; }
+.crm-meta-strip dt {
+  color: var(--fg-dim); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.crm-meta-strip dd { margin: 0; color: var(--fg); }
+.crm-meta-strip dd code { font-size: 12px; }
+
+/* ── Filter / toolbar forms ───────────────────────────────── */
+
+.crm-filter-form {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.crm-filter-form input,
+.crm-filter-form select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit; font-size: 13px;
+  padding: 8px 12px;
+}
+.crm-filter-form input { min-width: 220px; }
+.crm-filter-form input:focus,
+.crm-filter-form select:focus { border-color: var(--accent); outline: none; }
+.crm-jump-form { margin-left: auto; }
+.crm-jump-form input { min-width: 120px; }
+
+/* ── Buttons: three weights + danger ──────────────────────── */
+
+.btn-primary, .crm-filter-form button {
+  background: var(--accent); color: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font-family: var(--mono); font-weight: 600; font-size: 13px;
+  padding: 8px 16px; cursor: pointer;
+}
+.btn-primary:hover, .crm-filter-form button:hover {
+  background: var(--accent-bright); border-color: var(--accent-bright);
+}
+.crm-mini-btn {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  color: var(--fg);
+  cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.crm-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn-danger {
+  background: var(--accent-error); color: var(--bg);
+  border: 1px solid var(--accent-error);
+  border-radius: 6px;
+  font-family: var(--mono); font-weight: 600; font-size: 12px;
+  padding: 6px 14px; cursor: pointer;
+}
+.btn-danger:hover { filter: brightness(1.15); }
+
+/* "Ask the agent" handoff — visibly different from direct writes:
+   opens a chat with the verb drafted, never executes. */
+.handoff-form { display: inline-flex; margin: 0; }
+.handoff-btn {
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 5px;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.handoff-btn:hover { border-style: solid; border-color: var(--accent); background: var(--bg-inset); }
+.handoff-btn--small { font-size: 12px; padding: 5px 12px; }
+
+.crm-actions {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+
+/* ── Tables ───────────────────────────────────────────────── */
+
+.crm-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+.crm-table th {
+  color: var(--fg-dim);
+  font-weight: 500; font-size: 10.5px;
+  letter-spacing: 0.7px; text-transform: uppercase;
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+.crm-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.crm-table tbody tr:last-child td { border-bottom: none; }
+.crm-table tbody tr:hover td { background: var(--bg-inset); }
+.crm-table code { font-size: 12px; }
+.crm-table .num { text-align: right; font-family: var(--mono); }
+.crm-table--nested { margin: 10px 0 2px; font-size: 12px; }
+.crm-table--nested tbody tr:hover td { background: transparent; }
+.crm-row-link { color: var(--fg) !important; }
+.crm-row-link:hover { color: var(--accent) !important; text-decoration: none !important; }
+.crm-row-actions {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  justify-content: flex-end;
+}
+
+/* ── Badges ───────────────────────────────────────────────── */
+
+.crm-badge {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 10.5px;
+  letter-spacing: 0.4px;
+  line-height: 1;
+  padding: 4px 9px;
+  white-space: nowrap;
+  color: var(--fg-muted);
+  background: var(--bg-inset);
+}
+.crm-badge::before { content: "●"; font-size: 7px; }
+.crm-badge--ok { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+.crm-badge--warn { color: var(--accent-amber); border-color: color-mix(in srgb, var(--accent-amber) 45%, transparent); }
+.crm-badge--err { color: var(--accent-error); border-color: color-mix(in srgb, var(--accent-error) 45%, transparent); }
+.crm-badge--muted { color: var(--fg-muted); }
+
+/* ── Flash + section-degradation notes ────────────────────── */
+
+.crm-flash {
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 8px;
+  color: var(--accent);
+  font-size: 13px;
+  margin: 0 0 4px;
+  padding: 10px 14px;
+}
+.crm-flash--err {
+  background: color-mix(in srgb, var(--accent-error) 8%, var(--bg-elev));
+  border-color: color-mix(in srgb, var(--accent-error) 50%, transparent);
+  color: var(--accent-error);
+}
+.crm-section-warn { color: var(--accent-amber); font-size: 12px; margin: 0 0 8px; }
+.crm-muted { color: var(--fg-dim); font-size: 12px; }
+.crm-panel > .crm-muted { margin: 10px 0 0; }
+
+/* ── Pager ────────────────────────────────────────────────── */
+
+.crm-pager {
+  align-items: center; display: flex; gap: 16px; margin-top: 4px;
+  font-family: var(--mono); font-size: 13px;
+}
+.crm-pager-page { color: var(--fg-dim); font-size: 12px; }
+
+/* ── Forms (inline CRUD) ──────────────────────────────────── */
+
+.crm-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 12px;
+  align-items: end;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.crm-form label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.crm-form label span {
+  color: var(--fg-dim); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.crm-form input,
+.crm-form select,
+.crm-form textarea {
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--fg);
+  font: inherit; font-size: 13px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+.crm-form input:focus,
+.crm-form select:focus,
+.crm-form textarea:focus { border-color: var(--accent); outline: none; }
+.crm-form .crm-form-span { grid-column: 1 / -1; }
+.crm-form button { justify-self: start; }
+.crm-note-form { grid-template-columns: 1fr auto; align-items: end; }
+.crm-note-form textarea { resize: vertical; }
+
+.crm-checkbox {
+  flex-direction: row !important; align-items: center; gap: 8px !important;
+}
+.crm-checkbox input { width: auto; min-width: 0; }
+.crm-checkbox span { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--fg-muted); }
+
+/* Expandable inline form ("+ New order", "Open a case"…) */
+.crm-inline-form { margin-top: 12px; }
+.crm-inline-form > summary {
+  list-style: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--fg-muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: 5px;
+  padding: 5px 12px;
+}
+.crm-inline-form > summary::-webkit-details-marker { display: none; }
+.crm-inline-form > summary::before { content: "+"; color: var(--accent); font-weight: 600; }
+.crm-inline-form > summary:hover { color: var(--fg); border-color: var(--accent); }
+.crm-inline-form[open] > summary { color: var(--accent); border-color: var(--accent); }
+
+/* Two-step destructive confirm: summary is the verb, the expanded
+   form is the consequence + a red button. confirm=yes rides along
+   as a hidden field — the route refuses without it. */
+.crm-danger-form { display: inline-block; }
+.crm-danger-form > summary {
+  list-style: none; display: inline-block; cursor: pointer;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--accent-error);
+  border: 1px solid color-mix(in srgb, var(--accent-error) 50%, transparent);
+  border-radius: 5px;
+  padding: 5px 12px;
+  white-space: nowrap;
+}
+.crm-danger-form > summary::-webkit-details-marker { display: none; }
+.crm-danger-form > summary:hover { border-color: var(--accent-error); background: color-mix(in srgb, var(--accent-error) 8%, transparent); }
+.crm-danger-form[open] > summary { border-color: var(--accent-error); }
+.crm-danger-form > .crm-form {
+  border-color: color-mix(in srgb, var(--accent-error) 40%, transparent);
+}
+
+/* Row-level popover forms (assign / resolve in ticket rows) */
+.crm-row-form { display: inline-block; position: relative; }
+.crm-row-form > summary { list-style: none; display: inline-block; }
+.crm-row-form > summary::-webkit-details-marker { display: none; }
+.crm-row-form[open] > .crm-form {
+  position: absolute; right: 0; z-index: 10;
+  width: 300px;
+  grid-template-columns: 1fr;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.crm-priority-form {
+  align-items: center; display: inline-flex; gap: 6px; margin: 0;
+}
+.crm-priority-form select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg);
+  font-family: var(--mono); font-size: 12px;
+  padding: 5px 8px;
+}
+
+/* ── Balance bars ─────────────────────────────────────────── */
+
+.crm-balances {
+  display: flex; flex-direction: column; gap: 8px;
+  list-style: none; margin: 4px 0 0; padding: 0;
+}
+.crm-balances li {
+  align-items: center; display: flex; gap: 12px; font-size: 12px;
+}
+.crm-balance-label {
+  color: var(--fg-muted); flex: 0 0 64px;
+  text-transform: capitalize;
+}
+.crm-balance-bar {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  flex: 0 1 180px;
+  height: 8px;
+  overflow: hidden;
+}
+.crm-balance-fill {
+  background: var(--accent);
+  border-radius: 999px;
+  display: block; height: 100%;
+  transition: width 0.2s ease;
+}
+.crm-balance-bar--exhausted .crm-balance-fill { background: var(--accent-error); }
+.crm-balance-nums { color: var(--fg-muted); font-family: var(--mono); font-size: 11px; }
+.crm-balance-unlimited { color: var(--accent); font-family: var(--mono); font-size: 11px; }
+
+/* ── Cards inside panels (subscription per-line cards) ────── */
+
+.crm-line-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: var(--bg-inset);
+}
+.crm-line-card + .crm-line-card { margin-top: 10px; }
+.crm-line-card--err { border-color: color-mix(in srgb, var(--accent-error) 45%, transparent); }
+.crm-line-card header {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.crm-line-card header .crm-spacer { flex: 1; }
+.crm-line-card footer {
+  margin-top: 10px;
+  font-size: 12px; color: var(--fg-dim);
+  display: flex; gap: 12px; align-items: center;
+}
+
+.case-description {
+  color: var(--fg-muted); font-size: 13px;
+  margin: 2px 0 0; max-width: 720px; line-height: 1.5;
+}
+
+/* ── Payment method chips ─────────────────────────────────── */
+
+.crm-cof-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.crm-cof-card {
+  display: flex; align-items: center; gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  background: var(--bg-inset);
+  font-size: 13px;
+}
+.crm-cof-brand { text-transform: uppercase; font-family: var(--mono); font-size: 11px; color: var(--fg-muted); }
+.crm-cof-pan { font-family: var(--mono); }
+.crm-cof-exp { color: var(--fg-dim); font-family: var(--mono); font-size: 12px; }
+.crm-cof-default {
+  margin-left: auto;
+  font-size: 10px; font-family: var(--mono);
+  color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px; padding: 2px 8px;
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+
+@media (max-width: 1080px) {
+  .crm-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .crm-filter-form input { min-width: 0; flex: 1; }
+  .crm-jump-form { margin-left: 0; }
+  .crm-table th:nth-child(n+5), .crm-table td:nth-child(n+5) { display: none; }
+  .crm-row-actions { justify-content: flex-start; }
+}
+
+.crm-cm-row {
+  display: flex; align-items: end; gap: 8px;
+  margin-top: 8px;
+}
+.crm-cm-row .crm-form { flex: 1; margin-top: 0; grid-template-columns: 1fr auto; }
+.crm-cm-row .crm-danger-form { padding-bottom: 12px; }
+
+/* v1.6.1 — touch devices: 16px inputs. iOS Safari auto-zooms the whole
+   page when a focused input's font-size is under 16px, which throws
+   the fixed-viewport shell off; 16px disables that zoom. */
+@media (pointer: coarse) {
+  .thread-compose textarea,
+  .crm-form input,
+  .crm-form select,
+  .crm-form textarea,
+  .crm-filter-form input,
+  .crm-filter-form select,
+  .thread-focus-form input {
+    font-size: 16px;
+  }
+}
+
+/* v1.6.1 — iPadOS keyboard accessory pill clearance. The floating
+   shortcut bar overlays the page bottom and is invisible to
+   visualViewport.height; while the operator is typing on a touch
+   device, lift the compose row above it. Transition kept short so
+   focus/blur doesn't feel like a layout jump. */
+@media (pointer: coarse) {
+  .thread-compose { transition: padding-bottom 0.15s ease; }
+  body.kb-open .thread-compose { padding-bottom: 64px; }
+}
+@media (pointer: coarse) {
+  .thread-page { padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+}
+
+/* v1.6.1 — "working…" placeholder while the agent runs. Removed by JS
+   on the first streamed frame. */
+.chat-pending { color: var(--fg-muted); }
+.chat-pending .chat-pending-dots {
+  color: var(--accent);
+  letter-spacing: 2px;
+  animation: bss-pending-pulse 1.2s ease-in-out infinite;
+}
+@keyframes bss-pending-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+.bss-reload { display: none; }
+
+/* ── v1.8 — Branding screen ─────────────────────────────────
+   Theme picker swatches, mark picker, logo upload, and the live
+   preview card. The preview div carries INLINE CSS-variable
+   overrides (candidate palette), so everything inside styled with
+   var(--…) previews the candidate while the page keeps the active
+   theme. */
+
+.branding-columns {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+  gap: 16px; align-items: start;
+}
+@media (max-width: 900px) { .branding-columns { grid-template-columns: 1fr; } }
+
+.branding-label { display: block; margin: 14px 0 6px; font-family: var(--mono); font-size: 12px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.branding-input {
+  width: 100%; max-width: 360px; padding: 8px 10px;
+  background: var(--bg-inset); color: var(--fg);
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  font-family: var(--mono); font-size: 14px;
+}
+.branding-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.branding-theme-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.branding-theme-option {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; background: var(--bg-elev);
+}
+.branding-theme-option:hover { border-color: var(--border-strong); }
+.branding-theme-option.is-selected,
+.branding-theme-option:has(input:checked) { border-color: var(--accent); }
+.branding-theme-option input { position: absolute; opacity: 0; pointer-events: none; }
+.branding-swatches {
+  display: inline-flex; gap: 3px; padding: 5px 6px;
+  border: 1px solid; border-radius: 4px;
+}
+.branding-swatches i { width: 12px; height: 12px; border-radius: 2px; display: block; }
+.branding-theme-name { font-family: var(--mono); font-size: 13px; }
+
+.branding-mark-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+.branding-mark-option {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 44px; padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-elev); cursor: pointer;
+}
+.branding-mark-option:hover { border-color: var(--border-strong); }
+.branding-mark-option.is-selected,
+.branding-mark-option:has(input[type="radio"]:checked) { border-color: var(--accent); }
+.branding-mark-option input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.branding-mark-glyph { color: var(--accent); font-family: var(--mono); font-weight: 700; font-size: 16px; }
+.branding-mark-input {
+  width: 64px; padding: 4px 6px; margin-left: 6px;
+  background: var(--bg-inset); color: var(--accent);
+  border: 1px solid var(--border-strong); border-radius: 4px;
+  font-family: var(--mono); font-size: 14px; text-align: center;
+}
+
+.branding-form .cockpit-cta-btn { margin-top: 16px; }
+
+/* Preview card — colors resolve against the scoped inline overrides. */
+.branding-preview {
+  background: var(--bg); border: 1px solid var(--border-strong);
+  border-radius: 8px; overflow: hidden;
+}
+.branding-preview-chrome {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 10px 14px; background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 13px; color: var(--fg);
+}
+.branding-preview-mark { color: var(--accent); font-weight: 700; }
+.branding-preview-name { font-weight: 600; color: var(--fg); }
+.branding-preview-tag { color: var(--fg-muted); font-size: 12px; }
+.branding-preview-body { padding: 14px; color: var(--fg); font-size: 14px; }
+.branding-preview-copy { margin: 0 0 4px; }
+.branding-preview-muted { margin: 0 0 12px; color: var(--fg-muted); font-size: 12px; }
+.branding-preview-btn {
+  display: inline-block; padding: 8px 18px; border-radius: 6px;
+  background: var(--accent); color: var(--on-accent, var(--bg));
+  border: 1px solid var(--accent-dim);
+  font-weight: 600; font-size: 13px; font-family: var(--sans);
+}
+.branding-preview-email {
+  margin-top: 14px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+}
+.branding-preview-email-head {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12px;
+}
+.branding-preview-otp {
+  margin: 12px auto; width: fit-content; padding: 10px 18px;
+  background: var(--bg-inset); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--accent);
+  font-family: var(--mono); font-size: 20px; letter-spacing: 5px; font-weight: 600;
+}
+.branding-preview-email-foot {
+  padding: 0 12px 10px; text-align: center;
+  color: var(--fg-dim); font-family: var(--mono); font-size: 10px;
+}
+.branding-preview-theme-label {
+  margin-top: 10px; text-align: right;
+  color: var(--fg-dim); font-family: var(--mono); font-size: 11px;
+}
+
+.branding-logo-current { display: flex; align-items: center; gap: 16px; margin: 8px 0 14px; }
+.branding-logo-current img {
+  height: 40px; width: auto; display: block;
+  background: var(--bg-inset); border: 1px solid var(--border);
+  border-radius: 4px; padding: 6px;
+}
+.branding-logo-none { color: var(--fg-muted); font-size: 13px; }
+.branding-logo-upload { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.branding-logo-upload input[type="file"] { font-family: var(--mono); font-size: 12px; color: var(--fg-muted); }

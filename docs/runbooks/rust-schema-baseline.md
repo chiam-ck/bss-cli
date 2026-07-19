@@ -8,9 +8,9 @@ stack.
 
 The Python Alembic tree (`packages/bss-models/alembic`, 32 migrations) is **frozen**.
 Its end-state is captured as a single sqlx migration —
-`rust/migrations/0001_baseline.sql` — and the sqlx migrator, run by
+`migrations/0001_baseline.sql` — and the sqlx migrator, run by
 **`bss admin migrate`**, is now the schema source of truth. Future schema changes land
-as `rust/migrations/000N_*.sql` siblings, applied in order by the same command.
+as `migrations/000N_*.sql` siblings, applied in order by the same command.
 
 `bss admin migrate` is a **single runner** over `BSS_DB_URL` (mirroring the one
 `alembic upgrade head`) — the services do **not** migrate at startup. Applied state is
@@ -55,7 +55,7 @@ apply only genuinely-new future migrations.
 
 ## Adding a future migration
 
-1. Write `rust/migrations/0002_<description>.sql` (plain SQL; schema-qualify objects).
+1. Write `migrations/0002_<description>.sql` (plain SQL; schema-qualify objects).
 2. `cargo build -p bss-cli` — the `sqlx::migrate!` macro re-embeds the `migrations/`
    dir at compile time, so the binary must be rebuilt after adding/editing a file.
 3. `bss admin migrate` applies it (and skips `0001`).

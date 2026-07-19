@@ -1,0 +1,109 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, handoff, flashes, panel, danger %}
+{% block title_suffix %} · {{ order.id }}{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  <a class="back-link" href="/orders">← orders</a>
+
+  {{ flashes(flash, err) }}
+
+  <header class="crm-detail-header">
+    <div class="crm-detail-title-row">
+      <h1 class="page-title">Order</h1>
+      <span class="crm-detail-id">{{ order.id }}</span>
+      {{ badge(order.state) }}
+    </div>
+    <dl class="crm-meta-strip">
+      <div><dt>Customer</dt><dd><a href="/customers/{{ order.customer_id }}"><code>{{ order.customer_id }}</code></a></dd></div>
+      <div><dt>Offering</dt><dd>{{ order.offering_id }}</dd></div>
+      <div><dt>Placed</dt><dd><code>{{ order.order_date }}</code></dd></div>
+      <div><dt>Completed</dt><dd><code>{{ order.completed_date }}</code></dd></div>
+      {% if order.subscription_id %}
+      <div><dt>Subscription</dt><dd><a href="/subscriptions/{{ order.subscription_id }}"><code>{{ order.subscription_id }}</code></a></dd></div>
+      {% endif %}
+      {% if order.discount_code %}<div><dt>Promo</dt><dd><code>{{ order.discount_code }}</code></dd></div>{% endif %}
+    </dl>
+    {% if order.notes %}<p class="case-description">{{ order.notes }}</p>{% endif %}
+    <div class="crm-actions">
+      {% if order.state in ("draft", "acknowledged") %}
+        {% call danger("Submit order…", "/orders/" ~ order.id ~ "/submit",
+                       "Kicks off decomposition + provisioning; the card on file is charged at activation.",
+                       "Submit " ~ order.id) %}{% endcall %}
+      {% endif %}
+      {% if order.state not in ("completed", "cancelled", "failed") %}
+        {% call danger("Cancel order…", "/orders/" ~ order.id ~ "/cancel",
+                       "Cancels the order and releases any reserved inventory.",
+                       "Cancel " ~ order.id) %}{% endcall %}
+      {% endif %}
+      {{ handoff("Ask the agent", "About order " ~ order.id ~ ": ", order.customer_id) }}
+    </div>
+  </header>
+
+  {% call panel("Items", items | length) %}
+    {% if items %}
+    <table class="crm-table">
+      <thead><tr><th>ID</th><th>Offering</th><th>Action</th><th>State</th><th>MSISDN</th><th>Price</th></tr></thead>
+      <tbody>
+        {% for i in items %}
+        <tr>
+          <td><code>{{ i.id }}</code></td>
+          <td>{{ i.offering_id }}</td>
+          <td>{{ i.action or "—" }}</td>
+          <td>{% if i.state %}{{ badge(i.state) }}{% else %}—{% endif %}</td>
+          <td><code>{{ i.msisdn or "—" }}</code></td>
+          <td class="num">{{ i.price or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty-state">No items.</p>
+    {% endif %}
+  {% endcall %}
+
+  {% call panel("Service orders (SOM decomposition)", service_orders | length) %}
+    {% for so in service_orders %}
+    <article class="crm-line-card">
+      <header>
+        <code>{{ so.id }}</code>
+        {{ badge(so.state) }}
+        <span class="crm-spacer"></span>
+        <span class="crm-muted">{{ so.started_at }} → {{ so.completed_at }}</span>
+      </header>
+      {% if so.so_items %}
+      <table class="crm-table crm-table--nested">
+        <thead><tr><th>Action</th><th>Spec</th><th>Service</th></tr></thead>
+        <tbody>
+          {% for i in so.so_items %}
+          <tr>
+            <td>{{ i.action }}</td>
+            <td><code>{{ i.spec_id }}</code></td>
+            <td>{% if i.service_id %}<code>{{ i.service_id }}</code>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      {% if so.services %}
+      <table class="crm-table crm-table--nested">
+        <thead><tr><th>Service</th><th>Type</th><th>Spec</th><th>State</th></tr></thead>
+        <tbody>
+          {% for s in so.services %}
+          <tr>
+            <td><code>{{ s.id }}</code></td>
+            <td>{{ s.type }}</td>
+            <td><code>{{ s.spec_id }}</code></td>
+            <td>{{ badge(s.state) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </article>
+    {% else %}
+    <p class="empty-state">No service orders yet (order not submitted, or SOM unavailable).</p>
+    {% endfor %}
+  {% endcall %}
+</section>
+{% endblock %}

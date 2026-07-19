@@ -1,0 +1,19 @@
+<article class="plan-card plan-card--{{ plan.id | lower }}">
+  <header class="plan-card-header">
+    <span class="plan-card-id">{{ plan.id }}</span>
+    <span class="plan-card-name">{{ plan.name }}</span>
+  </header>
+  <div class="plan-card-price">
+    <span class="price-currency">SGD</span>
+    <span class="price-amount">{{ plan.price }}</span>
+    <span class="price-cadence">/ mo</span>
+  </div>
+  <ul class="plan-card-allowances">
+    <li><span class="allowance-label">Data</span><span class="allowance-value">{{ plan.data }}</span></li>
+    <li><span class="allowance-label">Voice</span><span class="allowance-value">{{ plan.voice }}</span></li>
+    <li><span class="allowance-label">SMS</span><span class="allowance-value">{{ plan.sms }}</span></li>
+    {# Comparison view — always render the row for alignment. #}
+    <li><span class="allowance-label">Roaming</span><span class="allowance-value">{{ plan.roaming or "—" }}</span></li>
+  </ul>
+  <a class="plan-card-cta" href="/signup/{{ plan.id }}/msisdn">Pick {{ plan.id }}</a>
+</article>

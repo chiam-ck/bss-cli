@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Contact details · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="profile-forbidden">
+  <h1 class="page-title">Can't update that contact entry</h1>
+  <p class="page-subtitle" role="alert">{{ customer_facing }}</p>
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/profile/contact">
+      Back to contact details
+    </a>
+  </div>
+</section>
+{% endblock %}

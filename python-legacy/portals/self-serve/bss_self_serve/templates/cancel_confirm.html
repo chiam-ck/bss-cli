@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Cancel line · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="cancel-confirm">
+  <h1 class="page-title">Cancel <code class="dashboard-cust">{{ subscription.id }}</code>?</h1>
+  <p class="page-subtitle">
+    Cancellation is permanent and takes effect immediately. Please
+    read what you'll lose before continuing.
+  </p>
+
+  {% if error %}
+    <p class="form-error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  <ul class="cancel-loss-list">
+    <li class="cancel-loss-row">
+      <strong>No refund.</strong>
+      Your line stays active until the end of the current period
+      ({{ losses.current_period_end[:10] if losses.current_period_end else 'unknown' }})
+      — but cancelling does not refund the unused days.
+    </li>
+    <li class="cancel-loss-row">
+      <strong>Bundle balance is discarded.</strong>
+      {% if losses.balances %}
+        <ul class="cancel-loss-balances">
+          {% for b in losses.balances %}
+            <li>
+              {{ b.label }}:
+              {% if b.unlimited %}
+                Unlimited (lost)
+              {% else %}
+                {{ b.remaining }} / {{ b.total }} {{ b.unit }} remaining (lost)
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <em>(no remaining balance)</em>
+      {% endif %}
+    </li>
+    <li class="cancel-loss-row">
+      <strong>eSIM profile is released back to inventory.</strong>
+      ICCID …{{ losses.iccid_last4 }} will be recycled. The activation
+      code on this page will stop working immediately.
+    </li>
+    <li class="cancel-loss-row">
+      <strong>Phone number is released and not retainable.</strong>
+      MSISDN <code>{{ losses.msisdn }}</code> goes back to the public
+      pool. We cannot guarantee getting it back if you sign up again.
+    </li>
+  </ul>
+
+  <form method="post"
+        action="/subscription/{{ subscription.id }}/cancel"
+        class="cancel-form">
+    <button type="submit" class="welcome-cta cancel-confirm-button">
+      I understand, cancel my line
+    </button>
+    <a class="welcome-cta" href="/">Keep my line</a>
+  </form>
+</section>
+{% endblock %}

@@ -12,7 +12,8 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
-RUST=rust
+# Post-2.0-flip the Rust workspace is at the repo root.
+RUST=.
 fail=0
 
 # guard <name> <hits>  — <hits> non-empty ⇒ violation.
@@ -58,7 +59,8 @@ guard "otel: opentelemetry stays in platform crates" \
 
 # 4 — no campaignos leakage.
 guard "campaignos: untouched" \
-  "$(grep -rn 'campaignos' "$RUST" 2>/dev/null \
+  "$(grep -rn 'campaignos' \
+      "$RUST/crates" "$RUST/services" "$RUST/portals" "$RUST/cli" "$RUST/conformance" 2>/dev/null \
       | grep -v '/target/' \
       | grep -v '/tests/' \
       | grep -v '// noqa: campaignos' || true)"

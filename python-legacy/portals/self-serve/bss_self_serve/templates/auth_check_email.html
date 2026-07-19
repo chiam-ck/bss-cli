@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Check your email · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="auth-card">
+  <h1 class="page-title">Check your email</h1>
+  <p class="page-subtitle">
+    We sent a 6-digit code and a magic link to
+    <strong class="auth-email">{{ email_masked }}</strong>.
+    Click the link, or enter the code below.
+  </p>
+
+  {% if error %}
+    <div class="auth-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/auth/check-email" class="auth-form">
+    <label for="code" class="auth-label">Code</label>
+    <input
+      type="text"
+      id="code"
+      name="code"
+      inputmode="numeric"
+      pattern="[0-9]{6}"
+      maxlength="6"
+      required
+      autocomplete="one-time-code"
+      autofocus
+      class="auth-input auth-input--otp"
+    />
+    <input type="hidden" name="email" value="{{ email }}" />
+    <input type="hidden" name="next" value="{{ next_path }}" />
+    <button type="submit" class="auth-cta">Verify</button>
+  </form>
+
+  <p class="auth-hint">
+    Code expires in 15 minutes.
+    <a href="/auth/login?next={{ next_path }}">Try a different email</a>
+  </p>
+</section>
+{% endblock %}

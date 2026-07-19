@@ -1,4 +1,4 @@
-# Rust CI for the phases/2.0 migration workspace (rooted at rust/).
+# Rust CI for the workspace (at the repo root post-2.0-flip).
 # Phase 0 deliverable: "CI from day one — fmt, clippy -D warnings, test,
 # sqlx prepare check" (phases/2.0/03-PHASES.md). The sqlx-prepare job is added
 # in Phase 0 once bss-db lands; for now we gate fmt + clippy + test.
@@ -6,18 +6,34 @@ name: rust
 
 on:
   push:
-    branches: ["2.0"]
-    paths: ["rust/**", ".github/workflows/rust.yml"]
+    branches: ["main", "2.0"]
+    paths:
+      - "crates/**"
+      - "services/**"
+      - "portals/**"
+      - "cli/**"
+      - "conformance/**"
+      - "migrations/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/rust.yml"
   pull_request:
-    paths: ["rust/**", ".github/workflows/rust.yml"]
+    paths:
+      - "crates/**"
+      - "services/**"
+      - "portals/**"
+      - "cli/**"
+      - "conformance/**"
+      - "migrations/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/rust.yml"
 
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: "-D warnings"
-
-defaults:
-  run:
-    working-directory: rust
 
 jobs:
   build:
@@ -29,11 +45,11 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt --component clippy
           rustup default stable
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rust
       - name: fmt
         run: cargo fmt --all --check
       - name: clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: test
         run: cargo test --all-features
+      - name: doctrine-check
+        run: bash scripts/rust_doctrine_check.sh

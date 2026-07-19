@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Welcome · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<h1 class="page-title">You're on <span class="accent">{{ plan.id if plan else subscription_id }}</span></h1>
+<p class="page-subtitle">Subscription active. Scan the QR to provision your eSIM.</p>
+
+{# v0.11 — keep the 5-step timeline visible above the QR so the user
+   sees the full chain that just ran. The partial renders without a
+   next-step trigger when ``signup.step == 'completed'``. #}
+{% if signup %}
+{% include "partials/signup_progress.html" %}
+{% endif %}
+
+<div class="confirmation-grid">
+  <section class="confirmation-qr">
+    {% if qr_data_uri %}
+      <img src="{{ qr_data_uri }}" alt="eSIM activation QR code" width="240" height="240" />
+    {% else %}
+      <div class="confirmation-qr-fallback">No QR available — use the code below.</div>
+    {% endif %}
+  </section>
+
+  <section class="confirmation-details">
+    <dl>
+      <dt>Subscription</dt>
+      <dd><code>{{ subscription_id }}</code></dd>
+      <dt>Activation code</dt>
+      <dd>
+        <code class="confirmation-lpa" id="lpa-code">{{ activation_code or 'N/A' }}</code>
+        {% if activation_code %}
+        <button type="button" class="copy-btn" data-copy-target="#lpa-code">copy</button>
+        {% endif %}
+      </dd>
+      {% if plan %}
+      <dt>Plan</dt>
+      <dd>{{ plan.name }} · SGD {{ plan.price }}/mo</dd>
+      <dt>Allowance</dt>
+      <dd>{{ plan.data }} data · {{ plan.voice }} voice · {{ plan.sms }} SMS{% if plan.roaming %} · {{ plan.roaming }} roaming{% endif %}</dd>
+      {% endif %}
+    </dl>
+
+    <p class="confirmation-next">
+      <a href="/" class="plan-card-cta">Create another</a>
+    </p>
+  </section>
+</div>
+
+<script>
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-copy-target]");
+    if (!btn) return;
+    var node = document.querySelector(btn.dataset.copyTarget);
+    if (!node) return;
+    navigator.clipboard.writeText(node.textContent.trim()).then(function () {
+      btn.textContent = "copied ✓";
+      setTimeout(function () { btn.textContent = "copy"; }, 1400);
+    });
+  });
+</script>
+{% endblock %}

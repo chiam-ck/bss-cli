@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Plan switch scheduled · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="plan-change-scheduled">
+  <h1 class="page-title">Plan switch scheduled</h1>
+  <p class="page-subtitle">
+    <code class="dashboard-cust">{{ subscription.id }}</code> will
+    switch to <strong>{{ new_offering_name }}</strong>
+    {% if effective_at %}
+      on <strong>{{ effective_at }}</strong>
+    {% else %}
+      at your next renewal
+    {% endif %}.
+  </p>
+
+  <aside class="plan-change-no-proration">
+    <strong>No proration.</strong>
+    Your current plan stays active until renewal — you keep paying
+    the current price and using the current allowances. Then your
+    new plan begins at the new price. We don't pro-rate the
+    difference, charge a partial month, or refund unused days.
+  </aside>
+
+  <p class="page-subtitle">
+    Changed your mind? You can cancel the scheduled switch from your
+    dashboard until the renewal date.
+  </p>
+
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/">Back to dashboard</a>
+  </div>
+</section>
+{% endblock %}

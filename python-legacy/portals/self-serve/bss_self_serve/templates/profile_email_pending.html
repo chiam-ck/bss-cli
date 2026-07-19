@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Verify new email · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="profile-email-pending">
+  <h1 class="page-title">Check your new inbox</h1>
+  <p class="page-subtitle">
+    We sent a 6-digit verification code to
+    <strong>{{ new_email }}</strong>. Open the link or enter the code
+    on the next page to finish your email change.
+  </p>
+  <p class="page-subtitle">
+    Your current email keeps working until you verify the new one.
+    The code expires in 24 hours; after that, restart the change
+    from the contact-details page.
+  </p>
+
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary"
+       href="/profile/contact/email/verify">
+      I have my code — verify
+    </a>
+    <a class="welcome-cta" href="/profile/contact">Back to contact details</a>
+  </div>
+</section>
+{% endblock %}

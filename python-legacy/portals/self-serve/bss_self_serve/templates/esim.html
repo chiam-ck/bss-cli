@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}eSIM · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="esim-view">
+  <h1 class="page-title">Your eSIM</h1>
+  <p class="page-subtitle">
+    Line <code class="dashboard-cust">{{ subscription.id }}</code>
+    {% if msisdn %}· {{ msisdn }}{% endif %}
+    {% if state %}· state: {{ state }}{% endif %}
+  </p>
+
+  {% if qr_data_uri %}
+    <figure class="esim-qr">
+      <img src="{{ qr_data_uri }}" alt="eSIM activation QR code"
+           width="320" height="320">
+      <figcaption>
+        Scan with your phone's eSIM camera to install. Use this code
+        if you've changed devices or factory-reset.
+      </figcaption>
+    </figure>
+  {% else %}
+    <p class="form-error" role="alert">
+      We couldn't fetch the activation code right now. Please try again
+      in a minute, or contact support if it keeps failing.
+    </p>
+  {% endif %}
+
+  {% if activation_code %}
+    <section class="esim-code">
+      <h2 class="page-subtitle">Activation code</h2>
+      <pre class="esim-code-block">{{ activation_code }}</pre>
+      <p class="page-subtitle">
+        Tap or copy and paste into your phone's eSIM "enter manually" flow.
+      </p>
+    </section>
+  {% endif %}
+
+  <section class="esim-meta">
+    <h2 class="page-subtitle">eSIM details</h2>
+    <dl class="esim-meta-list">
+      <dt>ICCID</dt><dd>{{ iccid_last4 }}</dd>
+      <dt>IMSI</dt><dd>{{ imsi_last4 }}</dd>
+      {% if smdp_server %}<dt>SM-DP+</dt><dd>{{ smdp_server }}</dd>{% endif %}
+      {% if matching_id %}<dt>Matching ID</dt><dd>{{ matching_id }}</dd>{% endif %}
+    </dl>
+    <p class="page-subtitle esim-fineprint">
+      ICCID and IMSI are shown last-4 for security; full values are
+      restricted to admin/CSR access.
+    </p>
+  </section>
+
+  <aside class="esim-rearm-note">
+    <strong>Changing devices?</strong>
+    This page shows the original activation code from when your line
+    was set up. If your new device says the code is already in use,
+    contact support — we'll re-issue your eSIM profile from our end.
+    (v0.10 doesn't yet automate that step.)
+  </aside>
+
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/">Back to dashboard</a>
+  </div>
+</section>
+{% endblock %}

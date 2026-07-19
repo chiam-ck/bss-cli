@@ -80,7 +80,7 @@ services:
       # the autonomy module's own default-when-unset.
       BSS_REPL_LLM_AUTONOMY: ${BSS_REPL_LLM_AUTONOMY:-granular}
     volumes:
-      - ./packages/bss-e2e/fixtures:/fixtures:ro
+      - ./python-legacy/packages/bss-e2e/fixtures:/fixtures:ro
       # Preserve the .bss-cli mount from docker-compose.yml — compose
       # merges volume lists per-service, so the cockpit-state mount
       # below is in addition to the one in the base file, not a

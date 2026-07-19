@@ -1,0 +1,18 @@
+{# A tiny status fragment — swapped into /activation/{order_id}/status.
+   Expected context: ``state`` (acknowledged | in_progress | completed | failed),
+   ``order_id``, ``session_id``. #}
+{% set order_states = ['acknowledged', 'in_progress', 'completed'] %}
+<div class="progress-card">
+  <div class="progress-lane">
+    <span class="progress-step{% if state in ['acknowledged','in_progress','completed'] %} active{% endif %}">order placed</span>
+    <span class="progress-arrow">→</span>
+    <span class="progress-step{% if state in ['in_progress','completed'] %} active{% endif %}">decomposing</span>
+    <span class="progress-arrow">→</span>
+    <span class="progress-step{% if state == 'completed' %} active{% endif %}">activating eSIM</span>
+    <span class="progress-arrow">→</span>
+    <span class="progress-step{% if state == 'completed' %} active{% endif %}">ready</span>
+  </div>
+  <div class="progress-note">
+    Order <code>{{ order_id }}</code> — state: <code>{{ state }}</code>
+  </div>
+</div>

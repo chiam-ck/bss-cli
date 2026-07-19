@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}eSIM · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="esim-forbidden">
+  <h1 class="page-title">Can't show that eSIM</h1>
+  <p class="page-subtitle" role="alert">{{ customer_facing }}</p>
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/">Back to dashboard</a>
+  </div>
+</section>
+{% endblock %}

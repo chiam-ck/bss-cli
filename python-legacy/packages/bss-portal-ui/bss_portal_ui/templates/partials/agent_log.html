@@ -1,0 +1,37 @@
+{# Agent log widget. Rendered on every page.
+
+   Modes:
+   - ``stream_live=True``  → widget connects to SSE via the body-level
+     ``hx-ext="sse"`` in base.html; ``sse-swap`` attributes here bind
+     specific events into the status + events targets.
+   - ``stream_live=False`` → static replay. The caller passes
+     ``events`` (list of projected dicts) and an ``agent_log_status``
+     string ("done" / "error" / "idle") that the header reflects
+     directly.
+#}
+{% set status = agent_log_status or ("live" if stream_live else "idle") %}
+<section class="agent-log">
+  <header class="agent-log-header">
+    <span class="agent-log-title">Agent Activity</span>
+    <span class="agent-log-status"
+      {% if stream_live and session_id %}sse-swap="status" hx-swap="innerHTML"{% endif %}>
+      <span class="dot {{ status }}"></span> {{ status }}
+    </span>
+  </header>
+
+  <div class="agent-log-intro">
+    The portal doesn't call the backend directly. It sends natural
+    language to an LLM agent that plans and executes tool calls.
+    {% if not stream_live and not events %}Submit the form to watch it work.{% endif %}
+  </div>
+
+  <ol
+    class="agent-log-events"
+    id="agent-log-stream"
+    {% if stream_live and session_id %}sse-swap="message" hx-swap="beforeend"{% endif %}
+  >
+    {% for event in events or [] %}
+      {% include "partials/agent_event.html" %}
+    {% endfor %}
+  </ol>
+</section>

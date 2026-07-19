@@ -1,0 +1,149 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, handoff, flashes, balance_bars, panel, danger %}
+{% block title_suffix %} · {{ sub.id }}{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  <a class="back-link" href="/customers/{{ sub.customer_id }}">← {{ sub.customer_id }}</a>
+
+  {{ flashes(flash, err) }}
+
+  <header class="crm-detail-header">
+    <div class="crm-detail-title-row">
+      <h1 class="page-title">Subscription</h1>
+      <span class="crm-detail-id">{{ sub.id }}</span>
+      {{ badge(sub.state) }}
+      {% if sub.state_reason %}<span class="crm-muted">({{ sub.state_reason }})</span>{% endif %}
+    </div>
+    <dl class="crm-meta-strip">
+      <div><dt>Customer</dt><dd><a href="/customers/{{ sub.customer_id }}">{{ sub.customer_name }}</a></dd></div>
+      <div><dt>MSISDN</dt><dd><code>{{ sub.msisdn }}</code></dd></div>
+      <div><dt>Plan</dt><dd><a href="/catalog/{{ sub.offering_id }}">{{ sub.offering_name or sub.offering_id }}</a></dd></div>
+      <div><dt>Price</dt><dd>{{ sub.price }}</dd></div>
+      <div><dt>Activated</dt><dd><code>{{ sub.activated_at }}</code></dd></div>
+      <div><dt>Renews</dt><dd><code>{{ sub.next_renewal }}</code></dd></div>
+    </dl>
+    <div class="crm-actions">
+      {{ handoff("Ask the agent", "About subscription " ~ sub.id ~ ": ", sub.customer_id) }}
+      {% if sub.state not in ("terminated",) %}
+        {% call danger("Terminate…", "/subscriptions/" ~ sub.id ~ "/terminate",
+                       "Stops service immediately and (optionally) releases the MSISDN + eSIM back to inventory. No refunds — bundled prepaid.",
+                       "Terminate " ~ sub.id) %}
+          <label><span>Reason</span><input type="text" name="reason" placeholder="(optional)" /></label>
+          <label class="crm-checkbox"><input type="checkbox" name="release_inventory" value="yes" checked /><span>release MSISDN + eSIM</span></label>
+        {% endcall %}
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="crm-grid">
+    <div class="crm-grid-main">
+
+      {% call panel("Bundle") %}
+        {{ balance_bars(balances) }}
+        <p class="crm-muted">Block-on-exhaust: service stops at zero; back to active via
+        renewal or VAS top-up only (motto #3).</p>
+      {% endcall %}
+
+      {% call panel("Services (SOM)", services | length) %}
+        {% if services %}
+        <table class="crm-table">
+          <thead><tr><th>ID</th><th>Type</th><th>Spec</th><th>State</th></tr></thead>
+          <tbody>
+            {% for s in services %}
+            <tr>
+              <td><code>{{ s.id }}</code></td>
+              <td>{{ s.type }}</td>
+              <td><code>{{ s.spec_id }}</code></td>
+              <td>{{ badge(s.state) }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No service inventory (or SOM unavailable).</p>
+        {% endif %}
+      {% endcall %}
+
+      {% call panel("Recent usage", usage | length) %}
+        {% if usage %}
+        <table class="crm-table">
+          <thead><tr><th>When</th><th>Type</th><th>Quantity</th><th>Roaming</th></tr></thead>
+          <tbody>
+            {% for u in usage %}
+            <tr>
+              <td><code>{{ u.at }}</code></td>
+              <td>{{ u.type }}</td>
+              <td class="num">{{ u.quantity }}</td>
+              <td>{% if u.roaming %}✈ roaming{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No rated usage events (or mediation unavailable).</p>
+        {% endif %}
+      {% endcall %}
+
+    </div>
+    <div class="crm-grid-side">
+
+      {% if sub.state not in ("terminated",) %}
+      {% call panel("Top up (VAS)") %}
+        {% call danger("Purchase VAS…", "/subscriptions/" ~ sub.id ~ "/vas",
+                       "Charges the card on file immediately and adds the allowance to this period.",
+                       "Charge & apply") %}
+          <label><span>VAS offering</span>
+            <select name="vas_offering_id" required>
+              {% for v in vas_options %}
+              <option value="{{ v.id }}">{{ v.id }} — {{ v.name }} ({{ v.price }})</option>
+              {% endfor %}
+            </select>
+          </label>
+        {% endcall %}
+      {% endcall %}
+
+      {% call panel("Plan change") %}
+        {% if sub.pending_offering_id %}
+          <p class="crm-muted" style="margin:0 0 10px">Pending: → <strong>{{ sub.pending_offering_id }}</strong> at <code>{{ sub.pending_effective_at }}</code></p>
+          <form method="post" action="/subscriptions/{{ sub.id }}/plan-change/cancel">
+            <button type="submit" class="crm-mini-btn">Cancel pending change</button>
+          </form>
+        {% else %}
+          <form method="post" action="/subscriptions/{{ sub.id }}/plan-change" class="crm-form" style="margin-top:0">
+            <label><span>New plan (at next renewal)</span>
+              <select name="new_offering_id" required>
+                {% for p in plan_options %}
+                <option value="{{ p }}">{{ p }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit" class="crm-mini-btn">Schedule</button>
+          </form>
+          <p class="crm-muted">Pivots at the period boundary — never terminate-and-recreate (v0.7 doctrine).</p>
+        {% endif %}
+      {% endcall %}
+
+      {% call panel("Renewal") %}
+        {% call danger("Renew now…", "/subscriptions/" ~ sub.id ~ "/renew",
+                       "Charges the snapshot price to the card on file and resets the bundle period now.",
+                       "Charge & renew") %}{% endcall %}
+      {% endcall %}
+      {% endif %}
+
+      {% if esim and esim.iccid %}
+      {% call panel("eSIM") %}
+        <dl class="crm-meta-strip" style="flex-direction:column; gap:6px">
+          <div><dt>ICCID</dt><dd><code>{{ esim.iccid }}</code></dd></div>
+          {% if esim.activation_code %}
+          <div><dt>LPA</dt><dd><code style="word-break:break-all">{{ esim.activation_code }}</code></dd></div>
+          {% endif %}
+        </dl>
+        <p class="crm-muted">Read-only re-display of the issued profile — not a SGP.22 re-arm (DECISIONS 2026-04-27).</p>
+      {% endcall %}
+      {% endif %}
+
+    </div>
+  </div>
+</section>
+{% endblock %}

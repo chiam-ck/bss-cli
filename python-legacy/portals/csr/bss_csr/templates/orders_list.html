@@ -1,0 +1,70 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, pager, flashes %}
+{% block title_suffix %} · Orders{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  {{ flashes(flash, err) }}
+
+  <header class="crm-page-toolbar">
+    <h1 class="cockpit-page-title">Orders</h1>
+    <form method="get" action="/orders" class="crm-filter-form">
+      <input type="text" name="customer" value="{{ customer }}"
+             placeholder="CUST-… (optional)" autocomplete="off" />
+      <select name="state">
+        <option value="">any state</option>
+        {% for s in states %}
+        <option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Filter</button>
+    </form>
+    <form method="get" action="/orders/jump" class="crm-filter-form crm-jump-form">
+      <input type="text" name="order_id" placeholder="ORD-…" autocomplete="off" />
+      <button type="submit">Open</button>
+    </form>
+  </header>
+
+  {% if rows %}
+  <table class="crm-table">
+    <thead>
+      <tr><th>ID</th><th>Customer</th><th>Offering</th><th>State</th><th>Placed</th><th>Completed</th></tr>
+    </thead>
+    <tbody>
+      {% for o in rows %}
+      <tr>
+        <td><a href="/orders/{{ o.id }}"><code>{{ o.id }}</code></a></td>
+        <td><a href="/customers/{{ o.customer_id }}"><code>{{ o.customer_id }}</code></a></td>
+        <td>{{ o.offering_id }}</td>
+        <td>{{ badge(o.state) }}</td>
+        <td><code>{{ o.order_date }}</code></td>
+        <td><code>{{ o.completed_date }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ pager("/orders", page, has_prev, has_next, "&customer=" ~ (customer | urlencode) ~ "&state=" ~ state) }}
+  {% else %}
+  <p class="cockpit-empty">No orders match.</p>
+  {% endif %}
+
+  <details class="crm-inline-form">
+    <summary>New order</summary>
+    <form method="post" action="/orders/create" class="crm-form">
+      <label><span>Customer</span><input type="text" name="customer_id" placeholder="CUST-…" required /></label>
+      <label><span>Offering</span>
+        {% if plans %}
+        <select name="offering_id" required>
+          {% for p in plans %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+        {% else %}
+        <input type="text" name="offering_id" placeholder="PLAN_M" required />
+        {% endif %}
+      </label>
+      <label><span>MSISDN preference</span><input type="text" name="msisdn_preference" placeholder="(optional)" /></label>
+      <label><span>Promo code</span><input type="text" name="discount_code" placeholder="(optional)" /></label>
+      <button type="submit" class="btn-primary">Create order</button>
+    </form>
+  </details>
+</section>
+{% endblock %}

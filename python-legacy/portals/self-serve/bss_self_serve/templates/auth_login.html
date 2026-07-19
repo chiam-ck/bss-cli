@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Sign in · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="auth-card">
+  <h1 class="page-title">Sign in</h1>
+  <p class="page-subtitle">
+    Enter your email — we'll send you a code and a magic link. No password.
+  </p>
+
+  {% if error %}
+    <div class="auth-error" role="alert">{{ error }}</div>
+  {% endif %}
+
+  <form method="post" action="/auth/login" class="auth-form">
+    <label for="email" class="auth-label">Email</label>
+    <input
+      type="email"
+      id="email"
+      name="email"
+      required
+      autocomplete="email"
+      autofocus
+      value="{{ email or '' }}"
+      class="auth-input"
+    />
+    <input type="hidden" name="next" value="{{ next_path }}" />
+    <button type="submit" class="auth-cta">Send code</button>
+  </form>
+
+  <p class="auth-hint">
+    No account yet? Same form. We'll create it on first verify.
+  </p>
+</section>
+{% endblock %}

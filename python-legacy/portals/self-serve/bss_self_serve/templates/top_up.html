@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Top up · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="top-up">
+  <h1 class="page-title">
+    Top up <code class="dashboard-cust">{{ subscription.id }}</code>
+  </h1>
+  <p class="page-subtitle">
+    {% if context == "blocked" %}
+      Your line is blocked — pick a top-up to restore service.
+    {% else %}
+      Pick a top-up. The charge goes to your default payment method.
+    {% endif %}
+  </p>
+
+  {% if error %}
+    <p class="form-error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  <ul class="top-up-vas-list">
+    {% for vas in vas_offerings %}
+      <li class="top-up-vas-card
+                 {% if pre_select_id == vas.id %}top-up-vas-card--preselected{% endif %}">
+        <header class="top-up-vas-header">
+          <span class="top-up-vas-name">{{ vas.name or vas.id }}</span>
+          <span class="top-up-vas-price">
+            {{ vas.currency or 'SGD' }} {{ '%.2f' | format(vas.priceAmount) }}
+          </span>
+        </header>
+        <p class="top-up-vas-quota">
+          {% if vas.allowanceQuantity == -1 %}
+            Unlimited {{ vas.allowanceType }}
+            {% if vas.expiryHours %}for {{ vas.expiryHours }}h{% endif %}
+          {% else %}
+            +{{ vas.allowanceQuantity }} {{ vas.allowanceUnit }} {{ vas.allowanceType }}
+          {% endif %}
+        </p>
+        <form method="post"
+              action="/top-up?subscription={{ subscription.id }}"
+              class="top-up-vas-form">
+          <input type="hidden" name="vas_offering_id" value="{{ vas.id }}">
+          <button type="submit" class="welcome-cta welcome-cta--primary">
+            Top up with {{ vas.name or vas.id }}
+          </button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <p class="page-subtitle">
+    <a href="/">Back to dashboard</a>
+  </p>
+</section>
+{% endblock %}

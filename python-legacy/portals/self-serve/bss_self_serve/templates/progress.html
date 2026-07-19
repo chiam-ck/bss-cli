@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Activating {{ plan_id }} · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+{# v0.16 (Track 2 redo) — NO Stripe.js loaded here. The original Track 2
+   loaded Stripe.js + mounted Elements in an iframe, but the iframe failed
+   to render reliably across browser/HTMX combinations. Replaced with
+   Stripe Checkout: the customer clicks "Continue to Stripe →" on the
+   pending_cof step (rendered by signup_progress.html), the form POSTs
+   to /signup/step/cof/checkout-init, the route 303-redirects to a
+   Stripe-hosted card form, and Stripe redirects back to
+   /signup/step/cof/checkout-return on completion. No client-side JS,
+   no iframe, no CSP issues. See DECISIONS 2026-05-03 (Stripe Checkout
+   over Elements).
+#}
+
+<h1 class="page-title">Activating <span class="accent">{{ plan_id }}</span></h1>
+<p class="page-subtitle">
+  Five deterministic steps. No LLM in the loop — typical wall time is under 5 seconds.
+</p>
+
+{# v0.11 — direct-write signup chain. The partial renders the timeline
+   AND embeds the next-step ``hx-trigger="load"``, so HTMX fires the
+   chain automatically on first paint. The widget on the right is no
+   longer streaming an agent log; signup is a routine flow that goes
+   direct via bss-clients. #}
+{% include "partials/signup_progress.html" %}
+{% endblock %}

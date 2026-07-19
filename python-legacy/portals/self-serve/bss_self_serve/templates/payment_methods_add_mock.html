@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Add a card · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="cof-add">
+  <h1 class="page-title">Add a card</h1>
+  <p class="page-subtitle">
+    Card details are sandbox-mocked in v0.10. Use any 16-digit number;
+    include <code>FAIL</code> or <code>DECLINE</code> in the digits to
+    simulate a tokenization failure or declined charge.
+  </p>
+
+  {% if error %}
+    <p class="form-error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  <form method="post" action="/payment-methods/add" class="cof-form">
+    <label class="cof-form-row">
+      <span>Card number</span>
+      <input type="text" name="card_number" inputmode="numeric"
+             autocomplete="cc-number" required>
+    </label>
+    <div class="cof-form-row-pair">
+      <label>
+        <span>Expiry month</span>
+        <input type="number" name="exp_month" min="1" max="12"
+               autocomplete="cc-exp-month"
+               value="{{ fields.exp_month or '' }}" required>
+      </label>
+      <label>
+        <span>Expiry year</span>
+        <input type="number" name="exp_year" min="2026" max="2099"
+               autocomplete="cc-exp-year"
+               value="{{ fields.exp_year or '' }}" required>
+      </label>
+      <label>
+        <span>CVV</span>
+        <input type="text" name="cvv" inputmode="numeric"
+               minlength="3" maxlength="4"
+               autocomplete="cc-csc" required>
+      </label>
+    </div>
+    <label class="cof-form-row">
+      <span>Cardholder name</span>
+      <input type="text" name="holder_name" autocomplete="cc-name" required>
+    </label>
+    <label class="cof-form-row">
+      <span>Postal code</span>
+      <input type="text" name="postal_code" autocomplete="postal-code">
+    </label>
+    <div class="dashboard-actions">
+      <button type="submit" class="welcome-cta welcome-cta--primary">
+        Save card
+      </button>
+      <a class="welcome-cta" href="/payment-methods">Cancel</a>
+    </div>
+  </form>
+
+  <p class="page-subtitle cof-form-disclaimer">
+    The CVV and postal code are not used by the v0.10 mock provider;
+    v1.0 ships them through to Stripe without changing this form.
+  </p>
+</section>
+{% endblock %}

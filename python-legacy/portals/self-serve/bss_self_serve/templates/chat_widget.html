@@ -1,0 +1,144 @@
+{# v0.12 PR13 — chat popup widget partial.
+
+Loaded into ``#chat-widget-host`` via ``hx-get`` from the FAB on
+every post-login page (see base.html). Same partial is embedded by
+chat_page.html for the standalone /chat view.
+
+Bottom-right fixed-position panel. Shows the running conversation
+(prior turns from ChatConversationStore) plus the input form, plus
+when ``session_id`` is present an SSE stream wraps the in-flight
+turn so the assistant's reply lands in place.
+
+The htmx-sse extension reaches descendants of the ``hx-ext="sse"``
+element only — the ``chat-thread-host`` div MUST wrap the
+``sse-swap`` targets (status indicator + chat-log).
+#}
+<div class="chat-widget chat-widget-popup" id="chat-widget" role="dialog" aria-label="Chat with us">
+  <header class="chat-widget-header">
+    <span class="chat-widget-title">Chat with us</span>
+    <div class="chat-widget-header-actions">
+      <form method="post" action="/chat/reset"
+            hx-post="/chat/reset"
+            hx-target="#chat-widget-host"
+            hx-swap="innerHTML"
+            class="chat-widget-reset-form">
+        <button type="submit" class="chat-widget-iconbtn" title="Start a new conversation" aria-label="Reset">↺</button>
+      </form>
+      <button type="button"
+              class="chat-widget-iconbtn chat-widget-close"
+              title="Close"
+              aria-label="Close"
+              onclick="document.getElementById('chat-widget-host').innerHTML=''">×</button>
+    </div>
+  </header>
+
+  {% if cap_tripped %}
+    <div class="chat-widget-cap" role="alert">
+      {% if cap_tripped == "monthly_cost_cap" %}
+        <strong>You've reached this month's chat budget.</strong>
+        <p>The dashboard, billing history, and plan options on the site cover everything chat can do.</p>
+      {% elif cap_tripped == "hourly_rate_cap" %}
+        <strong>You're chatting fast — try again in a minute.</strong>
+      {% else %}
+        <strong>Chat is briefly unavailable.</strong>
+        <p>Please try again in a few minutes.</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div
+    class="chat-thread-host"
+    {% if session_id %}
+    hx-ext="sse"
+    sse-connect="/chat/events/{{ session_id }}"
+    {% endif %}
+  >
+    <div class="chat-widget-thread" id="chat-widget-thread">
+      {% for m in messages %}
+        {% if m.role == "user" %}
+          <div class="chat-bubble chat-bubble-user">{{ m.body }}</div>
+        {% else %}
+          {# Assistant body has been markdown-converted server-side
+             via _render_chat_markdown; mark safe so the <strong>,
+             <em>, <ul>, <code>, <p>, <br> tags render. The LLM
+             output was HTML-escaped before markdown conversion. #}
+          <div class="chat-bubble chat-bubble-assistant">{{ m.body_html | safe }}</div>
+        {% endif %}
+      {% endfor %}
+
+      {% if not messages and not session_id %}
+        <p class="chat-empty">
+          Hi! Ask about your line — top up, schedule a plan change,
+          redownload your eSIM, or get a quick answer. Sensitive
+          issues are escalated to a human within 24 hours.
+        </p>
+      {% endif %}
+
+      {# When a turn is in flight, the streaming targets are
+         direct descendants of the SSE-connected host so htmx-sse
+         can swap status + message frames into them. No bubble
+         shell — the assistant's reply lands as a plain
+         .chat-bubble.chat-bubble-assistant inside .chat-log,
+         which is the same bubble shape as previous turns. #}
+      {% if session_id %}
+        <div class="chat-streaming">
+          <span class="chat-status chat-streaming-status" sse-swap="status">
+            <span class="dot live"></span> live
+          </span>
+          <div
+            class="chat-log"
+            id="chat-log"
+            sse-swap="message"
+            hx-swap="beforeend"
+          ></div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <form
+    class="chat-widget-form"
+    method="post"
+    action="/chat/message"
+    hx-post="/chat/message"
+    hx-target="#chat-widget-host"
+    hx-swap="innerHTML"
+    {% if cap_tripped %}hidden{% endif %}
+  >
+    <textarea
+      name="message"
+      rows="2"
+      required
+      placeholder="Ask anything about your account…"
+      autofocus
+      onkeydown="if(event.key==='Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey){event.preventDefault(); if(this.value.trim()){this.form.requestSubmit();}}"
+    ></textarea>
+    <button type="submit" class="welcome-cta">Send</button>
+  </form>
+
+  <p class="chat-widget-fineprint">
+    Acts on your account only. Fraud, billing disputes, regulator
+    complaints, identity recovery, and bereavement go to a human.
+  </p>
+</div>
+
+{# v0.12 PR19 — auto-scroll the thread to the bottom (a) on
+   initial load so the latest message is in view, (b) on every
+   SSE frame swap so the streaming reply stays visible without
+   manual scrolling. The script is part of the partial; HTMX
+   evaluates it on widget mount + on post-form re-render. #}
+<script>
+(function(){
+  var t = document.getElementById('chat-widget-thread');
+  if (!t) return;
+  var stick = function(){ t.scrollTop = t.scrollHeight; };
+  // Initial mount: jump to the bottom (no smooth — instant).
+  requestAnimationFrame(stick);
+  // Each SSE message frame appends a child to .chat-log inside
+  // this thread. htmx:afterSwap bubbles up; smooth-scroll keeps
+  // the streaming feel.
+  t.addEventListener('htmx:afterSwap', function(){
+    requestAnimationFrame(stick);
+  });
+})();
+</script>

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Payment methods · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="cof-forbidden">
+  <h1 class="page-title">Can't change that card</h1>
+  <p class="page-subtitle" role="alert">{{ customer_facing }}</p>
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/payment-methods">
+      Back to payment methods
+    </a>
+  </div>
+</section>
+{% endblock %}

@@ -1,5 +1,5 @@
 x-bss-build: &bss-build
-  context: .
+  context: python-legacy
   dockerfile: services/_template/Dockerfile
 
 x-bss-service: &bss-service
@@ -11,7 +11,7 @@ services:
   catalog:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/catalog/Dockerfile
     ports: ["8001:8000"]
     environment: { BSS_SERVICE_NAME: catalog }
@@ -19,7 +19,7 @@ services:
   crm:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/crm/Dockerfile
     ports: ["8002:8000"]
     environment: { BSS_SERVICE_NAME: crm }
@@ -27,7 +27,7 @@ services:
   payment:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/payment/Dockerfile
     ports: ["8003:8000"]
     environment: { BSS_SERVICE_NAME: payment }
@@ -35,7 +35,7 @@ services:
   com:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/com/Dockerfile
     ports: ["8004:8000"]
     environment:
@@ -50,7 +50,7 @@ services:
   som:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/som/Dockerfile
     ports: ["8005:8000"]
     environment:
@@ -61,7 +61,7 @@ services:
   subscription:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/subscription/Dockerfile
     ports: ["8006:8000"]
     environment:
@@ -79,7 +79,7 @@ services:
   mediation:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/mediation/Dockerfile
     ports: ["8007:8000"]
     environment:
@@ -90,7 +90,7 @@ services:
   rating:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/rating/Dockerfile
     ports: ["8008:8000"]
     environment:
@@ -103,7 +103,7 @@ services:
   provisioning-sim:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: services/provisioning-sim/Dockerfile
     ports: ["8010:8000"]
     environment:
@@ -115,7 +115,7 @@ services:
   portal-self-serve:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: portals/self-serve/Dockerfile
     ports: ["9001:8000"]
     environment:
@@ -173,7 +173,7 @@ services:
   portal-csr:
     <<: *bss-service
     build:
-      context: .
+      context: python-legacy
       dockerfile: portals/csr/Dockerfile
     ports: ["9002:8000"]
     environment:

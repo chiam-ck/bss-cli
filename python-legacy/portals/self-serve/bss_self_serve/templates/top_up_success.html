@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Top up successful · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="top-up-success">
+  <h1 class="page-title">Top-up successful</h1>
+  <p class="page-subtitle">
+    <strong>{{ vas_offering.name or vas_offering.id }}</strong> has been
+    applied to <code class="dashboard-cust">{{ subscription.id }}</code>.
+    The charge is on your default payment method.
+  </p>
+
+  {% if balances %}
+    <ul class="top-up-balance-list">
+      {% for bal in balances %}
+        <li class="top-up-balance-row">
+          <span class="top-up-balance-label">
+            {{ bal.allowanceType | capitalize }}
+          </span>
+          <span class="top-up-balance-value">
+            {% if bal.total == -1 %}
+              Unlimited
+            {% else %}
+              {{ bal.remaining }} / {{ bal.total }} {{ bal.unit }}
+            {% endif %}
+          </span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/">Back to dashboard</a>
+    <a class="welcome-cta" href="/billing/history">View charge</a>
+  </div>
+</section>
+{% endblock %}

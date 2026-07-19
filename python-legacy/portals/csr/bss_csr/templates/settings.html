@@ -1,0 +1,61 @@
+{% extends "cockpit_layout.html" %}
+{% block title_suffix %} · Settings{% endblock %}
+
+{% block main %}
+<section class="cockpit-page settings-page">
+  <header class="cockpit-page-header">
+    <h1 class="cockpit-page-title">Operator settings</h1>
+    <span class="cockpit-meta">last loaded {{ last_loaded_at }}</span>
+  </header>
+
+  {% if flash == "operator_saved" %}
+    <p class="settings-flash">OPERATOR.md saved + reloaded.</p>
+  {% elif flash == "config_saved" %}
+    <p class="settings-flash">settings.toml saved + reloaded.</p>
+  {% endif %}
+
+  <article class="settings-block">
+    <h2>OPERATOR.md</h2>
+    <p class="settings-meta">
+      Operator persona + house rules. Prepended verbatim to every
+      cockpit system prompt. <code>{{ operator_md_path }}</code>
+    </p>
+    {% if error and error_section == "operator" %}
+      <p class="settings-error">{{ error }}</p>
+    {% endif %}
+    <form method="post" action="/settings/operator">
+      <textarea name="operator_md" rows="14" spellcheck="false" required>{{ operator_md }}</textarea>
+      <button type="submit" class="cockpit-cta-btn">Save OPERATOR.md</button>
+    </form>
+  </article>
+
+  <article class="settings-block">
+    <h2>settings.toml</h2>
+    <p class="settings-meta">
+      Machine config — model, ports, allow_destructive_default,
+      dev URL overrides. Validated by Pydantic before saving; a parse
+      error keeps the prior good view in effect.
+      <code>{{ settings_path }}</code>
+      The <code>[branding]</code> section has a visual editor at
+      <a href="/settings/branding">Settings → Branding</a>.
+    </p>
+    {% if error and error_section == "config" %}
+      <p class="settings-error">{{ error }}</p>
+    {% endif %}
+    <form method="post" action="/settings/config">
+      <textarea name="settings_toml" rows="20" spellcheck="false" required>{{ settings_toml }}</textarea>
+      <button type="submit" class="cockpit-cta-btn">Save settings.toml</button>
+    </form>
+  </article>
+
+  <article class="settings-block settings-diagnostics">
+    <h2>Diagnostics</h2>
+    <dl>
+      <div><dt>Actor</dt><dd><code>{{ actor }}</code> <span class="settings-meta">(hardcoded — single-operator-by-design)</span></dd></div>
+      <div><dt>Model</dt><dd><code>{{ model }}</code></dd></div>
+      <div><dt>OPERATOR.md path</dt><dd><code>{{ operator_md_path }}</code></dd></div>
+      <div><dt>settings.toml path</dt><dd><code>{{ settings_path }}</code></dd></div>
+    </dl>
+  </article>
+</section>
+{% endblock %}

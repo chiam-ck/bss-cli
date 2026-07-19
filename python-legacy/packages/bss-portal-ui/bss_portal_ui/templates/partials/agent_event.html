@@ -1,0 +1,16 @@
+{# One agent event row. Rendered server-side and streamed as an SSE frame.
+   Expected context: ``event`` — dict with keys ``kind`` (prompt|tool_started|
+   tool_completed|final|error), ``icon``, ``title``, ``detail`` (optional),
+   ``detail_full`` (optional, hover-reveal), ``is_error`` (bool).
+#}
+<li class="agent-event agent-event--{{ event.kind }}{% if event.is_error %} agent-event--error{% endif %}">
+  <span class="agent-event-icon">{{ event.icon }}</span>
+  <div class="agent-event-body">
+    <div class="agent-event-title">{{ event.title }}</div>
+    {% if event.detail %}
+      <div class="agent-event-detail" {% if event.detail_full and event.detail_full != event.detail %}title="{{ event.detail_full }}"{% endif %}>
+        {{ event.detail }}
+      </div>
+    {% endif %}
+  </div>
+</li>

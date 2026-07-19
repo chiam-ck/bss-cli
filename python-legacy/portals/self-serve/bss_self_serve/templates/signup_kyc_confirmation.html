@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Verification complete · {{ branding().brand_name }}{% endblock %}
+
+{% block main %}
+<section class="signup-step">
+  <h2>✓ Verification complete</h2>
+  <p>
+    Your identity verification has been received. You can close this
+    page.
+  </p>
+  <p class="form-hint">
+    Return to the device where you started signup — your in-progress
+    signup is continuing automatically. The other tab will advance to
+    the next step within a few seconds.
+  </p>
+  <p class="form-hint">
+    If you started <em>and</em> completed verification on the same
+    device, return to that browser tab and wait — it should advance
+    on its own. If you closed the tab, log back into the portal and
+    your in-progress signup will resume from where it left off.
+  </p>
+</section>
+{% endblock %}

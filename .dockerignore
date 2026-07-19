@@ -1,9 +1,15 @@
 .git
 .gitignore
-# Rust build artifacts — 9GB+; never in the build context (the Rust portal images
-# use this repo-root context to reach the shared Python asset trees they serve).
-rust/target/
+# Build artifacts — 9GB+; never in the build context.
+target/
 **/target/
+rust/
+*.log
+# The Python oracle (post-2.0-flip): kept in-tree for golden-diffs but never part
+# of any Rust image build context. The Rust portals own their assets under
+# portals/*/assets and crates/bss-portal-ui/assets (decoupled from python-legacy).
+python-legacy/
+# Not needed by any image build.
 *.md
 phases/
 docs/
@@ -16,6 +22,8 @@ __pycache__
 .mypy_cache
 .ruff_cache
 .pytest_cache
+.hypothesis
+.coverage
 *.egg-info
 .venv
 .DS_Store

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Welcome · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="welcome-card">
+  <h1 class="page-title">{{ branding().brand_name }} self-serve</h1>
+  <p class="page-subtitle">
+    Prepaid mobile bundles, no contract. Pick a plan, verify your email,
+    pay with a card, get an eSIM QR code in under a minute.
+  </p>
+
+  <div class="welcome-cta-row">
+    {% if is_signed_in %}
+      <a class="welcome-cta welcome-cta--primary" href="/">My account</a>
+      <a class="welcome-cta" href="/plans">Browse plans</a>
+    {% else %}
+      <a class="welcome-cta welcome-cta--primary" href="/auth/login">Sign in</a>
+      <a class="welcome-cta" href="/plans">Browse plans</a>
+    {% endif %}
+  </div>
+
+  <p class="welcome-foot">
+    Already have a code? <a href="/auth/login">Continue signing in.</a>
+  </p>
+</section>
+{% endblock %}

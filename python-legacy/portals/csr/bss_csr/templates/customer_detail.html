@@ -1,0 +1,233 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, handoff, flashes, balance_bars, panel, danger %}
+{% block title_suffix %} · {{ customer.id }}{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  <a class="back-link" href="/customers">← customers</a>
+
+  {{ flashes(flash, err) }}
+
+  <header class="crm-detail-header">
+    <div class="crm-detail-title-row">
+      <h1 class="page-title">{{ customer.name }}</h1>
+      <span class="crm-detail-id">{{ customer.id }}</span>
+      {{ badge(customer.status) }}
+      <span class="crm-badge {% if customer.kyc_status == 'verified' %}crm-badge--ok{% else %}crm-badge--warn{% endif %}">KYC {{ customer.kyc_status }}</span>
+    </div>
+    <dl class="crm-meta-strip">
+      {% if customer.msisdn %}<div><dt>MSISDN</dt><dd><code>{{ customer.msisdn }}</code></dd></div>{% endif %}
+      {% if customer.email %}<div><dt>Email</dt><dd>{{ customer.email }}</dd></div>{% endif %}
+      {% if customer.created_at != "—" %}<div><dt>Since</dt><dd><code>{{ customer.created_at }}</code></dd></div>{% endif %}
+    </dl>
+    <div class="crm-actions">
+      <form method="post" action="/search/start_session">
+        <input type="hidden" name="customer_id" value="{{ customer.id }}" />
+        <button type="submit" class="btn-primary">Open chat session</button>
+      </form>
+      {{ handoff("Ask the agent", "About customer " ~ customer.id ~ ": ", customer.id) }}
+      {% if customer.status != "closed" %}
+        {% call danger("Close customer…", "/customers/" ~ customer.id ~ "/close",
+                       "Closes " ~ customer.id ~ " for good. Requires all subscriptions terminated; the policy layer will refuse otherwise.",
+                       "Close " ~ customer.id) %}{% endcall %}
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="crm-grid">
+    <div class="crm-grid-main">
+
+      {% call panel("Subscriptions", subscriptions | length) %}
+        {% if not subs_ok %}<p class="crm-section-warn">Subscription service unavailable — data may be incomplete.</p>{% endif %}
+        {% for s in subscriptions %}
+        <article class="crm-line-card{% if s.state == 'blocked' %} crm-line-card--err{% endif %}">
+          <header>
+            <a href="/subscriptions/{{ s.id }}"><code>{{ s.id }}</code></a>
+            <span>{{ s.offering_id }}</span>
+            <code class="crm-muted">{{ s.msisdn }}</code>
+            <span class="crm-spacer"></span>
+            {{ badge(s.state) }}
+          </header>
+          {{ balance_bars(s.balances) }}
+          <footer>
+            renews {{ s.next_renewal }}
+            <a href="/subscriptions/{{ s.id }}">manage →</a>
+          </footer>
+        </article>
+        {% else %}
+        <p class="empty-state">No subscriptions.</p>
+        {% endfor %}
+      {% endcall %}
+
+      {% call panel("Orders", orders | length) %}
+        {% if not orders_ok %}<p class="crm-section-warn">Order service unavailable — data may be incomplete.</p>{% endif %}
+        {% if orders %}
+        <table class="crm-table">
+          <thead><tr><th>ID</th><th>Offering</th><th>State</th><th>Placed</th><th>Completed</th></tr></thead>
+          <tbody>
+            {% for o in orders %}
+            <tr>
+              <td><a href="/orders/{{ o.id }}"><code>{{ o.id }}</code></a></td>
+              <td>{{ o.offering_id }}</td>
+              <td>{{ badge(o.state) }}</td>
+              <td><code>{{ o.order_date }}</code></td>
+              <td><code>{{ o.completed_date }}</code></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No orders yet.</p>
+        {% endif %}
+        <details class="crm-inline-form">
+          <summary>New order for {{ customer.id }}</summary>
+          <form method="post" action="/orders/create" class="crm-form">
+            <input type="hidden" name="customer_id" value="{{ customer.id }}" />
+            <label><span>Offering</span><input type="text" name="offering_id" placeholder="PLAN_M" required /></label>
+            <label><span>MSISDN preference</span><input type="text" name="msisdn_preference" placeholder="(optional)" /></label>
+            <label><span>Promo code</span><input type="text" name="discount_code" placeholder="(optional)" /></label>
+            <button type="submit" class="btn-primary">Create order</button>
+          </form>
+        </details>
+      {% endcall %}
+
+      {% call panel("Cases", cases | length) %}
+        {% if not cases_ok %}<p class="crm-section-warn">Case data unavailable.</p>{% endif %}
+        {% if cases %}
+        <table class="crm-table">
+          <thead><tr><th>ID</th><th>Subject</th><th>State</th><th>Priority</th><th>Tickets</th><th>Opened</th></tr></thead>
+          <tbody>
+            {% for c in cases %}
+            <tr>
+              <td><a href="/case/{{ c.id }}"><code>{{ c.id }}</code></a></td>
+              <td><a href="/case/{{ c.id }}" class="crm-row-link">{{ c.subject }}</a></td>
+              <td>{{ badge(c.state) }}</td>
+              <td>{{ c.priority }}</td>
+              <td class="num">{{ c.ticket_count }}</td>
+              <td><code>{{ c.opened_at }}</code></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No cases.</p>
+        {% endif %}
+        <details class="crm-inline-form">
+          <summary>Open a case</summary>
+          <form method="post" action="/customers/{{ customer.id }}/case" class="crm-form">
+            <label class="crm-form-span"><span>Subject</span><input type="text" name="subject" required maxlength="200" /></label>
+            <label><span>Category</span>
+              <select name="category">
+                {% for c in ["technical", "billing", "account", "information"] %}
+                <option value="{{ c }}">{{ c }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label><span>Priority</span>
+              <select name="priority">
+                {% for p in ["low", "normal", "medium", "high", "critical"] %}
+                <option value="{{ p }}" {% if p == "normal" %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label class="crm-form-span"><span>Description</span><textarea name="description" rows="2"></textarea></label>
+            <button type="submit" class="btn-primary">Open case</button>
+          </form>
+        </details>
+      {% endcall %}
+
+      {% call panel("Recent interactions", interactions | length) %}
+        {% if not interactions_ok %}<p class="crm-section-warn">Interaction log unavailable.</p>{% endif %}
+        {% if interactions %}
+        <table class="crm-table">
+          <thead><tr><th>When</th><th>Channel</th><th>Direction</th><th>Summary</th></tr></thead>
+          <tbody>
+            {% for i in interactions %}
+            <tr>
+              <td><code>{{ i.at }}</code></td>
+              <td><code class="crm-muted">{{ i.channel }}</code></td>
+              <td>{{ i.direction }}</td>
+              <td>{{ i.summary }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No interactions logged.</p>
+        {% endif %}
+        <details class="crm-inline-form">
+          <summary>Log an interaction</summary>
+          <form method="post" action="/customers/{{ customer.id }}/interaction" class="crm-form">
+            <label class="crm-form-span"><span>Summary</span><input type="text" name="summary" required maxlength="300" /></label>
+            <label><span>Direction</span>
+              <select name="direction">
+                <option value="inbound">inbound</option>
+                <option value="outbound">outbound</option>
+              </select>
+            </label>
+            <button type="submit" class="btn-primary">Log it</button>
+          </form>
+        </details>
+      {% endcall %}
+
+    </div>
+    <div class="crm-grid-side">
+
+      {% call panel("Identity") %}
+        <form method="post" action="/customers/{{ customer.id }}/name" class="crm-form">
+          <label><span>Given name</span><input type="text" name="given_name" value="{{ given_name }}" required /></label>
+          <label><span>Family name</span><input type="text" name="family_name" value="{{ family_name }}" required /></label>
+          <button type="submit" class="crm-mini-btn">Update name</button>
+        </form>
+      {% endcall %}
+
+      {% call panel("Contact mediums", contact_mediums | length) %}
+        {% for cm in contact_mediums %}
+        <div class="crm-cm-row">
+          <form method="post" action="/customers/{{ customer.id }}/contact/{{ cm.id }}" class="crm-form">
+            <label><span>{{ cm.type }}</span><input type="text" name="value" value="{{ cm.value }}" required /></label>
+            <button type="submit" class="crm-mini-btn">Save</button>
+          </form>
+          {% call danger("Remove…", "/customers/" ~ customer.id ~ "/contact/" ~ cm.id ~ "/remove",
+                         "Removes this " ~ cm.type ~ " from " ~ customer.id ~ ".", "Remove") %}{% endcall %}
+        </div>
+        {% else %}
+        <p class="empty-state">No contact mediums.</p>
+        {% endfor %}
+        <details class="crm-inline-form">
+          <summary>Add contact medium</summary>
+          <form method="post" action="/customers/{{ customer.id }}/contact" class="crm-form">
+            <label><span>Type</span>
+              <select name="medium_type">
+                <option value="email">email</option>
+                <option value="mobile">mobile</option>
+              </select>
+            </label>
+            <label><span>Value</span><input type="text" name="value" required /></label>
+            <button type="submit" class="crm-mini-btn">Add</button>
+          </form>
+        </details>
+      {% endcall %}
+
+      {% call panel("Card on file", payment_methods | length) %}
+        {% if not methods_ok %}<p class="crm-section-warn">Payment service unavailable.</p>{% endif %}
+        {% if payment_methods %}
+        <ul class="crm-cof-list">
+          {% for m in payment_methods %}
+          <li class="crm-cof-card">
+            <span class="crm-cof-brand">{{ m.brand }}</span>
+            <span class="crm-cof-pan">•••• {{ m.last4 }}</span>
+            <span class="crm-cof-exp">{{ m.exp }}</span>
+            {% if m.is_default %}<span class="crm-cof-default">default</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty-state">No card on file — the customer cannot activate service (motto #2).</p>
+        {% endif %}
+      {% endcall %}
+
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Line cancelled · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="cancel-success">
+  <h1 class="page-title">Line cancelled</h1>
+  <p class="page-subtitle">
+    <code class="dashboard-cust">{{ subscription.id }}</code> is now
+    <strong>{{ subscription.state }}</strong>. The eSIM profile and
+    phone number have been released back to inventory; the activation
+    code on file no longer works.
+  </p>
+
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/">Back to dashboard</a>
+    <a class="welcome-cta" href="/plans">Sign up another line</a>
+  </div>
+</section>
+{% endblock %}

@@ -9,6 +9,15 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ## ⇢ HANDOFF (next session) — **CUTOVER DONE: `2.0` merged to `main` (Rust is mainline, `c187f96`); live DB sqlx-stamped; make targets re-pointed. Operator now testing open-endedly; only the RELEASE (Python archive + `v2.0.0` tag) is held for their go-ahead.**
 
+**2.0 FLIP landed 2026-07-19** (DECISIONS 2026-07-19 "2.0 Flip"): the Rust workspace is
+now at the **repo root** (`crates/ services/ portals/ cli/ conformance/ migrations/
+Cargo.toml`); the Python tree moved to **`python-legacy/`** (kept as the runnable oracle).
+Portal assets decoupled into `portals/*/assets` + `crates/bss-portal-ui/assets`;
+`.dockerignore` excludes `python-legacy/`; service Dockerfiles unchanged, portal
+Dockerfiles + all compose/Makefile/CI/script paths updated. Verified: `cargo check` +
+`make doctrine-check` + `cargo test -p bss-db` green from root; catalog + self-serve
+images build from root and catalog runs. `python-legacy/` retires at the release.
+
 **2.0 cutover landed 2026-07-19** (DECISIONS 2026-07-19 "2.0 Cutover"). The fixed
 14-day soak (`07-SOAK.md`) was replaced by the operator with an open-ended "test until
 ready" gate. Done: (a) `git merge --no-ff 2.0 → main` (`c187f96`, Rust mainline, Python

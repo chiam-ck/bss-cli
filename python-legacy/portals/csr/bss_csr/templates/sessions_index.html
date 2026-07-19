@@ -1,0 +1,62 @@
+{% extends "cockpit_layout.html" %}
+{% block title_suffix %} · Sessions{% endblock %}
+
+{% block main %}
+<section class="cockpit-page sessions-page">
+  <div class="cockpit-hero">
+    <h1 class="cockpit-hero-title">Hello, operator.</h1>
+    <p class="cockpit-hero-sub">Pick up where you left off, or start a fresh conversation.</p>
+    <form method="get" action="/search" class="cockpit-hero-search">
+      <input
+        type="text"
+        name="q"
+        placeholder="Search a customer by name or MSISDN…"
+        autocomplete="off"
+        autofocus
+      />
+      <button type="submit">Search</button>
+    </form>
+  </div>
+
+  <div class="sessions-section">
+    <div class="sessions-section-header">
+      <h2>Recent conversations</h2>
+      <form method="post" action="/cockpit/new" class="cockpit-inline-new">
+        <input type="hidden" name="label" value="" />
+        <button type="submit" class="cockpit-link-btn">+ New conversation</button>
+      </form>
+    </div>
+
+    {% if grouped_sessions %}
+      {% for group in grouped_sessions %}
+      <div class="sessions-group">
+        <div class="sessions-group-label">{{ group.label }}</div>
+        <ul class="sessions-list">
+          {% for s in group.rows %}
+          <li class="sessions-row">
+            <a href="/cockpit/{{ s.session_id }}" class="sessions-row-link">
+              <div class="sessions-row-title">{{ s.title }}</div>
+              <div class="sessions-row-meta">
+                {% if s.focus_label %}<span class="sessions-row-focus">{{ s.focus_label }}</span>{% endif %}
+                <span class="sessions-row-time">{{ s.last_active_human }}</span>
+                <span class="sessions-row-msgs">{{ s.message_count }} message{% if s.message_count != 1 %}s{% endif %}</span>
+              </div>
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="sessions-empty">
+        <p>No conversations yet.</p>
+        <p class="cockpit-hint">
+          Search for a customer above to dive in, or start a free-form conversation
+          with the agent — a place to ask <em>"how's the catalog looking?"</em> or
+          <em>"any blocked subscriptions today?"</em>.
+        </p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

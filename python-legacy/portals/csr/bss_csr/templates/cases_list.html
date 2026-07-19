@@ -1,0 +1,47 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, pager %}
+{% block title_suffix %} · Cases{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  <header class="crm-page-toolbar">
+    <h1 class="cockpit-page-title">Case queue</h1>
+    <form method="get" action="/cases" class="crm-filter-form">
+      <input type="text" name="customer" value="{{ customer }}"
+             placeholder="CUST-… (optional)" autocomplete="off" />
+      <select name="state">
+        <option value="">any state</option>
+        {% for s in states %}
+        <option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Filter</button>
+    </form>
+  </header>
+
+  {% if rows %}
+  <table class="crm-table">
+    <thead>
+      <tr><th>ID</th><th>Subject</th><th>Customer</th><th>State</th><th>Priority</th><th>Category</th><th>Tickets</th><th>Opened</th></tr>
+    </thead>
+    <tbody>
+      {% for c in rows %}
+      <tr>
+        <td><a href="/case/{{ c.id }}"><code>{{ c.id }}</code></a></td>
+        <td><a href="/case/{{ c.id }}" class="crm-row-link">{{ c.subject }}</a></td>
+        <td><a href="/customers/{{ c.customer_id }}"><code>{{ c.customer_id }}</code></a></td>
+        <td>{{ badge(c.state) }}</td>
+        <td>{{ c.priority }}</td>
+        <td>{{ c.category }}</td>
+        <td>{{ c.ticket_count }}</td>
+        <td><code>{{ c.opened_at }}</code></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ pager("/cases", page, has_prev, has_next, "&customer=" ~ (customer | urlencode) ~ "&state=" ~ state) }}
+  {% else %}
+  <p class="cockpit-empty">No cases match. Open one from a customer page, or ask the agent.</p>
+  {% endif %}
+</section>
+{% endblock %}

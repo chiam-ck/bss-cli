@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Cancel · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="cancel-forbidden">
+  <h1 class="page-title">Can't cancel that line</h1>
+  <p class="page-subtitle" role="alert">{{ customer_facing }}</p>
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/">Back to dashboard</a>
+  </div>
+</section>
+{% endblock %}

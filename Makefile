@@ -22,7 +22,7 @@ help:
 	@echo "  e2e                 — v1.4 Playwright suite in mock-providers mode (CLEAN=1 for full wipe)"
 	@echo "  e2e-down            — manually tear down a stuck e2e override stack"
 	@echo "  check-clock         — grep guard: all datetime.now sites route through bss-clock"
-	@echo "  doctrine-check      — (2.0) Rust grep guards over rust/; py-doctrine-check = Python guards"
+	@echo "  doctrine-check      — (2.0) Rust grep guards over the workspace; py-doctrine-check = Python guards"
 	@echo "  python-check        — warn if active Python is outside the supported 3.12 range"
 
 up: dev-mailbox-dir
@@ -59,7 +59,7 @@ python-check:
 	@# `asyncio.get_event_loop()` removed in 3.14, Pydantic V1 deprecation
 	@# warnings under LangChain. Earlier minors (<3.12) lack syntax we use.
 	@# This is a warn-only check — never fails the build, just flags drift.
-	@v=$$(uv run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'); \
+	@v=$$(cd python-legacy && uv run python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'); \
 	case "$$v" in \
 		3.12) echo "✓ python $$v (supported)" ;; \
 		3.13) echo "⚠ python $$v — newer than 3.12 target; should work but untested. See CLAUDE.md tech-stack." ;; \
@@ -71,8 +71,8 @@ python-check:
 test: rust-test
 
 py-test:
-	@failed=0; \
-	for dir in packages/bss-clients packages/bss-admin packages/bss-clock packages/bss-events packages/bss-telemetry packages/bss-middleware packages/bss-webhooks packages/bss-portal-ui packages/bss-portal-auth packages/bss-cockpit services/catalog services/crm services/payment services/subscription services/com services/som services/provisioning-sim services/mediation services/rating orchestrator cli portals/self-serve portals/csr scenarios/soak; do \
+	@cd python-legacy; failed=0; \
+	for dir in packages/bss-clients packages/bss-admin packages/bss-clock packages/bss-events packages/bss-telemetry packages/bss-middleware packages/bss-webhooks packages/bss-portal-ui packages/bss-portal-auth packages/bss-cockpit services/catalog services/crm services/payment services/subscription services/com services/som services/provisioning-sim services/mediation services/rating orchestrator cli portals/self-serve portals/csr soak; do \
 		printf "\n══ $$dir ══\n"; \
 		PYTHONPATH=$$dir/tests:$$dir:$$PYTHONPATH uv run pytest $$dir/tests/ -v -m "not integration" || failed=1; \
 	done; \
@@ -428,12 +428,12 @@ py-doctrine-check: check-clock
 fmt: rust-fmt
 
 py-fmt:
-	uv run ruff format .
+	cd python-legacy && uv run ruff format .
 
 lint: rust-lint
 
 py-lint:
-	uv run ruff check .
+	cd python-legacy && uv run ruff check .
 
 # --- Rust (2.0) dev loop. The Python targets above run the oracle; these drive the
 # Rust workspace. At final cutover (Phase 8) the canonical names re-point to these.
@@ -441,13 +441,13 @@ py-lint:
 CARGO_ENV := . "$$HOME/.cargo/env" 2>/dev/null || true
 
 rust-fmt:
-	@$(CARGO_ENV); cd rust && cargo fmt --all --check
+	@$(CARGO_ENV); cargo fmt --all --check
 
 rust-lint:
-	@$(CARGO_ENV); cd rust && cargo clippy --workspace --all-targets --all-features -- -D warnings
+	@$(CARGO_ENV); cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 rust-test:
-	@$(ENV_SOURCE); $(CARGO_ENV); cd rust && cargo test --workspace
+	@$(ENV_SOURCE); $(CARGO_ENV); cargo test --workspace
 
 # Rust counterpart to `doctrine-check`: the greppable doctrine guards over rust/.
 # (Structural guards are enforced by construction/clippy; "test" guards run via
@@ -464,7 +464,7 @@ rust-doctrine-check:
 # project burns that down. Run per component, e.g.:
 #   uv run mypy packages/bss-clients/bss_clients
 lint-types:
-	@failed=0; \
+	@cd python-legacy; failed=0; \
 	for dir in packages/bss-clients packages/bss-clock packages/bss-cockpit services/crm/app orchestrator/bss_orchestrator; do \
 		printf "\n══ mypy $$dir ══\n"; \
 		uv run mypy $$dir || failed=1; \
@@ -482,22 +482,22 @@ ENV_SOURCE := if [ -f .env ]; then set -a; . ./.env; set +a; fi
 migrate: rust-migrate
 
 py-migrate:
-	@$(ENV_SOURCE); cd packages/bss-models && uv run --package bss-models alembic upgrade head
+	@$(ENV_SOURCE); cd python-legacy/packages/bss-models && uv run --package bss-models alembic upgrade head
 
 # Phase 8 (2.0): the sqlx migrator replaces Alembic for the all-Rust stack. Fresh
 # install → applies rust/migrations/; existing (Alembic-created) DB → run once with
 # `-- --baseline` to stamp the baseline as applied without re-running it. See
 # docs/runbooks/rust-schema-baseline.md.
 rust-migrate:
-	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cd rust && cargo run --quiet -p bss-cli -- admin migrate $(ARGS)
+	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cargo run --quiet -p bss-cli -- admin migrate $(ARGS)
 
 seed: rust-seed
 
 py-seed:
-	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.main
+	@$(ENV_SOURCE); cd python-legacy && uv run --package bss-seed python -m bss_seed.main
 
 rust-seed:
-	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cd rust && cargo run --quiet -p bss-cli -- admin seed
+	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cargo run --quiet -p bss-cli -- admin seed
 
 # v1.3.1 — synced demo seed. Creates a small coherent demo dataset across
 # BSS (customers, promotions, eligibility) and loyalty-cli (registered
@@ -510,7 +510,7 @@ rust-seed:
 # reads BSS_LOYALTY_API_TOKEN from os.environ — keeps the doctrine guard
 # "tokens loaded once at startup" honest without an in-source noqa.
 seed-demo:
-	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.demo seed \
+	@$(ENV_SOURCE); cd python-legacy && uv run --package bss-seed python -m bss_seed.demo seed \
 	    --loyalty-base-url "$$BSS_LOYALTY_BASE_URL" \
 	    --loyalty-token "$$BSS_LOYALTY_API_TOKEN"
 
@@ -518,7 +518,7 @@ seed-demo:
 # (loyalty revoke + BSS delete), drops the two demo promotions, and removes
 # the demo customers from BOTH systems. Never touches operator data.
 seed-demo-reset:
-	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.demo reset \
+	@$(ENV_SOURCE); cd python-legacy && uv run --package bss-seed python -m bss_seed.demo reset \
 	    --loyalty-base-url "$$BSS_LOYALTY_BASE_URL" \
 	    --loyalty-token "$$BSS_LOYALTY_API_TOKEN"
 
@@ -527,7 +527,7 @@ seed-demo-reset:
 # running loyalty-http container's env. Companion to `make reset-db` on the
 # BSS side.
 loyalty-reset:
-	@$(ENV_SOURCE); uv run --package bss-seed python -m bss_seed.demo loyalty-wipe
+	@$(ENV_SOURCE); cd python-legacy && uv run --package bss-seed python -m bss_seed.demo loyalty-wipe
 
 # THE single button: full clean slate on BOTH systems + the synced demo seed
 # repopulated. Use after a demo session that left messy test data, or any time
@@ -549,7 +549,7 @@ demo-restore:
 # Runs on-demand (no file-watcher in containers). Idempotent —
 # unchanged sections skip via mtime + content_hash dedup.
 knowledge-reindex:
-	@$(ENV_SOURCE); uv run --package bss-cli bss admin knowledge reindex
+	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cargo run --quiet -p bss-cli -- admin knowledge reindex
 
 # Hero / general scenarios drive auth flows by reading OTPs from the
 # dev-mailbox file that LoggingEmailAdapter writes. They also run
@@ -600,7 +600,7 @@ define SCENARIOS_RUN
 		docker compose up -d --force-recreate portal-self-serve crm payment >/dev/null 2>&1 || true; \
 		trap 'if [ '"$$recreate_email"' -eq 1 ]; then sed -i "s|^BSS_PORTAL_EMAIL_PROVIDER=.*|BSS_PORTAL_EMAIL_PROVIDER='"$$prev"'|" .env; rm -f .env.bak; printf "▶ scenarios: restored BSS_PORTAL_EMAIL_PROVIDER=%s\n" "'"$$prev"'"; fi; if [ '"$$recreate_kyc"' -eq 1 ]; then sed -i "s|^BSS_PORTAL_KYC_PROVIDER=.*|BSS_PORTAL_KYC_PROVIDER='"$$prev_kyc"'|" .env; rm -f .env.bak2; if [ '"$$had_allow_prebaked"' -eq 0 ]; then sed -i "/^BSS_KYC_ALLOW_PREBAKED=/d" .env; fi; printf "▶ scenarios: restored BSS_PORTAL_KYC_PROVIDER=%s\n" "'"$$prev_kyc"'"; fi; if [ '"$$recreate_payment"' -eq 1 ]; then sed -i "s|^BSS_PAYMENT_PROVIDER=.*|BSS_PAYMENT_PROVIDER='"$$prev_payment"'|" .env; rm -f .env.bak3; printf "▶ scenarios: restored BSS_PAYMENT_PROVIDER=%s\n" "'"$$prev_payment"'"; fi; docker compose up -d --force-recreate portal-self-serve crm payment >/dev/null 2>&1 || true' EXIT INT TERM; \
 	fi; \
-	uv run bss scenario run-all scenarios $(1)
+	. "$$HOME/.cargo/env" 2>/dev/null || true; cargo run --quiet -p bss-cli -- scenario run-all scenarios $(1)
 endef
 
 scenarios:
@@ -659,7 +659,7 @@ e2e:
 	$(MAKE) demo-restore; \
 	echo "--- running playwright suite (artefacts → $$out) ---"; \
 	($(ENV_SOURCE); export BSS_E2E_REPORT_DIR="$$BSS_E2E_REPORT_DIR"; \
-	 uv run --package bss-e2e pytest packages/bss-e2e/tests/ \
+	 cd python-legacy && uv run --package bss-e2e pytest packages/bss-e2e/tests/ \
 	     --junitxml="$$out/junit.xml")
 
 # v1.5 — run the e2e suite with the cockpit autonomy mode set to
@@ -684,6 +684,7 @@ reset-db:
 	PSQL_URL=$$(echo "$$BSS_DB_URL" | sed 's|+asyncpg||'); \
 	psql "$$PSQL_URL" -c "DROP SCHEMA IF EXISTS crm, catalog, inventory, payment, order_mgmt, service_inventory, provisioning, subscription, mediation, billing, audit, portal_auth, cockpit, integrations, knowledge CASCADE;"; \
 	psql "$$PSQL_URL" -c "DELETE FROM public.alembic_version;" 2>/dev/null || true; \
+	psql "$$PSQL_URL" -c "DROP TABLE IF EXISTS public._sqlx_migrations;" 2>/dev/null || true; \
 	$(MAKE) migrate; \
 	$(MAKE) seed; \
 	$(MAKE) knowledge-reindex

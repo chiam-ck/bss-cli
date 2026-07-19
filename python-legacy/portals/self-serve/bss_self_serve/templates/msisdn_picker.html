@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Pick a number · {{ plan.id }} · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<h1 class="page-title">Pick your number for <span class="accent">{{ plan.id }}</span></h1>
+<p class="page-subtitle">
+  {{ plan.name }} · SGD {{ plan.price }}/mo — pick a Singapore mobile number
+  and we'll hand it to the agent when your order runs.
+</p>
+
+{% if numbers %}
+<div class="msisdn-grid">
+  {% for n in numbers %}
+    <a class="msisdn-tile" href="/signup/{{ plan.id }}?msisdn={{ n.raw }}">
+      <span class="msisdn-country">+65</span>
+      <span class="msisdn-number">{{ n.display }}</span>
+    </a>
+  {% endfor %}
+</div>
+
+<form class="msisdn-refresh" method="get" action="/signup/{{ plan.id }}/msisdn">
+  <label>
+    <span>Prefix</span>
+    <input type="text" name="prefix" value="{{ prefix }}" pattern="[0-9]*" placeholder="9000" />
+  </label>
+  <button class="plan-card-cta" type="submit">Show more</button>
+  <p class="form-hint">
+    The real reservation happens when the agent calls
+    <code>order.create</code> with <code>msisdn_preference</code>. If someone
+    else grabs the number first, SOM falls back to the next available one.
+  </p>
+</form>
+{% else %}
+<div class="empty-state">
+  No numbers available for that prefix — try clearing the filter or wait a moment.
+</div>
+{% endif %}
+{% endblock %}

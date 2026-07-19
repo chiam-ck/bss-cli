@@ -1,26 +1,37 @@
-FROM python:3.12-slim AS builder
+# Rust crm service (Phase 4c) — multi-stage, distroless final. Build context is the
+# `rust/` workspace root so the path-dep crates resolve. Same port (8000) as the
+# Python image it replaces.
+#
+#   docker build -f services/crm/Dockerfile -t bss-crm:rust .
+#
+# distroless has no shell/curl; compose supplies the healthcheck externally
+# (Phase 8 finalizes the `--healthcheck` flag approach).
+
+# cargo-chef (Phase 8): chef → planner → cook stages are byte-identical across all
+# 9 service Dockerfiles, so BuildKit compiles the ~450-crate dep graph ONCE and
+# every service reuses the cook layer; a source-only edit rebuilds just the
+# workspace crates + this binary. See services/catalog/Dockerfile for the rationale.
+FROM rust:1.80-slim AS chef
 WORKDIR /build
-RUN pip install --no-cache-dir uv
+COPY rust-toolchain.toml .
+RUN rustup show >/dev/null && cargo install cargo-chef --locked
 
-# v0.6: workspace-aware build via uv 0.11+ (UV_PROJECT_ENVIRONMENT).
-# Replaces the v0.1 sed workaround — see DECISIONS.md 2026-04-23.
-COPY pyproject.toml uv.lock ./
-COPY packages/ packages/
-COPY services/crm/ services/crm/
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-ENV UV_PROJECT_ENVIRONMENT=/app/.venv
-RUN uv sync --package crm --frozen --no-dev
+FROM chef AS builder
+COPY --from=planner /build/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+COPY . .
+RUN cargo build --release -p crm
 
-FROM python:3.12-slim AS runtime
-RUN useradd -m -u 1000 bss && \
-    apt-get update && apt-get install -y --no-install-recommends curl && \
-    rm -rf /var/lib/apt/lists/*
-COPY --from=builder --chown=bss:bss /app/.venv /app/.venv
-COPY --from=builder --chown=bss:bss /build /build
-WORKDIR /build
-USER bss
-ENV PATH="/app/.venv/bin:$PATH"
+FROM gcr.io/distroless/cc-debian12 AS runtime
+USER 65532:65532
+COPY --from=builder /build/target/release/crm /usr/local/bin/crm
 EXPOSE 8000
+# Distroless has no curl; the binary self-probes GET /health via --healthcheck
+# (mirrors the Python image's `curl -f http://localhost:8000/health || exit 1`).
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
-CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+  CMD ["/usr/local/bin/crm", "--healthcheck"]
+ENTRYPOINT ["/usr/local/bin/crm"]

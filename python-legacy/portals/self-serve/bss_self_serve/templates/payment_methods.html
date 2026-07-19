@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Payment methods · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="cof">
+  <h1 class="page-title">Payment methods</h1>
+
+  {% if error %}
+    <p class="form-error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  {% if request.query_params.get('flash') == 'added' %}
+    <p class="form-flash" role="status">Card added.</p>
+  {% elif request.query_params.get('flash') == 'removed' %}
+    <p class="form-flash" role="status">Card removed.</p>
+  {% elif request.query_params.get('flash') == 'default_set' %}
+    <p class="form-flash" role="status">Default payment method updated.</p>
+  {% endif %}
+
+  {% if methods %}
+    <ul class="cof-list">
+      {% for m in methods %}
+        <li class="cof-card {% if m.isDefault %}cof-card--default{% endif %}">
+          {# v0.16 fix — TMF response nests card metadata under
+             cardSummary, not top-level. The previous template read
+             m.brand / m.last4 / m.expMonth (all None at top level),
+             which has rendered "? •••• 00 / ----" for every card
+             since the page launched in v0.10. Same pre-existing bug
+             that bit billing-history. #}
+          {% set cs = m.cardSummary or {} %}
+          <header class="cof-card-header">
+            <span class="cof-card-brand">{{ (cs.brand or m.brand or '?') | upper }}</span>
+            <span class="cof-card-last4">•••• {{ cs.last4 or m.last4 or '----' }}</span>
+            <span class="cof-card-expiry">
+              {{ '%02d' | format(cs.expMonth or m.expMonth or 0) }} /
+              {{ cs.expYear or m.expYear or '----' }}
+            </span>
+            {% if m.isDefault %}
+              <span class="cof-card-badge">Default</span>
+            {% endif %}
+          </header>
+          <div class="cof-card-actions">
+            {% if not m.isDefault %}
+              <form method="post"
+                    action="/payment-methods/{{ m.id }}/set-default"
+                    class="cof-action-form">
+                <button type="submit" class="welcome-cta">Set as default</button>
+              </form>
+            {% endif %}
+            <form method="post"
+                  action="/payment-methods/{{ m.id }}/remove"
+                  class="cof-action-form"
+                  onsubmit="return confirm('Remove this card?')">
+              <button type="submit" class="welcome-cta cof-remove">Remove</button>
+            </form>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="page-subtitle">No cards on file yet.</p>
+  {% endif %}
+
+  <div class="dashboard-actions">
+    <a class="welcome-cta welcome-cta--primary" href="/payment-methods/add">Add a card</a>
+    <a class="welcome-cta" href="/">Back to dashboard</a>
+  </div>
+</section>
+{% endblock %}

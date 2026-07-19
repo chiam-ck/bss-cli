@@ -14,61 +14,62 @@
 services:
   rating:
     build:
-      context: rust
+      context: .
       dockerfile: services/rating/Dockerfile
     image: bss-rating:rust
   catalog:
     build:
-      context: rust
+      context: .
       dockerfile: services/catalog/Dockerfile
     image: bss-catalog:rust
   com:
     build:
-      context: rust
+      context: .
       dockerfile: services/com/Dockerfile
     image: bss-com:rust
   mediation:
     build:
-      context: rust
+      context: .
       dockerfile: services/mediation/Dockerfile
     image: bss-mediation:rust
   provisioning-sim:
     build:
-      context: rust
+      context: .
       dockerfile: services/provisioning-sim/Dockerfile
     image: bss-provisioning-sim:rust
   som:
     build:
-      context: rust
+      context: .
       dockerfile: services/som/Dockerfile
     image: bss-som:rust
   payment:
     build:
-      context: rust
+      context: .
       dockerfile: services/payment/Dockerfile
     image: bss-payment:rust
   subscription:
     build:
-      context: rust
+      context: .
       dockerfile: services/subscription/Dockerfile
     image: bss-subscription:rust
   crm:
     build:
-      context: rust
+      context: .
       dockerfile: services/crm/Dockerfile
     image: bss-crm:rust
-  # Portals (P6). Context is the repo root (not rust/) so the image can bundle the
-  # shared Jinja templates + static assets the Rust portals serve from disk, reused
-  # verbatim from the Python source tree. All other config (ports, env, volumes,
-  # network) comes from the base compose's portal definitions via the *bss-service
-  # anchor — this overlay only swaps the build + image.
+  # Portals (P6). Post-2.0-flip the Rust workspace is at the repo root, so the build
+  # context is `.` (same as the services now). The images bundle the Jinja templates +
+  # static assets the Rust portals serve from disk, now owned under portals/*/assets +
+  # crates/bss-portal-ui/assets (decoupled from python-legacy). All other config
+  # (ports, env, volumes, network) comes from the base compose's portal definitions —
+  # this overlay only swaps the build + image.
   portal-self-serve:
     build:
       context: .
-      dockerfile: rust/portals/self-serve/Dockerfile
+      dockerfile: portals/self-serve/Dockerfile
     image: bss-portal-self-serve:rust
   portal-csr:
     build:
       context: .
-      dockerfile: rust/portals/csr/Dockerfile
+      dockerfile: portals/csr/Dockerfile
     image: bss-portal-csr:rust

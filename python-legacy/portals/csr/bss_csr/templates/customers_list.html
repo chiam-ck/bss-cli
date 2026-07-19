@@ -1,0 +1,53 @@
+{% extends "cockpit_layout.html" %}
+{% from "partials/crm_macros.html" import badge, pager %}
+{% block title_suffix %} · Customers{% endblock %}
+
+{% block main %}
+<section class="cockpit-page crm-page">
+  <header class="crm-page-toolbar">
+    <h1 class="cockpit-page-title">Customers</h1>
+    <form method="get" action="/customers" class="crm-filter-form">
+      <input type="text" name="q" value="{{ q }}"
+             placeholder="Name fragment or MSISDN…" autocomplete="off" autofocus />
+      <select name="state">
+        <option value="">any state</option>
+        {% for s in states %}
+        <option value="{{ s }}" {% if s == state %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Filter</button>
+    </form>
+  </header>
+
+  {% if rows %}
+  <table class="crm-table">
+    <thead>
+      <tr><th>ID</th><th>Name</th><th>Status</th><th>KYC</th><th>MSISDN</th><th>Email</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><a href="/customers/{{ r.id }}"><code>{{ r.id }}</code></a></td>
+        <td><a href="/customers/{{ r.id }}" class="crm-row-link">{{ r.name }}</a></td>
+        <td>{{ badge(r.status) }}</td>
+        <td>{{ r.kyc_status }}</td>
+        <td><code>{{ r.msisdn or "—" }}</code></td>
+        <td>{{ r.email or "—" }}</td>
+        <td class="crm-row-actions">
+          <form method="post" action="/search/start_session">
+            <input type="hidden" name="customer_id" value="{{ r.id }}" />
+            <button type="submit" class="crm-mini-btn" title="Open a chat session pinned to this customer">chat</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {{ pager("/customers", page, has_prev, has_next, "&q=" ~ (q | urlencode) ~ "&state=" ~ state) }}
+  {% elif q or state %}
+  <p class="cockpit-empty">No customer matches the filter.</p>
+  {% else %}
+  <p class="cockpit-empty">No customers yet. Sign one up via the self-serve portal or seed demo data.</p>
+  {% endif %}
+</section>
+{% endblock %}
