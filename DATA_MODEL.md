@@ -1,5 +1,11 @@
 # DATA_MODEL.md — BSS-CLI (v3)
 
+> **2.0 — all-Rust (Phase 0 amendment 2026-07-19).** The rewrite was behaviour-frozen:
+> the schema, tables, columns, and constraints in this document are **unchanged** —
+> the 2.0 sqlx baseline (`migrations/0001_baseline.sql`) is the frozen end-state of the
+> same Alembic tree. Only the access layer changed: SQLAlchemy/asyncpg → `sqlx`, Alembic
+> → the sqlx migrator (`bss admin migrate`). See CLAUDE.md "Tech stack".
+
 **Single PostgreSQL 16 instance. Schema-per-domain. ~38 tables across 12 schemas.**
 
 Services NEVER read each other's schemas directly. The schema boundary is enforced socially in v0.1 and will be enforced mechanically (separate Postgres instances) in any later split. Each service configures its own `BSS_DB_URL` pointing at the shared instance.

@@ -2,6 +2,15 @@
 
 > **This file is your contract.** Read it at the start of every session. Do not deviate without an explicit Phase 0 amendment from the human.
 
+> **2.0 — all-Rust (Phase 0 amendment 2026-07-19).** The codebase is now a **Rust**
+> Cargo workspace at the repo root (`crates/ services/ portals/ cli/ migrations/`).
+> The rewrite was behaviour-frozen: motto, scope, write-policy, TMF surfaces, events,
+> DB schema, and the LLM tool surface are all unchanged — so **the doctrine below
+> holds verbatim**; only the *implementation stack* changed (see "Tech stack" for the
+> Python→Rust mapping). Python file/module names that appear throughout this doc name
+> the pre-2.0 originals (preserved in `python-legacy/` + git history) and map 1:1 to
+> their Rust equivalents. See `phases/2.0/` + DECISIONS 2026-07-19 (×3).
+
 ## What this project is
 
 **BSS-CLI** is a complete, lightweight, SID-aligned, TMF-compliant Business Support System designed to run entirely from a terminal. It is LLM-native: every operation is exposed as a tool the LLM can call, and the primary UI is the CLI plus ASCII-rendered visualizations. Analytics is out of scope in v0.x — `audit.domain_event` is the substrate; an external BI consumer plugs in BYOI against the shared Postgres if needed.
@@ -153,30 +162,44 @@ Two distinct planes:
 
 **Postgres is NOT a RabbitMQ consumer.** Each service writes directly to its own schema. The `audit.domain_event` row is written in the same DB transaction as the domain write; the RabbitMQ publish happens after commit (simplified outbox — best-effort delivery backed by the durable audit log).
 
-## Tech stack (frozen for v0.x)
+## Tech stack (2.0 — all-Rust; Phase 0 amendment 2026-07-19)
 
-- **Language:** Python 3.12
-- **Package manager:** `uv` with workspace layout
-- **Web framework:** FastAPI (async everywhere)
-- **ORM:** SQLAlchemy 2.0 async + asyncpg
-- **Migrations:** Alembic
-- **Validation:** Pydantic v2
-- **State machines:** `transitions` library
-- **Messaging:** RabbitMQ via `aio-pika`
-- **CLI:** Typer + Rich
-- **LLM orchestrator:** LangGraph
-- **LLM gateway:** OpenRouter via the openai SDK (no LiteLLM hop) → `deepseek/deepseek-v4-pro` (v1.5.1+; previously `google/gemma-4-26b-a4b-it` v0.10.0–v1.5, swapped because Gemma needed too much defensive scaffolding to emit clean tool_calls — see DECISIONS 2026-05-26; before that, MiMo v2 Flash v0.10.0–, swapped for tool-call latency regression — DECISIONS 2026-04-27)
+> **Stack changed in 2.0.** BSS-CLI was rewritten Python → **Rust** (strangler-fig,
+> behaviour-frozen — wire contracts, events, payloads, DB schema, and the LLM tool
+> surface are byte-compatible; see `phases/2.0/` + DECISIONS 2026-07-19). The Rust
+> workspace is the repo root; the retired Python implementation is preserved in
+> `python-legacy/` (the reproducible oracle) and git history. **Path/module names
+> elsewhere in this doc still read as the Python originals** — the doctrine they
+> express is unchanged and maps 1:1 to the Rust equivalents (`services/<svc>/app/…`
+> → `services/<svc>/src/…`; `*.py` guards → `scripts/rust_doctrine_check.sh`;
+> `packages/bss-*` → `crates/bss-*`; `auth_context.py` → `bss-context`).
+
+- **Language:** Rust (stable, pinned via `rust-toolchain.toml`)
+- **Package manager / build:** `cargo` workspace (`Cargo.toml` at the repo root; `cargo-chef` layer caching)
+- **Web framework:** `axum` 0.7 (async, over `tower`/`hyper`)
+- **DB access:** `sqlx` 0.8 async + `sqlx-postgres` (runtime queries, not the compile-time-checked macros)
+- **Migrations:** the `sqlx` migrator (`migrations/`, run by `bss admin migrate`) — Alembic is frozen
+- **Validation / serialization:** `serde` + `serde_json` (with `preserve_order` to match Python insertion order)
+- **State machines:** hand-rolled in the service layer (the FSM transitions ported 1:1; no `transitions`-library equivalent)
+- **Messaging:** RabbitMQ via `lapin` (staging + outbox relay + safe retry/park consumer in `bss-events`)
+- **CLI / REPL:** `clap` (command tree) + `reedline` (REPL) + the `bss-cockpit` ASCII renderers (Rich-equivalent)
+- **LLM orchestrator:** hand-rolled ReAct loop (`bss-orchestrator`, `astream_once`) — replaces LangGraph
+- **LLM gateway:** OpenRouter via `reqwest` direct (`OpenRouterChatModel`) → `deepseek/deepseek-v4-pro` (v1.5.1+; previously `google/gemma-4-26b-a4b-it` v0.10.0–v1.5, swapped because Gemma needed too much defensive scaffolding to emit clean tool_calls — DECISIONS 2026-05-26; before that, MiMo v2 Flash v0.10.0–, swapped for tool-call latency regression — DECISIONS 2026-04-27)
 - **Database:** PostgreSQL 16, **single instance**, schema-per-domain (see ARCHITECTURE.md for future split path)
 - **Vector DB (post-v0.1):** pgvector extension on the same Postgres instance (schema `knowledge`)
 - **Reporting:** out of scope in-tree (BYOI against `audit.domain_event`)
-- **Logging:** structlog (JSON)
-- **Tracing (v0.2):** OpenTelemetry SDK + auto-instrumentors (FastAPI, HTTPX, AsyncPG, AioPika); OTLP/HTTP export to Jaeger
-- **Auth (v0.3):** Shared `BSS_API_TOKEN` middleware (`packages/bss-middleware`) on every BSS service; `TokenAuthProvider` on every outbound client. Per-principal OAuth2 / JWT is Phase 12.
-- **Portals (v0.4-v0.5):** FastAPI + Jinja + HTMX, server-rendered HTML, vendored `htmx.min.js` + `htmx-sse.js`. No React/Vue/Svelte, no bundler, no npm. Shared widgets in `packages/bss-portal-ui`.
-- **Internal packages:** `bss-clients`, `bss-clock`, `bss-cockpit` (v0.13), `bss-events`, `bss-middleware`, `bss-telemetry`, `bss-portal-ui`, `bss-portal-auth`, `bss-admin`, `bss-models`, `bss-seed` — all under `packages/` as `uv` workspace members.
-- **Testing:** pytest + pytest-asyncio + httpx AsyncClient
-- **Linting:** ruff + black + mypy
-- **Container:** multi-stage Dockerfiles, non-root users, distroless final stage where practical
+- **Logging:** `tracing` (JSON subscriber)
+- **Tracing (v0.2):** OpenTelemetry Rust SDK, OTLP/HTTP export to Jaeger. **No auto-instrumentors in Rust** — the distributed trace is hand-stitched at 4 seams, all OTel API confined to `bss-telemetry::propagation` (DECISIONS/PROGRESS, P6 OTel conformance)
+- **Auth (v0.3):** Shared `BSS_API_TOKEN` middleware (`crates/bss-middleware`) on every BSS service; `TokenAuthProvider` on every outbound client. Per-principal OAuth2 / JWT is Phase 12.
+- **Portals (v0.4-v0.5):** `axum` + `MiniJinja` (renders the same Jinja templates verbatim) + HTMX, server-rendered HTML, vendored `htmx.min.js` + `htmx-sse.js`. No React/Vue/Svelte, no bundler, no npm. Templates/static live in `portals/*/assets` + `crates/bss-portal-ui/assets`.
+- **Internal crates:** `bss-clients`, `bss-clock`, `bss-cockpit` (v0.13), `bss-events`, `bss-middleware`, `bss-telemetry`, `bss-portal-ui`, `bss-portal-auth`, `bss-admin`, `bss-models`, `bss-db`, `bss-context`, `bss-branding`, `bss-webhooks`, `bss-knowledge`, `bss-orchestrator` — all under `crates/` as Cargo workspace members.
+- **Testing:** `cargo test` (unit + integration; live-smoke tests are `#[ignore]`; a `conformance` bin for the live stack)
+- **Linting:** `rustfmt` + `clippy` (`-D warnings`; `unsafe` forbidden, `unwrap`/`expect` denied in non-test code)
+- **Container:** multi-stage `cargo-chef` Dockerfiles, non-root distroless final stage, self-probe `--healthcheck`
+
+**Pre-2.0 (Python, retired — preserved in `python-legacy/` + git history):** Python 3.12
+· `uv` · FastAPI · SQLAlchemy 2.0 async + asyncpg · Alembic · Pydantic v2 · `transitions` ·
+`aio-pika` · Typer + Rich · LangGraph · openai SDK · structlog · pytest · ruff + black + mypy.
 
 ## Deployment model
 

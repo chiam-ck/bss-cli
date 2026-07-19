@@ -1,5 +1,14 @@
 # ARCHITECTURE.md — BSS-CLI (v3)
 
+> **2.0 — all-Rust (Phase 0 amendment 2026-07-19).** BSS-CLI was rewritten Python →
+> Rust, behaviour-frozen — the **topology, ports, schema boundaries, token flow, and
+> the split path in this document are unchanged**. Only the implementation stack
+> changed (see CLAUDE.md "Tech stack"): FastAPI→axum, SQLAlchemy→sqlx, aio-pika→lapin,
+> LangGraph→a hand-rolled ReAct loop, Alembic→the sqlx migrator. One notable delta:
+> Rust has **no OTel auto-instrumentors** — the distributed trace is hand-stitched at
+> 4 seams (all OTel API in `bss-telemetry::propagation`); the auto-instrumentor
+> description in the Observability section reflects the retired Python approach.
+
 ## Topology
 
 Three callers — **CLI** (terminal-native), **self-serve portal** (public signup, port 9001), and **CSR console** (operator workbench, port 9002) — reach the 9 services through one of two paths: **direct via `bss-clients`** for deterministic routine flows (every CLI/REPL call, every read, every post-login self-serve write, every signup step from v0.11), or **orchestrator-mediated via `astream_once`** for flows that need LLM judgment (the CSR `ask` agent surface, the chat route on the self-serve portal). Inside, two planes connect the 9 services: **synchronous HTTP (TMF APIs)** for calls that need an immediate answer, and **asynchronous events (RabbitMQ topic exchange)** for reactions. Postgres is accessed directly by each service's own writes — the message broker is not a database pipe.

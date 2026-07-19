@@ -1,6 +1,12 @@
 # TOOL_SURFACE.md — BSS-CLI LLM Tool Surface (v3)
 
-The LangGraph orchestrator exposes ~65 tools. Every tool is a thin async function that calls a `bss-clients` method. **Tools contain no business logic.** The supervisor handles retries, planning, and error recovery.
+> **2.0 — all-Rust (Phase 0 amendment 2026-07-19).** The rewrite was behaviour-frozen:
+> the tool surface, names, arguments, and semantics in this document are **unchanged**.
+> Only the implementation changed — the orchestrator is now a hand-rolled ReAct loop in
+> the `bss-orchestrator` crate (not LangGraph), and each tool is a Rust closure over a
+> typed `bss-clients` call. See CLAUDE.md "Tech stack".
+
+The orchestrator (a hand-rolled ReAct loop in `bss-orchestrator`, replacing LangGraph) exposes ~65 tools. Every tool is a thin closure that calls a `bss-clients` method. **Tools contain no business logic.** The loop handles retries, planning, and error recovery.
 
 Every write tool goes through the service's policy layer. A tool call that violates a policy returns a structured `PolicyViolation` observation — the LLM reads the `rule` field and can retry or ask the user.
 
