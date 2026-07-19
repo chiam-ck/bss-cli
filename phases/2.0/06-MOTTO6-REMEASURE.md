@@ -20,37 +20,50 @@ margins**, not an assertion.
 
 | Metric | Budget | Python (`05-BASELINE`) | **Rust (now)** | Improvement |
 |---|---|---|---|---|
-| Full-stack RAM (11 app) | < 4 GB | 1204 MiB (1.18 GiB) | **81.7 MiB (0.08 GiB)** | **~14.7× smaller** — **2.0%** of budget |
+| Full-stack RAM (11 app) | < 4 GB | 1204 MiB (1.18 GiB) | **~138 MiB (0.13 GiB)** steady-state | **~8.7× smaller** — **3.4%** of budget |
 | Cold start (all 11 together) | < 30 s | 6.36 s | **3.08 s** | **~2.1× faster** |
 | p99 `/health` floor | < 50 ms | 12.8 ms | **6.16 ms** | ~2× lower tail |
 | p99 real DB read (under load) | < 50 ms | (floor only) | **8.47 ms** (`/vas/offering`) | **under budget** |
 
 All three motto-#6 budgets are met with large headroom. RAM is the headline: the
-whole app plane fits in **~82 MiB**, 2% of the 4 GB budget.
+whole app plane runs in **~138 MiB** steady-state — **3.4%** of the 4 GB budget. (An
+earlier snapshot read ~82 MiB, but that was taken seconds after boot before the MQ
+consumers had connected — see §2 for the honest breakdown.)
 
-## 2. Runtime memory (app plane, idle)
+## 2. Runtime memory (app plane, steady-state idle)
 
-`docker stats --no-stream`, idle:
+`docker stats --no-stream`, **steady-state idle** (all RabbitMQ consumers connected +
+background workers ticking, no request load):
 
 | Container | RSS (Rust) | (Python was) |
 |---|---|---|
-| mediation | 13.1 MiB | 91.3 |
-| rating | 11.8 MiB | ~90 |
-| provisioning-sim | 11.3 MiB | 93.3 |
-| portal-csr | 8.7 MiB | 137.2 |
-| subscription | 8.5 MiB | 107.3 |
-| portal-self-serve | 6.0 MiB | 155.5 |
-| catalog | 5.8 MiB | 101.4 |
-| crm | 5.7 MiB | 106.0 |
-| com | 5.6 MiB | 100.1 |
-| som | 3.0 MiB | 96.3 |
-| payment | 1.7 MiB | 104.1 |
-| **Total (11)** | **81.7 MiB** | **1204 MiB** |
+| subscription | 27.8 MiB | 107.3 |
+| som | 26.6 MiB | 96.3 |
+| rating | 19.2 MiB | ~90 |
+| com | 17.2 MiB | 100.1 |
+| crm | 11.0 MiB | 106.0 |
+| payment | 10.0 MiB | 104.1 |
+| mediation | 9.3 MiB | 91.3 |
+| provisioning-sim | 9.3 MiB | 93.3 |
+| portal-self-serve | 3.0 MiB | 155.5 |
+| portal-csr | 2.5 MiB | 137.2 |
+| catalog | 2.0 MiB | 101.4 |
+| **Total (11)** | **~138 MiB** | **1204 MiB** |
 
 Per-container RSS collapses from ~90–155 MiB (Python interpreter + FastAPI +
-SQLAlchemy/asyncpg + aio-pika + OTel, per process) to **~2–13 MiB** static
-binaries. The two portals — the Python memory tail at 137–155 MiB — are now 6–9 MiB,
-no longer the tail.
+SQLAlchemy/asyncpg + aio-pika + OTel, per process) to **~2–28 MiB** static binaries.
+The heavier Rust services (subscription/som/rating/com, ~17–28 MiB) are exactly the
+ones running **background workers + RabbitMQ consumers** — the renewal tick loop, the
+`usage.rated`/provisioning/order consumers holding channels + prefetch buffers. The
+pure request/response services + the two portals are ~2–11 MiB (the portals, Python's
+137–155 MiB memory tail, are now 2–3 MiB).
+
+**On the ~82 vs ~138 figures (why 138 is the honest one).** An earlier snapshot caught
+the app plane at ~81.7 MiB, but it was taken seconds after boot — *before* the MQ
+consumers finished attaching to RabbitMQ (som read 3 MiB then vs ~27 settled). **~138
+MiB is the honest steady-state idle**: consumers connected, workers running, zero
+request load. ~82 MiB is the just-booted low; ~160 MiB is the under-load high (§4).
+The Python 1204 MiB baseline was measured idle, so idle-vs-idle → **~8.7× smaller**.
 
 ## 3. Cold start (all 11 started together)
 
