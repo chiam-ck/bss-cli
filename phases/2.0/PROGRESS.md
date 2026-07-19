@@ -7,7 +7,7 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — Phase 7 DONE; **P6 acceptance 19/19 COMPLETE (OTel conformance landed)**
+## ⇢ HANDOFF (next session) — **Phase 8 STARTED: cargo-chef dep caching DONE**; Phase 7 + P6 acceptance 19/19 complete
 
 **Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
 (s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
@@ -49,15 +49,14 @@ subscription 8006, mediation 8007, rating 8008, prov-sim 8010, self-serve 9001, 
 9002. Verification flips payment→mock (+ email→logging + kyc→prebaked when a scenario needs
 them), restores after ([[verification-uses-mock-providers]]).
 
-**NEXT:** P6 is closed and the Phase 7 section header is flipped to ✅. Remaining migration
-scope is **Phase 8 — cutover & decommission** (see `03-PHASES.md` §Phase 8). First item there
-is now **cargo-chef dependency caching** (added to the plan 2026-07-19): today each Dockerfile
-`COPY . . && cargo build` recompiles the whole ~450-crate tree on any source edit (~20–30 min
-per shared-crate rebuild, hit twice in the OTel work) — cargo-chef makes source-only changes a
-couple of minutes, and it's sequenced first so the rest of Phase 8 (image hardening, motto-#6
-re-measure, 14-day soak) runs on the fast loop. Then the plan's other Phase 8 items: Alembic
-freeze → sqlx baseline, doctrine-check finalize, distroless/`--healthcheck` images, RAM/
-cold-start/p99 report, runbooks + archive the Python repo, soak.
+**NEXT: Phase 8 — cutover & decommission** (see `03-PHASES.md` §Phase 8). **Item 1 of 8,
+cargo-chef dependency caching, is DONE** (2026-07-19; see the Phase 8 section below). All 11
+Dockerfiles (9 services + 2 portals) reworked to the `chef → planner → cook → build` layout;
+a source-only edit now rebuilds in ~1–2 min instead of ~20–30 min. Remaining Phase 8 items,
+now all on the fast loop: Alembic freeze → `pg_dump --schema-only` sqlx baseline,
+`make doctrine-check` finalize (Rust guards), distroless/`--healthcheck` images (folds into
+the same Dockerfile), motto-#6 RAM/cold-start/p99 report vs `05-BASELINE.md`, runbook pass +
+archive the Python repo, and the 14-day soak (wall-clock gate — start it early).
 
 ---
 
@@ -96,6 +95,64 @@ contracts are frozen (§3) — the migration is behaviour-frozen, not API-versio
 - The Python parity baseline stays `v1.8.1` on mainline; every 2.0 tag is `v2.0.0-*`, so they never collide.
 
 ---
+
+## Phase 8 — cutover & decommission — 🚧 IN PROGRESS (item 1/8 done)
+
+The final phase (`03-PHASES.md` §Phase 8): cargo-chef caching → Alembic freeze/sqlx
+baseline → doctrine-check finalize → distroless/`--healthcheck` images → motto-#6
+re-measure → runbooks + archive → 14-day soak. No phase tag until the soak passes;
+`v2.0.0` (final) is the gate.
+
+### Item 1 — cargo-chef dependency caching — ✅ DONE (2026-07-19)
+
+**Problem.** Every Rust Dockerfile did `COPY . . && cargo build --release -p <svc>`, so
+*any* source edit busted the Docker layer cache and recompiled the whole ~450-crate
+dependency graph from scratch — ~20–30 min per service, and a shared-crate change means
+rebuilding all 8–9 dependents (hit twice during the P6 OTel work). Sequenced first so the
+rest of Phase 8 (image hardening, motto-#6 re-measure, incidental bug-fix rebuilds) runs on
+the fast loop.
+
+**What landed.** All 11 Dockerfiles (9 services + 2 portals) reworked to the cargo-chef
+`chef → planner → cook → build` layout:
+- **`chef`** — `FROM rust:1.80-slim` (services) / `rust:1.97-slim` (portals), then
+  `COPY rust-toolchain.toml .` **before** `cargo install cargo-chef --locked`. This copy is
+  load-bearing: `rust-toolchain.toml` pins `channel = "stable"`, and rustup honours it —
+  the *real* build toolchain is **1.97.1**, not the base image's 1.80 (empirically
+  confirmed: `rustc --version` inside `rust:1.80-slim` with the toolchain file present
+  reports 1.97.1). Without the copy, the chef stage runs on 1.80's cargo, which can't parse
+  the `edition2024` deps in cargo-chef's own tree (`cfg-expr 0.20.6`) → install fails; and
+  cook would run on a different toolchain than build, invalidating the cache. With it,
+  install/cook/build all run under the same stable toolchain.
+- **`planner`** — `COPY . .` + `cargo chef prepare` → `recipe.json` (the dep graph).
+- **`builder`** — `cargo chef cook --release` (whole workspace, **no `-p`**) compiles the
+  ~450 external crates into a layer keyed only on `Cargo.toml`/`Cargo.lock`; then
+  `COPY . . && cargo build --release -p <svc>` compiles just the ~10 workspace crates + the
+  binary.
+- **runtime** — unchanged (distroless `cc-debian12`, non-root 65532, same binary paths,
+  same asset copies + env on the portals).
+
+**The cook layer is SHARED.** The chef/planner/cook stages are byte-identical across all 9
+service Dockerfiles (whole-workspace cook), so BuildKit compiles the dep graph **once** and
+every service reuses it. The 2 portals form a second shared cook layer (repo-root context +
+1.97 base + `WORKDIR /build/rust`). (Comments differ between files, but BuildKit strips
+comments before cache-hashing, so sharing holds — proven below.)
+
+**Validated (2026-07-19).**
+- catalog built end-to-end via cargo-chef → image **54.1 MB**, byte-size-identical to the
+  pre-existing `bss-catalog:rust` (build-time-only change, as intended).
+- Then building **com**: `RUN cargo chef cook` reported **CACHED** (reused catalog's cook
+  layer despite differing comments); only the workspace crates + `com` binary recompiled →
+  **1m9s total** vs the old ~20–30 min. This is the headline win.
+- Runtime smoke: ran the chef-built catalog image on the compose network with the live
+  container's env → `service.starting` logged, **`/health` 200**, offering read returned
+  **401** with no token (the perimeter gate working). The binary serves correctly.
+- self-serve portal built via cargo-chef too (repo-root context path semantics verified).
+
+**Not done here (deliberate).** The live compose stack was **not** rebuilt/hot-swapped — the
+running `:rust` images are byte-equivalent and already validated; the new Dockerfiles get
+exercised for real on the next Phase 8 rebuild (the distroless/`--healthcheck` item, which
+folds into this same Dockerfile). `make doctrine-check`, the Alembic→sqlx baseline, and the
+motto-#6 re-measure remain.
 
 ## Phase 7 — CLI + REPL + scenario engine — ✅ DONE (2026-07-18; P6 acceptance 19/19 closed 2026-07-19)
 

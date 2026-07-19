@@ -10,10 +10,27 @@
 # Newer than the backend services' 1.80: the portals pull in bss-branding's logo
 # processing (image 0.25 → MSRV 1.88; moxcms 0.8 → edition 2024), which the services
 # don't. Matches the workspace dev toolchain (1.97).
-FROM rust:1.97-slim AS builder
-WORKDIR /build
-COPY rust ./rust
-RUN cargo build --release --manifest-path rust/Cargo.toml -p portal-self-serve
+# cargo-chef (Phase 8): chef → planner → cook compile the ~450-crate dep graph in a
+# layer keyed on Cargo.toml/Cargo.lock, so a source-only edit rebuilds just the
+# workspace crates + this binary (~2 min). The chef/planner/cook stages are
+# byte-identical across BOTH portal Dockerfiles, so the cook layer is built once and
+# shared. (Services use the same pattern on the rust:1.80 base + context=rust/;
+# the portals keep their repo-root context + 1.97 base, so they form a second,
+# separate cook layer — see services/catalog/Dockerfile for the rationale.)
+FROM rust:1.97-slim AS chef
+WORKDIR /build/rust
+COPY rust/rust-toolchain.toml .
+RUN rustup show >/dev/null && cargo install cargo-chef --locked
+
+FROM chef AS planner
+COPY rust ./
+RUN cargo chef prepare --recipe-path recipe.json
+
+FROM chef AS builder
+COPY --from=planner /build/rust/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+COPY rust ./
+RUN cargo build --release -p portal-self-serve
 
 FROM gcr.io/distroless/cc-debian12 AS runtime
 # distroless nonroot uid 65532.
