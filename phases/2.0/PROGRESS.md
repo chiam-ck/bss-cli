@@ -7,66 +7,54 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — REPL visual parity (s18b-polish)
+## ⇢ HANDOFF (next session) — Phase 7 DONE; P6 acceptance 18/19; next = full-stack rebuild
 
-**State:** the REPL (`bss` no subcommand) is functionally live (s18b) + two fixes:
-localhost URL defaults (`c04f193`) and the renderer-less-tool prose fix (`ba905fe`,
-`f2e241d` s18b). It boots, drives real turns, renders ASCII tool cards (catalog,
-subscription, etc.), stages `/confirm`. **Gap the operator flagged:** it looks plain
-next to the Python REPL. Python has: a big ASCII logo, a **bordered branded banner
-panel**, each reply in a **green bordered `bss ai` panel**, **markdown-rendered
-replies** (headings/bold/tables), a **full colored slash-hint line**, and inline
-tool-call `[info]` log lines. The Rust REPL currently prints plain text seams.
+**Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
+(s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
+(s19a–e: schema/validate/list, deterministic runner, http:/file: steps, ask:/LLM
+executor, audit.*/portal.* verbs) + `bss onboard` + `bss admin seed`. 45 CLI unit tests,
+clippy clean, all pushed to `2.0`.
 
-**Task: port the REPL presentation** (`rust/cli/src/repl.rs`, add a `repl_ui.rs`).
-All facts gathered:
-- **Logo:** `_LOGO` at `cli/bss_cli/repl.py:123` (the `██████╗` block art) — copy
-  verbatim, print in the accent color.
-- **Slash hints:** `_SLASH_HELP` at `repl.py:132` — `/sessions list · /new [label] ·
-  /switch SES · /reset · /focus CUST · /360 · /ports · /confirm · /config edit ·
-  /operator edit · /help · /exit` (green verbs). Full banner in `_render_banner`
-  (`repl.py:151`): logo (bold accent) + `brand_name` + tagline + actor/model/session/
-  focus meta + hints, all in a Rich `Panel`.
-- **Reply panel:** Python does `Panel(Markdown(final_text), title="bss ai",
-  border_style="green")`. Currently the Rust REPL prints `bss ai\n{text}` plain.
-- **Branding (Rust):** `bss_branding::current(None) -> BrandingView { brand_name,
-  theme: ThemePalette, mark, .. }`. `ThemePalette` has `accent` (hex, phosphor
-  `"#74d535"`), `rich_accent` (name, `"green"`), `accent_amber`, `fg`, `fg_dim`, …
-  Default theme = phosphor (green). Use the hex for ANSI truecolor
-  (`\x1b[38;2;R;G;Bm`).
-- **Width:** `crossterm` is already in the lock (via reedline) — add it as a direct
-  CLI dep and use `crossterm::terminal::size()` (fallback 100) for panel width.
-- **Approach:** ANSI-truecolor helpers from the theme hex; a `panel(title, body_lines,
-  border_color, width)` box-drawer (rounded `╭─╮│╰╯`, title in the top rule); a light
-  markdown→ANSI renderer (headings → bold+accent, `**bold**`, `` `code` `` → dim,
-  `- ` bullets → `•`, and ideally pipe-tables — the LLM replies lean on these). Wire:
-  banner panel at start/switch, reply in a green `bss ai` panel, full slash hints.
-  The tool cards already look right (they go through `render_tool_result`); leave them.
-- The `[info] knowledge.search …` lines in Python are structlog from the tool call —
-  nice-to-have, lower priority than the panels/markdown.
+**P6 acceptance — hero suite 18/19 GREEN (2026-07-19).** Deployed the Rust portals
+(they were code-complete but never containerized) and drove the full hero suite against
+them. 7 real Rust-port bugs found + fixed (all committed):
+- `57ab14a` usage.simulate never registered → 3 deterministic heroes
+- `9ab7cf3` **containerize the Rust portals** (new Dockerfiles `rust/portals/{self-serve,csr}/`,
+  `docker-compose.rust.yml` entries, `.dockerignore` rust/target). Builder rust:1.97-slim
+  (image 0.25 MSRV 1.88 + moxcms edition 2024); `BSS_PORTAL_*_PORT=8000`.
+- `204e253` cancel-415 (RawForm→Bytes) + %2F query encoding
+- `769efa9` signup_progress.html minijinja `.index()` → namespace loop
+- `e88c36f` self-serve channel=portal-self-serve (session middleware bss_context::scope)
+- `351b803` csr /cockpit/new persists the label
+- `c350aeb` csr turn bss_context::scope channel=portal-csr
 
-**After the polish:** resume the REPL feature slices — **s18c** (`/sessions /new
-/switch /reset /focus`), **s18d** (`/360 /ports /config /operator` + the list-intent
-intercept `_maybe_intent_match`/`_drive_intent_turn`). Then the **scenario engine**
-(P7 exit gate), **onboard**, **bss-seed/bss-admin** wiring.
+Full detail + the mailbox-perms gotcha in memory **[[p6-acceptance-state]]**. Providers
+RESTORED to stripe/resend; stack all 200; working tree clean.
 
-**Also open (this session's work, all pushed + CI green):**
-- Relay/idempotency hardening DONE: SOM idempotency (`2333f72`), MqChannel
-  reconnection (`00b25f1`), provisioning inbox dedup (`2629a43`, migration 0032 +
-  applied to tech-vm). See [[rust-provisioning-activation-loop]] +
-  [[rust-mq-relay-no-reconnect]]. **Deploy note:** the MqChannel fix is in the shared
-  `bss-events` crate — only provisioning-sim + payment + som were rebuilt during
-  verification; a **full-stack rebuild** is needed for it to be live on
-  com/subscription/crm/catalog/mediation/rating (additive, so the mixed state is safe).
-- **Consumer-loop re-subscription** is still a follow-up (the reconnection fix covers
-  the publish path, not long-lived consumers whose channel dies).
-- **E2E order verified end to end** (ORD-0098 → SUB-0089 active). Reminder:
-  Claude's verification flips `BSS_PAYMENT_PROVIDER`→mock + KYC→prebaked and restores
-  after (stripe/didit are the operator's for manual testing) — see
-  [[verification-uses-mock-providers]]. `.env` service URLs use compose names; the CLI
-  now defaults to `localhost:800X` so `bss` works from the host with no exports.
+**THE ONE OPEN HERO — `trace_customer_signup_swimlane` — is the deferred OTel
+conformance, NOT a quick fix.** No Rust service emits per-request spans (zero
+`#[instrument]`/`TraceLayer` under `services/`), so `audit.domain_event.trace_id` stays
+None + Jaeger has no spans; scenario wants spanCount≥30/serviceCount≥5. Fix = bss-clients
+inject W3C traceparent + all 9 services extract+span (shared layer in bss-middleware) +
+bss-events capture `Context::current()` trace-id + full-stack rebuild. Own phase-sized
+effort. See [[p6-acceptance-state]].
+
+**RECOMMENDED NEXT STEP: the full-stack rebuild** (deploy the MqChannel reconnection fix
+to all 9 `:rust` services — committed in bss-events, live only on payment/som/prov-sim;
+`docker compose -f docker-compose.yml -f docker-compose.rust.yml build` then `up -d`).
+High value (async-plane resilience), low risk, and it's the SAME rebuild the OTel work
+needs. Then (optionally, as its own effort) the OTel conformance → 19/19.
+
+**Deploy reminders:** portal images use repo-root build context; recreate a service with
+BOTH compose files (`-f docker-compose.yml -f docker-compose.rust.yml up -d --no-deps
+--force-recreate <svc>`). Host ports: catalog 8001, crm 8002, payment 8003, com 8004,
+som 8005, subscription 8006, mediation 8007, rating 8008, prov-sim 8010, self-serve 9001,
+cockpit 9002. Verification flips payment→mock + email→logging + kyc→prebaked, restores
+after ([[verification-uses-mock-providers]]); dev mailbox at `./.dev-mailbox/` (rm the
+file if a prior run left it owned by a different uid — distroless runs as 65532).
 
 ---
+
 
 ## Tagging discipline (2.0)
 
