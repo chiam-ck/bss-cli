@@ -7,7 +7,7 @@ Branch: `2.0`. Workspace: [`../../rust/`](../../rust/).
 
 ---
 
-## ⇢ HANDOFF (next session) — **Phase 8: items 1–5 DONE (cargo-chef + --healthcheck + Alembic→sqlx baseline + motto-#6 + rust-doctrine-check/make targets)**; Phase 7 + P6 acceptance 19/19 complete
+## ⇢ HANDOFF (next session) — **Phase 8: items 1–6 DONE; only the 14-day SOAK (→ 2026-08-02) + the final-cutover batch remain before `v2.0.0`**
 
 **Phase 7 (CLI port) is COMPLETE.** All ~20 command groups + `bss ask` + the REPL
 (s18b–d: banner/session/intent slash commands, visual parity) + the **scenario engine**
@@ -59,12 +59,13 @@ on the Rust images; (3) Alembic freeze → sqlx baseline — `rust/migrations/00
 head`; (4) motto-#6 re-measure — all budgets met with big headroom (RAM 81.7 MiB vs 4 GB,
 cold-start 3.08 s, p99 6–8 ms), full report in `06-MOTTO6-REMEASURE.md`; (5)
 `make rust-doctrine-check` (`scripts/rust_doctrine_check.sh`, 14 grep guards, all
-verified-firing) + `rust-fmt`/`rust-lint`/`rust-test` dev targets. **Remaining Phase 8
-items**: **rename the canonical `test/lint/fmt/seed/scenarios*/e2e` make targets to the
-Rust ones** (deferred with the archive so the Python oracle stays runnable); runbook pass
-(23) + archive the Python repo; and the 14-day soak (wall-clock gate — start it early).
-No phase tag until the soak
-passes (`v2.0.0` is the gate).
+verified-firing) + `rust-fmt`/`rust-lint`/`rust-test` dev targets; (6) runbook pass
+(live-ops schema commands → `bss admin migrate`) + the **14-day soak established**
+(`07-SOAK.md`, start 2026-07-19 → close 2026-08-02, day-0 green). **All that remains for
+`v2.0.0`:** run out the soak, then the **final-cutover batch** (held so the Python oracle
+stays runnable through the soak): rename canonical `test/lint/fmt/seed/scenarios*/e2e`
+make targets → Rust, full runbook pass on the remaining historical/dev-tooling runbooks,
+archive the Python repo, then `git tag -a v2.0.0`. Close-out checklist is in `07-SOAK.md`.
 
 ---
 
@@ -283,6 +284,31 @@ confirmed non-empty (renew 315 / rate_usage 51 lines).
   oracle; **renaming the canonical targets to the Rust ones is deferred to final
   cutover** (with the Python-repo archive), so the oracle stays runnable until the
   soak passes.
+
+### Item 6 — runbook pass (live-ops) + 14-day soak established — ✅ DONE (2026-07-19)
+
+**Runbook pass.** The `bss admin …` CLI verbs are byte-identical Python↔Rust (the
+faithful P7 port), so the ONLY live-ops command that genuinely changed is the schema
+migration (Alembic → `bss admin migrate`, item 3). Updated the one live-operational
+runbook that used it — `docs/runbooks/knowledge-indexer.md`: `make migrate` →
+`bss admin migrate`, `make knowledge-reindex` → `bss admin knowledge reindex`, with a
+cross-ref to `rust-schema-baseline.md` (the baseline already carries the `knowledge`
+schema + pgvector, so the old `0022`/`0023` are collapsed in). The remaining Python-ism
+commands live in **version-historical / dev-tooling** runbooks (`v1.2-pipeline-deploy`
+alembic downgrade, `phase-execution` dev loop, `snapshot-regeneration` +
+`three-provider-sandbox-soak` pytest, `cockpit` python introspection) — deliberately
+left for the final-cutover batch (they're intertwined with retiring the Python repo,
+and the oracle must stay runnable through the soak).
+
+**14-day soak established.** New [`07-SOAK.md`](07-SOAK.md) turns the vague "do a soak"
+gate into a tracked checkpoint: **start 2026-07-19 → target close 2026-08-02**; day-0
+state captured (11/11 healthy, RestartCount 0 across all 11, app RAM ~159 MiB warmed).
+Pass criteria (no crashes / no memory leak / async plane never wedged — the
+`bss-events` MqChannel no-reconnect mode is the #1 watch / hero 19/19), a lightweight
+daily check-in snippet, and a close-out checklist that **folds in the deferred
+final-cutover batch** (rename canonical make targets, full runbook pass, archive the
+Python repo, then `git tag -a v2.0.0`). The soak is a don't-regress watch, not a
+freeze — nothing blocks continued work.
 
 ## Phase 7 — CLI + REPL + scenario engine — ✅ DONE (2026-07-18; P6 acceptance 19/19 closed 2026-07-19)
 
