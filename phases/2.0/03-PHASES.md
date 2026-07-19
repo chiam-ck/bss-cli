@@ -170,6 +170,15 @@ reviewed; `make demo-restore` fully Rust-driven.
 
 ## Phase 8 — Cutover & decommission — **3–5 pw**
 
+- **cargo-chef dependency caching — do this FIRST.** Restructure each service/portal Dockerfile
+  into a cargo-chef `planner → cook → build` layout so the ~450-crate dependency graph compiles
+  in a layer keyed on `Cargo.toml`/`Cargo.lock`; only source-changing edits then recompile (the
+  ~10 workspace crates + the binary). Today the `COPY . . && cargo build --release -p <svc>`
+  layout busts the cache on any source edit → a full ~20–30 min rebuild per shared-crate change
+  (hit twice during the P6 OTel work — two rebuilds of 8–9 services each). Pure build-time
+  change, zero runtime behaviour. Sequenced first so the rest of Phase 8 — the image hardening
+  below, the motto-#6 re-measure, the 14-day soak, and any incidental bug-fix rebuild — all run
+  on the fast loop. Folds into the same Dockerfile rework as the distroless/healthcheck item.
 - Freeze Alembic; capture `pg_dump --schema-only` as the sqlx::migrate baseline; document the
   fresh-install vs existing-install paths; retire greenlet/alembic from the runtime story.
 - Rust `make doctrine-check` finalized (all 21 dispositions from doc 02 §4 + the new Rust

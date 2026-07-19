@@ -50,8 +50,14 @@ subscription 8006, mediation 8007, rating 8008, prov-sim 8010, self-serve 9001, 
 them), restores after ([[verification-uses-mock-providers]]).
 
 **NEXT:** P6 is closed and the Phase 7 section header is flipped to ✅. Remaining migration
-scope is Phase 8 (finalization: `--healthcheck` flag, cargo-chef dep caching to speed
-rebuilds, any convenience wrappers).
+scope is **Phase 8 — cutover & decommission** (see `03-PHASES.md` §Phase 8). First item there
+is now **cargo-chef dependency caching** (added to the plan 2026-07-19): today each Dockerfile
+`COPY . . && cargo build` recompiles the whole ~450-crate tree on any source edit (~20–30 min
+per shared-crate rebuild, hit twice in the OTel work) — cargo-chef makes source-only changes a
+couple of minutes, and it's sequenced first so the rest of Phase 8 (image hardening, motto-#6
+re-measure, 14-day soak) runs on the fast loop. Then the plan's other Phase 8 items: Alembic
+freeze → sqlx baseline, doctrine-check finalize, distroless/`--healthcheck` images, RAM/
+cold-start/p99 report, runbooks + archive the Python repo, soak.
 
 ---
 
