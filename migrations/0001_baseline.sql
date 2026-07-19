@@ -143,13 +143,10 @@ CREATE SCHEMA subscription;
 --
 
 CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
-
-
---
--- Name: EXTENSION vector; Type: COMMENT; Schema: -; Owner: -
---
-
-COMMENT ON EXTENSION vector IS 'vector data type and ivfflat and hnsw access methods';
+-- NOTE (2.0): the pg_dump's `COMMENT ON EXTENSION vector` was stripped — it requires
+-- extension ownership, which the BSS DB user lacks on a shared/BYOI Postgres where
+-- pgvector pre-exists (owned by a superuser). The comment is cosmetic; dropping it
+-- lets `bss admin migrate` apply the baseline as a non-superuser.
 
 
 SET default_tablespace = '';

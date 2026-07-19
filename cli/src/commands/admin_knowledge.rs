@@ -75,23 +75,26 @@ fn db_url() -> Result<String, ExitCode> {
     }
 }
 
-/// Walk up from cwd until a `pyproject.toml` — works from repo root, a sub-dir, or a
-/// packaged install pointing at a checkout. Port of Python's `_repo_root()`.
+/// Walk up from cwd until a `Cargo.lock` — the Rust workspace root (crate dirs don't
+/// carry their own lockfile), where the indexed docs (`CLAUDE.md`, `docs/`, …) live.
+/// Works from the repo root, a sub-dir, or a packaged install pointing at a checkout.
+/// (Pre-2.0-flip this anchored on `pyproject.toml`, which the flip moved to
+/// `python-legacy/`.)
 fn repo_root() -> Result<PathBuf, ExitCode> {
     let start = match std::env::current_dir() {
         Ok(d) => d,
         Err(_) => {
-            eprintln!("Could not locate repo root (no pyproject.toml found)");
+            eprintln!("Could not locate repo root (no Cargo.lock found)");
             return Err(ExitCode::from(1));
         }
     };
     let mut dir = start;
     loop {
-        if dir.join("pyproject.toml").exists() {
+        if dir.join("Cargo.lock").exists() {
             return Ok(dir);
         }
         if !dir.pop() {
-            eprintln!("Could not locate repo root (no pyproject.toml found)");
+            eprintln!("Could not locate repo root (no Cargo.lock found)");
             return Err(ExitCode::from(1));
         }
     }
