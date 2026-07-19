@@ -240,8 +240,8 @@ pub async fn process_task(
 /// Persist the terminal task row + its audit event and inline-publish. Publish
 /// first, then INSERT both rows in one transaction with the resolved
 /// `published_to_mq` — the same final state as the Python session's
-/// flush-then-commit. `service_identity`/`trace_id` are omitted (DB defaults),
-/// matching the worker's `DomainEvent`.
+/// flush-then-commit. `service_identity` is omitted (DB default); `trace_id` is
+/// captured from the active consume span so the task event joins the order trace.
 #[allow(clippy::too_many_arguments)]
 async fn persist_and_publish(
     pool: &PgPool,
@@ -271,8 +271,8 @@ async fn persist_and_publish(
     sqlx::query(
         "INSERT INTO audit.domain_event \
          (event_id, event_type, aggregate_type, aggregate_id, occurred_at, actor, channel, \
-          tenant_id, payload, schema_version, published_to_mq) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10)",
+          tenant_id, payload, schema_version, published_to_mq, trace_id) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,1,$10,$11)",
     )
     .bind(uuid::Uuid::new_v4())
     .bind(event_type)
@@ -284,6 +284,7 @@ async fn persist_and_publish(
     .bind(&ctx.tenant)
     .bind(sqlx::types::Json(payload))
     .bind(published)
+    .bind(bss_telemetry::current_trace_id())
     .execute(&mut *tx)
     .await?;
     // Inbox claim — committed atomically with the task/event rows so a crash can't

@@ -25,8 +25,8 @@ pub async fn stage(
     sqlx::query(
         "INSERT INTO audit.domain_event \
          (event_id, event_type, aggregate_type, aggregate_id, occurred_at, actor, channel, \
-          tenant_id, service_identity, payload, schema_version, published_to_mq) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false)",
+          tenant_id, service_identity, payload, schema_version, trace_id, published_to_mq) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false)",
     )
     .bind(event_uuid)
     .bind(&ev.event_type)
@@ -39,6 +39,7 @@ pub async fn stage(
     .bind(&ev.service_identity)
     .bind(sqlx::types::Json(ev.payload.clone()))
     .bind(ev.schema_version as i16)
+    .bind(&ev.trace_id)
     .execute(conn)
     .await?;
     tracing::info!(event_type, aggregate_type, aggregate_id, "event.staged");

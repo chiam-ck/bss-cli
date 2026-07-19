@@ -17,7 +17,9 @@ use bss_db::PgPool;
 use bss_events::{stage_event, MqChannel};
 use futures_util::StreamExt;
 use lapin::options::BasicAckOptions;
+use lapin::types::AMQPValue;
 use serde_json::Value;
+use tracing::Instrument;
 
 use crate::domain::{decide_usage_outcome, require_offering_id, RatingError, UsageOutcome};
 
@@ -70,6 +72,16 @@ pub async fn run(
             }
         };
 
+        // Continue the trace the publisher seeded on the message so the rated-usage
+        // events stay in the originating trace (custom loop predates bind_consumer).
+        let span = tracing::info_span!(
+            "mq.consume",
+            otel.name = format!("consume {QUEUE}"),
+            otel.kind = "consumer",
+            messaging.destination = QUEUE,
+        );
+        bss_telemetry::continue_trace(&span, traceparent(&delivery).as_deref());
+
         match serde_json::from_slice::<Value>(&delivery.data) {
             Ok(body) => {
                 tracing::info!(
@@ -77,7 +89,10 @@ pub async fn run(
                     subscription_id = str_field_log(&body, "subscriptionId"),
                     "mq.usage.recorded.received"
                 );
-                if let Err(err) = handle_usage_recorded(&body, &catalog, &pool, Some(&mq)).await {
+                if let Err(err) = handle_usage_recorded(&body, &catalog, &pool, Some(&mq))
+                    .instrument(span)
+                    .await
+                {
                     log_handle_error(&body, &err);
                 }
             }
@@ -147,8 +162,8 @@ async fn stage_and_publish(
     sqlx::query(
         "INSERT INTO audit.domain_event \
          (event_id, event_type, aggregate_type, aggregate_id, occurred_at, actor, channel, \
-          tenant_id, service_identity, payload, schema_version, published_to_mq) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+          tenant_id, service_identity, payload, schema_version, trace_id, published_to_mq) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)",
     )
     .bind(event_uuid)
     .bind(&ev.event_type)
@@ -161,11 +176,23 @@ async fn stage_and_publish(
     .bind(&ev.service_identity)
     .bind(sqlx::types::Json(ev.payload.clone()))
     .bind(ev.schema_version as i16)
+    .bind(&ev.trace_id)
     .bind(published)
     .execute(pool)
     .await?;
 
     Ok(())
+}
+
+/// Read the W3C `traceparent` message header the publisher stamped, so the
+/// consume span can continue the originating trace.
+fn traceparent(delivery: &lapin::message::Delivery) -> Option<String> {
+    let headers = delivery.properties.headers().as_ref()?;
+    match headers.inner().get(bss_telemetry::TRACEPARENT) {
+        Some(AMQPValue::LongString(s)) => Some(s.to_string()),
+        Some(AMQPValue::ShortString(s)) => Some(s.to_string()),
+        _ => None,
+    }
 }
 
 fn log_handle_error(body: &Value, err: &HandleError) {

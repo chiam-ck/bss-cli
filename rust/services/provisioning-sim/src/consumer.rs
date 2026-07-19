@@ -16,7 +16,9 @@ use bss_db::PgPool;
 use bss_events::MqChannel;
 use futures_util::StreamExt;
 use lapin::options::{BasicAckOptions, BasicRejectOptions};
+use lapin::types::AMQPValue;
 use serde_json::Value;
+use tracing::Instrument;
 
 use crate::esim::EsimProvider;
 use crate::worker::{process_task, TaskRequest, INBOX_CONSUMER};
@@ -67,8 +69,24 @@ pub async fn run(mq: Arc<MqChannel>, pool: PgPool, esim: EsimProvider) -> Result
             }
         }
 
+        // Continue the trace the publisher seeded on the message so the task's
+        // staged `provisioning.task.completed` (+ its downstream publish) stays in
+        // the order's trace. This custom loop predates `bss_events::bind_consumer`,
+        // so it stitches the span by hand.
+        let span = tracing::info_span!(
+            "mq.consume",
+            otel.name = format!("consume {QUEUE}"),
+            otel.kind = "consumer",
+            messaging.destination = QUEUE,
+        );
+        bss_telemetry::continue_trace(&span, traceparent(&delivery).as_deref());
+
         let outcome = match serde_json::from_slice::<Value>(&delivery.data) {
-            Ok(body) => handle(&body, &mq, &pool, esim, message_id.as_deref()).await,
+            Ok(body) => {
+                handle(&body, &mq, &pool, esim, message_id.as_deref())
+                    .instrument(span)
+                    .await
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "mq.task_created.bad_json");
                 Ok(()) // unparseable → drop (ack), nothing to process
@@ -87,6 +105,17 @@ pub async fn run(mq: Arc<MqChannel>, pool: PgPool, esim: EsimProvider) -> Result
         }
     }
     Ok(())
+}
+
+/// Read the W3C `traceparent` message header the publisher stamped, so the
+/// consume span can continue the originating trace.
+fn traceparent(delivery: &lapin::message::Delivery) -> Option<String> {
+    let headers = delivery.properties.headers().as_ref()?;
+    match headers.inner().get(bss_telemetry::TRACEPARENT) {
+        Some(AMQPValue::LongString(s)) => Some(s.to_string()),
+        Some(AMQPValue::ShortString(s)) => Some(s.to_string()),
+        _ => None,
+    }
 }
 
 /// Destructure the message and run the worker. A missing required field is
