@@ -794,6 +794,28 @@ pub fn inventory_router() -> Router<AppState> {
             &format!("{INV}/msisdn/release-hold"),
             post(release_msisdn_hold),
         )
+        .route(&format!("{INV}/open-order"), post(create_open_order))
+        .route(
+            &format!("{INV}/open-order/by-identity"),
+            get(open_order_by_identity),
+        )
+        .route(&format!("{INV}/open-order/:id"), get(get_open_order))
+        .route(
+            &format!("{INV}/open-order/:id/link-customer"),
+            post(link_open_order_customer),
+        )
+        .route(
+            &format!("{INV}/open-order/:id/advance"),
+            post(advance_open_order),
+        )
+        .route(
+            &format!("{INV}/open-order/:id/complete"),
+            post(complete_open_order),
+        )
+        .route(
+            &format!("{INV}/open-order/:id/cancel"),
+            post(cancel_open_order),
+        )
         .route(&format!("{INV}/esim"), get(list_esims))
         .route(&format!("{INV}/esim/reserve"), post(reserve_esim))
         .route(&format!("{INV}/esim/:iccid"), get(get_esim))
@@ -955,6 +977,110 @@ async fn release_msisdn_hold(
     Json(b): Json<ReleaseHoldRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let v = svc::release_msisdn_hold(&s, &ctx, &b.reserved_for).await?;
+    Ok(Json(v))
+}
+
+// ── open_order (v-reservation phase 2) ──────────────────────────────────────
+
+#[derive(Deserialize)]
+struct CreateOpenOrderRequest {
+    identity: String,
+    #[serde(alias = "planCode", alias = "plan")]
+    plan_code: String,
+    msisdn: String,
+    #[serde(default, alias = "ttlSecs")]
+    ttl_secs: Option<i64>,
+}
+
+async fn create_open_order(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Json(b): Json<CreateOpenOrderRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let ttl = b.ttl_secs.unwrap_or(DEFAULT_HOLD_TTL_SECS);
+    let v = svc::create_or_resume_open_order(&s, &ctx, &b.identity, &b.plan_code, &b.msisdn, ttl)
+        .await?;
+    Ok(Json(v))
+}
+
+#[derive(Deserialize)]
+struct ByIdentityQuery {
+    identity: String,
+}
+
+async fn open_order_by_identity(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Query(q): Query<ByIdentityQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let v = svc::get_open_order_for_identity(&s, &ctx, &q.identity).await?;
+    Ok(Json(v.unwrap_or(Value::Null)))
+}
+
+async fn get_open_order(
+    State(s): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    match svc::get_open_order(&s, &id).await? {
+        Some(v) => Ok(Json(v)),
+        None => Err(ApiError::NotFound(format!("open order {id} not found"))),
+    }
+}
+
+#[derive(Deserialize)]
+struct LinkCustomerRequest {
+    #[serde(alias = "customerId")]
+    customer_id: String,
+}
+
+async fn link_open_order_customer(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Path(id): Path<String>,
+    Json(b): Json<LinkCustomerRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let v = svc::link_open_order_customer(&s, &ctx, &id, &b.customer_id).await?;
+    Ok(Json(v))
+}
+
+#[derive(Deserialize)]
+struct AdvanceRequest {
+    step: String,
+}
+
+async fn advance_open_order(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Path(id): Path<String>,
+    Json(b): Json<AdvanceRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let v = svc::advance_open_order_step(&s, &ctx, &id, &b.step).await?;
+    Ok(Json(v))
+}
+
+async fn complete_open_order(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let v = svc::complete_open_order(&s, &ctx, &id).await?;
+    Ok(Json(v))
+}
+
+#[derive(Deserialize)]
+struct CancelRequest {
+    #[serde(default)]
+    status: Option<String>,
+}
+
+async fn cancel_open_order(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Path(id): Path<String>,
+    Json(b): Json<CancelRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let status = b.status.as_deref().unwrap_or("cancelled");
+    let v = svc::cancel_open_order(&s, &ctx, &id, status).await?;
     Ok(Json(v))
 }
 

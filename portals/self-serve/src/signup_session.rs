@@ -74,6 +74,9 @@ pub struct SignupSession {
     pub redirect_armed: bool,
 
     // Populated as each step completes:
+    /// The persisted open-order id (v-reservation): created at submit, holds the
+    /// MSISDN, links the customer at create, completes when the funnel finishes.
+    pub open_order_id: Option<String>,
     pub customer_id: Option<String>,
     pub payment_method_id: Option<String>,
     pub order_id: Option<String>,
@@ -112,6 +115,7 @@ impl SignupSession {
             step: SignupStep::PendingCustomer,
             step_error: None,
             redirect_armed: false,
+            open_order_id: None,
             customer_id: None,
             payment_method_id: None,
             order_id: None,

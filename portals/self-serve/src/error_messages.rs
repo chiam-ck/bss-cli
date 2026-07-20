@@ -56,6 +56,17 @@ const RULE_MESSAGES: &[(&str, &str)] = &[
         "Your identity verification session expired before it was \
          completed. Please start the signup again.",
     ),
+    // Reservation / open order
+    (
+        "open_order.already_open",
+        "You already have an order in progress for a different number. \
+         Finish it or cancel it from My Account before starting a new one.",
+    ),
+    (
+        "inventory.msisdn.unavailable",
+        "That number was just taken by someone else. Please go back and \
+         pick another number.",
+    ),
     // Payment
     (
         "policy.payment.method.invalid_card",

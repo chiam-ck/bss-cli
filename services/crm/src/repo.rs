@@ -150,6 +150,20 @@ pub struct MsisdnRow {
     pub reserved_for: Option<String>,
 }
 
+/// A persisted, resumable signup funnel (v-reservation phase 2).
+#[derive(Debug, Clone)]
+pub struct OpenOrderRow {
+    pub id: String,
+    pub owner_identity: String,
+    pub customer_id: Option<String>,
+    pub plan_code: String,
+    pub msisdn: Option<String>,
+    pub iccid: Option<String>,
+    pub step: String,
+    pub status: String,
+    pub reserved_until: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct EsimRow {
     pub iccid: String,
@@ -875,6 +889,7 @@ pub async fn hold_msisdn(
          SET status='reserved', reserved_at=$3, reserved_until=$4, reserved_for=$5, updated_at=$3 \
          WHERE msisdn=$1 AND tenant_id=$2 \
            AND (status='available' \
+                OR reserved_for=$5 \
                 OR (status='reserved' AND reserved_until IS NOT NULL AND reserved_until < $3))",
     )
     .bind(msisdn)
@@ -906,6 +921,123 @@ pub async fn release_holds_for(
     .fetch_all(&mut *conn)
     .await?;
     rows.iter().map(|r| r.try_get("msisdn").map_err(ApiError::from)).collect()
+}
+
+// ── open_order (v-reservation phase 2) ──────────────────────────────────────
+
+const OPEN_ORDER_COLS: &str = "id, owner_identity, customer_id, plan_code, msisdn, iccid, step, status, reserved_until";
+
+fn open_order_row(r: &PgRow) -> Result<OpenOrderRow, ApiError> {
+    Ok(OpenOrderRow {
+        id: r.try_get("id")?,
+        owner_identity: r.try_get("owner_identity")?,
+        customer_id: r.try_get("customer_id")?,
+        plan_code: r.try_get("plan_code")?,
+        msisdn: r.try_get("msisdn")?,
+        iccid: r.try_get("iccid")?,
+        step: r.try_get("step")?,
+        status: r.try_get("status")?,
+        reserved_until: r.try_get("reserved_until")?,
+    })
+}
+
+/// The one open order for `owner_identity`, if any (status='open').
+pub async fn get_open_order_by_identity(
+    conn: &mut PgConnection,
+    identity: &str,
+    tenant: &str,
+) -> Result<Option<OpenOrderRow>, ApiError> {
+    let r = sqlx::query(&format!(
+        "SELECT {OPEN_ORDER_COLS} FROM inventory.open_order \
+         WHERE owner_identity=$1 AND status='open' AND tenant_id=$2 FOR UPDATE"
+    ))
+    .bind(identity)
+    .bind(tenant)
+    .fetch_optional(&mut *conn)
+    .await?;
+    r.as_ref().map(open_order_row).transpose()
+}
+
+pub async fn get_open_order(pool: &PgPool, id: &str) -> Result<Option<OpenOrderRow>, ApiError> {
+    let r = sqlx::query(&format!(
+        "SELECT {OPEN_ORDER_COLS} FROM inventory.open_order WHERE id=$1"
+    ))
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    r.as_ref().map(open_order_row).transpose()
+}
+
+/// Insert a fresh open order. Returns `false` on the partial-unique conflict
+/// (the owner already has an open order) — the caller then resumes the existing.
+#[allow(clippy::too_many_arguments)]
+pub async fn insert_open_order(
+    conn: &mut PgConnection,
+    id: &str,
+    owner_identity: &str,
+    plan_code: &str,
+    msisdn: &str,
+    reserved_until: DateTime<Utc>,
+    now: DateTime<Utc>,
+    tenant: &str,
+) -> Result<bool, ApiError> {
+    let n = sqlx::query(
+        "INSERT INTO inventory.open_order \
+         (id, tenant_id, owner_identity, plan_code, msisdn, step, status, reserved_until, created_at, updated_at) \
+         VALUES ($1,$2,$3,$4,$5,'pending_customer','open',$6,$7,$7) \
+         ON CONFLICT (owner_identity) WHERE status='open' DO NOTHING",
+    )
+    .bind(id)
+    .bind(tenant)
+    .bind(owner_identity)
+    .bind(plan_code)
+    .bind(msisdn)
+    .bind(reserved_until)
+    .bind(now)
+    .execute(&mut *conn)
+    .await?;
+    Ok(n.rows_affected() > 0)
+}
+
+/// Link the customer id onto an open order (create-customer step).
+pub async fn link_open_order_customer(
+    conn: &mut PgConnection,
+    id: &str,
+    customer_id: &str,
+    now: DateTime<Utc>,
+) -> Result<(), ApiError> {
+    sqlx::query("UPDATE inventory.open_order SET customer_id=$2, updated_at=$3 WHERE id=$1")
+        .bind(id)
+        .bind(customer_id)
+        .bind(now)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
+/// Set the open order's step / status / hold-expiry (state-machine transition).
+/// `None` args leave the existing value untouched.
+pub async fn set_open_order_state(
+    conn: &mut PgConnection,
+    id: &str,
+    step: Option<&str>,
+    status: Option<&str>,
+    reserved_until: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> Result<(), ApiError> {
+    sqlx::query(
+        "UPDATE inventory.open_order \
+         SET step=COALESCE($2, step), status=COALESCE($3, status), \
+             reserved_until=COALESCE($4, reserved_until), updated_at=$5 WHERE id=$1",
+    )
+    .bind(id)
+    .bind(step)
+    .bind(status)
+    .bind(reserved_until)
+    .bind(now)
+    .execute(&mut *conn)
+    .await?;
+    Ok(())
 }
 
 pub async fn get_esim(pool: &PgPool, iccid: &str) -> Result<Option<EsimRow>, ApiError> {

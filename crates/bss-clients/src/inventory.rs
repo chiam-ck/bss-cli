@@ -79,6 +79,65 @@ impl InventoryClient {
             .await
     }
 
+    /// `POST /inventory-api/v1/open-order` — create (holding the number) or resume
+    /// the owner's open order. Blocks with `open_order.already_open` if they have
+    /// one for a different number. Returns the record incl. `resumed: bool`.
+    pub async fn create_open_order(
+        &self,
+        identity: &str,
+        plan_code: &str,
+        msisdn: &str,
+    ) -> Result<Value, ClientError> {
+        let body =
+            json!({ "identity": identity, "plan_code": plan_code, "msisdn": msisdn });
+        self.post("/inventory-api/v1/open-order", Some(&body)).await
+    }
+
+    /// `GET /inventory-api/v1/open-order/by-identity?identity=…` — the owner's
+    /// current open order, or `null`.
+    pub async fn open_order_by_identity(&self, identity: &str) -> Result<Value, ClientError> {
+        let path = format!(
+            "/inventory-api/v1/open-order/by-identity?identity={}",
+            encode(identity)
+        );
+        let resp = self.inner.request(Method::GET, &path, None, None).await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// `POST /inventory-api/v1/open-order/{id}/link-customer`.
+    pub async fn link_open_order_customer(
+        &self,
+        id: &str,
+        customer_id: &str,
+    ) -> Result<Value, ClientError> {
+        let body = json!({ "customer_id": customer_id });
+        self.post(&format!("/inventory-api/v1/open-order/{id}/link-customer"), Some(&body))
+            .await
+    }
+
+    /// `POST /inventory-api/v1/open-order/{id}/advance` — record the funnel step.
+    pub async fn advance_open_order(&self, id: &str, step: &str) -> Result<Value, ClientError> {
+        let body = json!({ "step": step });
+        self.post(&format!("/inventory-api/v1/open-order/{id}/advance"), Some(&body))
+            .await
+    }
+
+    /// `POST /inventory-api/v1/open-order/{id}/complete` — funnel finished.
+    pub async fn complete_open_order(&self, id: &str) -> Result<Value, ClientError> {
+        self.post(&format!("/inventory-api/v1/open-order/{id}/complete"), None)
+            .await
+    }
+
+    /// `POST /inventory-api/v1/open-order/{id}/cancel` — release the hold + close.
+    /// Sends an empty object so the (defaulted) request body deserializes.
+    pub async fn cancel_open_order(&self, id: &str) -> Result<Value, ClientError> {
+        let body = json!({});
+        self.post(&format!("/inventory-api/v1/open-order/{id}/cancel"), Some(&body))
+            .await
+    }
+
     /// `POST /inventory-api/v1/esim/reserve` — reserve the next eSIM profile
     /// (`{iccid, imsi, activationCode, ...}`).
     pub async fn reserve_esim(&self) -> Result<Value, ClientError> {

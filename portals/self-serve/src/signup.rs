@@ -343,6 +343,42 @@ pub async fn signup_submit(
         return (StatusCode::SERVICE_UNAVAILABLE, "Signup unavailable").into_response();
     };
 
+    // ── reserve-at-pick: create (or resume) the open order + hold the number ──
+    // Keyed on the verified email. Blocks (open_order.already_open) if they have
+    // an open order for a different number; fails (inventory.msisdn.unavailable)
+    // if the number was grabbed between picker render and submit.
+    match clients
+        .inventory
+        .create_open_order(&identity.email, &sig.plan, &sig.msisdn)
+        .await
+    {
+        Ok(oo) => {
+            sig.open_order_id = oo.get("id").and_then(Value::as_str).map(String::from);
+            state.signup_store.update(&sig);
+        }
+        Err(ClientError::Policy(pv)) => {
+            record_step(
+                &state,
+                &sig,
+                None,
+                "signup_reserve_number",
+                "/signup",
+                false,
+                Some(&pv.rule),
+                ua.as_deref(),
+            )
+            .await;
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some(pv.rule.clone());
+            state.signup_store.update(&sig);
+            return render_failed(&state, &sig, &pv.rule).await;
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "portal.signup.open_order_failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Signup failed").into_response();
+        }
+    }
+
     // ── returning customer: reuse the linked CUST, resume at first incomplete step ──
     if let Some(cid) = existing_customer_id {
         sig.customer_id = Some(cid.clone());
@@ -462,6 +498,14 @@ pub async fn signup_submit(
         return render_failed(&state, &sig, "signup.create_customer.no_id").await;
     };
     sig.customer_id = Some(customer_id.clone());
+
+    // Link the customer onto the open order (best-effort — the hold is already
+    // keyed on the open-order id; this just records who the funnel belongs to).
+    if let Some(oo_id) = &sig.open_order_id {
+        if let Err(e) = clients.inventory.link_open_order_customer(oo_id, &customer_id).await {
+            tracing::warn!(error = %e, open_order_id = %oo_id, "portal.signup.open_order_link_failed");
+        }
+    }
 
     // Atomically bind the verified identity to the new customer (before the rest
     // of the chain runs, so a mid-flow abandon still leaves the pair intact).
@@ -1422,6 +1466,13 @@ pub async fn signup_step_poll(
             sig.done = true;
             sig.redirect_armed = true;
             state.signup_store.update(&sig);
+            // Close out the open order — the number is now assigned to the
+            // subscription, so no hold to release; just mark it completed.
+            if let Some(oo_id) = &sig.open_order_id {
+                if let Err(e) = clients.inventory.complete_open_order(oo_id).await {
+                    tracing::warn!(error = %e, open_order_id = %oo_id, "portal.signup.open_order_complete_failed");
+                }
+            }
             // First detection — render the celebration fragment; its 1.5s delayed
             // re-trigger lands on the redirect_armed branch above next tick.
             render_step_fragment(&state, &sig)

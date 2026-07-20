@@ -1154,12 +1154,21 @@ pub async fn reserve_next_msisdn(
 ) -> Result<MsisdnRow, ApiError> {
     let mut tx = st.pool.begin().await?;
     let picked: Option<String> = match preference {
+        // A preferred number may already be a *soft hold* taken at number-pick
+        // (v-reservation). Claim it too — the pick-time hold + one-open-order
+        // guarantee it's held for this very flow — promoting it to a hard reserve
+        // below. Without this, provisioning a reserved-at-pick number would fail.
         Some(p) => {
-            sqlx::query_scalar("SELECT msisdn FROM inventory.msisdn_pool WHERE msisdn=$1 AND status='available' AND tenant_id=$2 FOR UPDATE SKIP LOCKED")
-                .bind(p)
-                .bind(&ctx.tenant)
-                .fetch_optional(&mut *tx)
-                .await?
+            sqlx::query_scalar(
+                "SELECT msisdn FROM inventory.msisdn_pool \
+                 WHERE msisdn=$1 AND tenant_id=$2 \
+                   AND (status='available' OR (status='reserved' AND reserved_until IS NOT NULL)) \
+                 FOR UPDATE SKIP LOCKED",
+            )
+            .bind(p)
+            .bind(&ctx.tenant)
+            .fetch_optional(&mut *tx)
+            .await?
         }
         None => {
             sqlx::query_scalar("SELECT msisdn FROM inventory.msisdn_pool WHERE status='available' AND tenant_id=$1 ORDER BY msisdn LIMIT 1 FOR UPDATE SKIP LOCKED")
@@ -1176,7 +1185,9 @@ pub async fn reserve_next_msisdn(
         )
         .into());
     };
-    sqlx::query("UPDATE inventory.msisdn_pool SET status='reserved', reserved_at=$2, updated_at=$2 WHERE msisdn=$1")
+    // Promote to a hard reserve — clear any soft-hold marker so the sweep never
+    // touches a number that's now committed to provisioning.
+    sqlx::query("UPDATE inventory.msisdn_pool SET status='reserved', reserved_at=$2, reserved_until=NULL, reserved_for=NULL, updated_at=$2 WHERE msisdn=$1")
         .bind(&msisdn)
         .bind(bss_clock::now())
         .execute(&mut *tx)
@@ -1251,6 +1262,196 @@ pub async fn release_msisdn_hold(
     }
     tx.commit().await?;
     Ok(json!({ "reserved_for": reserved_for, "released": released }))
+}
+
+// ── open_order (v-reservation phase 2) ──────────────────────────────────────
+
+fn open_order_json(o: &repo::OpenOrderRow) -> Value {
+    json!({
+        "id": o.id,
+        "owner_identity": o.owner_identity,
+        "customer_id": o.customer_id,
+        "plan_code": o.plan_code,
+        "msisdn": o.msisdn,
+        "iccid": o.iccid,
+        "step": o.step,
+        "status": o.status,
+        "reserved_until": o.reserved_until,
+    })
+}
+
+/// Create the open order for `identity` (keyed on the verified email) and hold the
+/// chosen MSISDN, or resume the existing one. Blocks (policy violation) if the
+/// owner already has an open order for a *different* number. The MSISDN soft-hold
+/// uses `reserved_for = open_order.id`. Returns `(open_order_json, resumed)`.
+pub async fn create_or_resume_open_order(
+    st: &AppState,
+    ctx: &RequestCtx,
+    identity: &str,
+    plan_code: &str,
+    msisdn: &str,
+    ttl_secs: i64,
+) -> Result<Value, ApiError> {
+    let now = bss_clock::now();
+    let reserved_until = now + chrono::Duration::seconds(ttl_secs);
+    let mut tx = st.pool.begin().await?;
+
+    // Resume path — the owner already has an open order.
+    if let Some(existing) = repo::get_open_order_by_identity(&mut tx, identity, &ctx.tenant).await? {
+        if existing.msisdn.as_deref() != Some(msisdn) {
+            return Err(PolicyViolation::with_context(
+                "open_order.already_open",
+                format!(
+                    "You already have an open order for {}. Complete or cancel it first.",
+                    existing.msisdn.as_deref().unwrap_or("your number")
+                ),
+                json!({ "open_order_id": existing.id, "msisdn": existing.msisdn }),
+            )
+            .into());
+        }
+        // Same number → resume: refresh the hold + window (idempotent for the
+        // same holder; reclaims it if it had expired).
+        repo::hold_msisdn(&mut tx, msisdn, &existing.id, reserved_until, now, &ctx.tenant).await?;
+        repo::set_open_order_state(&mut tx, &existing.id, None, None, Some(reserved_until), now)
+            .await?;
+        tx.commit().await?;
+        let row = repo::get_open_order(&st.pool, &existing.id)
+            .await?
+            .ok_or_else(|| ApiError::Internal("open_order vanished".into()))?;
+        let mut out = open_order_json(&row);
+        out["resumed"] = json!(true);
+        return Ok(out);
+    }
+
+    // New path.
+    let id = format!("OO-{}", uuid::Uuid::new_v4().simple());
+    let inserted =
+        repo::insert_open_order(&mut tx, &id, identity, plan_code, msisdn, reserved_until, now, &ctx.tenant)
+            .await?;
+    if !inserted {
+        // Lost a race to a concurrent create for the same owner — resume it.
+        tx.rollback().await?;
+        return Box::pin(create_or_resume_open_order(
+            st, ctx, identity, plan_code, msisdn, ttl_secs,
+        ))
+        .await;
+    }
+    let held = repo::hold_msisdn(&mut tx, msisdn, &id, reserved_until, now, &ctx.tenant).await?;
+    if !held {
+        // Number was taken between picker render and submit — roll back the
+        // open_order insert too and tell the customer to pick again.
+        return Err(PolicyViolation::with_context(
+            "inventory.msisdn.unavailable",
+            format!("MSISDN {msisdn} was just taken — please pick another number"),
+            json!({ "msisdn": msisdn }),
+        )
+        .into());
+    }
+    stage(
+        &mut tx,
+        ctx,
+        "open_order.opened",
+        "open_order",
+        &id,
+        json!({ "open_order_id": id, "owner_identity": identity, "msisdn": msisdn, "plan_code": plan_code }),
+    )
+    .await?;
+    tx.commit().await?;
+    let row = repo::get_open_order(&st.pool, &id)
+        .await?
+        .ok_or_else(|| ApiError::Internal("open_order vanished".into()))?;
+    let mut out = open_order_json(&row);
+    out["resumed"] = json!(false);
+    Ok(out)
+}
+
+/// Link the customer id onto an open order (the create-customer step).
+pub async fn link_open_order_customer(
+    st: &AppState,
+    _ctx: &RequestCtx,
+    id: &str,
+    customer_id: &str,
+) -> Result<Value, ApiError> {
+    let now = bss_clock::now();
+    let mut tx = st.pool.begin().await?;
+    repo::link_open_order_customer(&mut tx, id, customer_id, now).await?;
+    tx.commit().await?;
+    Ok(json!({ "open_order_id": id, "customer_id": customer_id }))
+}
+
+/// Advance the open order's recorded funnel step.
+pub async fn advance_open_order_step(
+    st: &AppState,
+    _ctx: &RequestCtx,
+    id: &str,
+    step: &str,
+) -> Result<Value, ApiError> {
+    let now = bss_clock::now();
+    let mut tx = st.pool.begin().await?;
+    repo::set_open_order_state(&mut tx, id, Some(step), None, None, now).await?;
+    tx.commit().await?;
+    Ok(json!({ "open_order_id": id, "step": step }))
+}
+
+/// Complete an open order — the funnel finished, the number is now assigned to a
+/// subscription. No hold release (it became a hard reserve → assigned).
+pub async fn complete_open_order(
+    st: &AppState,
+    ctx: &RequestCtx,
+    id: &str,
+) -> Result<Value, ApiError> {
+    let now = bss_clock::now();
+    let mut tx = st.pool.begin().await?;
+    repo::set_open_order_state(&mut tx, id, Some("completed"), Some("completed"), None, now).await?;
+    stage(&mut tx, ctx, "open_order.completed", "open_order", id, json!({ "open_order_id": id }))
+        .await?;
+    tx.commit().await?;
+    Ok(json!({ "open_order_id": id, "status": "completed" }))
+}
+
+/// Cancel an open order — release its MSISDN hold back to the pool so the owner
+/// can start fresh. Used by the "My open order" screen (phase 3) and the sweep.
+pub async fn cancel_open_order(
+    st: &AppState,
+    ctx: &RequestCtx,
+    id: &str,
+    terminal_status: &str,
+) -> Result<Value, ApiError> {
+    let now = bss_clock::now();
+    let mut tx = st.pool.begin().await?;
+    let released = repo::release_holds_for(&mut tx, id, now).await?;
+    for m in &released {
+        stage(&mut tx, ctx, "inventory.msisdn.released", "msisdn", m, json!({ "msisdn": m, "reserved_for": id })).await?;
+    }
+    repo::set_open_order_state(&mut tx, id, None, Some(terminal_status), None, now).await?;
+    stage(
+        &mut tx,
+        ctx,
+        &format!("open_order.{terminal_status}"),
+        "open_order",
+        id,
+        json!({ "open_order_id": id, "released": released }),
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(json!({ "open_order_id": id, "status": terminal_status, "released": released }))
+}
+
+/// Read an open order by id.
+pub async fn get_open_order(st: &AppState, id: &str) -> Result<Option<Value>, ApiError> {
+    Ok(repo::get_open_order(&st.pool, id).await?.map(|o| open_order_json(&o)))
+}
+
+/// Read the owner's current open order (status='open'), if any.
+pub async fn get_open_order_for_identity(
+    st: &AppState,
+    ctx: &RequestCtx,
+    identity: &str,
+) -> Result<Option<Value>, ApiError> {
+    let mut tx = st.pool.begin().await?;
+    let row = repo::get_open_order_by_identity(&mut tx, identity, &ctx.tenant).await?;
+    tx.commit().await?;
+    Ok(row.map(|o| open_order_json(&o)))
 }
 
 pub async fn assign_msisdn(st: &AppState, msisdn: &str) -> Result<MsisdnRow, ApiError> {
