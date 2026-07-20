@@ -16,7 +16,7 @@
      enabled clients see the ``Confirming…`` state and never click. #}
   <form method="post" action="{{ target_url }}" id="step-up-replay-form"
         class="auth-form">
-    {% for key, value in payload.items() %}
+    {% for key, value in payload | items %}
     <input type="hidden" name="{{ key }}" value="{{ value }}" />
     {% endfor %}
     <button type="submit" class="auth-cta">Continue</button>

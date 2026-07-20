@@ -133,6 +133,31 @@ pub fn build_environment() -> Arc<Environment<'static>> {
     env.add_filter("tone", |v: Value| {
         crate::views::state_tone(&v.to_string()).to_string()
     });
+    // Jinja2 ships a `urlencode` filter; MiniJinja does not, so register the
+    // string form the CRM list pagers depend on (percent-encode a query value,
+    // keeping the unreserved set + `/`, matching Jinja's default safe chars).
+    env.add_filter("urlencode", |v: Value| urlencode_filter(&v));
 
     Arc::new(env)
+}
+
+/// Percent-encode a value for use as a query-string component. Mirrors Jinja2's
+/// `urlencode` on a scalar: keep ALPHA / DIGIT / `_.-~` and `/` unencoded, and
+/// `%XX`-encode every other byte (so `+` in `a+b@x.com` becomes `%2B`). An
+/// undefined/none value renders as the empty string, same as Jinja.
+fn urlencode_filter(v: &Value) -> String {
+    if v.is_none() || v.is_undefined() {
+        return String::new();
+    }
+    let s = v.to_string();
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'_' | b'.' | b'-' | b'~' | b'/' => {
+                out.push(*b as char)
+            }
+            _ => out.push_str(&format!("%{b:02X}")),
+        }
+    }
+    out
 }
