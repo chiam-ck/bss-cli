@@ -185,7 +185,8 @@ pub async fn webhook_didit(
              VALUES ($1,$2,$1,$3,$4,$5) \
              ON CONFLICT (provider, provider_session_id) DO UPDATE \
              SET decision_status = EXCLUDED.decision_status, \
-                 decision_body_digest = EXCLUDED.decision_body_digest",
+                 decision_body_digest = EXCLUDED.decision_body_digest, \
+                 received_at = now()",
         )
         .bind(PROVIDER_DIDIT)
         .bind(&session_id)
