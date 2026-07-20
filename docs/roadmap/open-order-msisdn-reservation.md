@@ -196,11 +196,13 @@ Requires **Phase 0 amendments** at build time (do not edit without one):
 - `CLAUDE.md` — no change (within scope + motto).
 
 ## 10. Suggested phasing
-1. **Reservation core** — `0002` migration (columns) + atomic reserve/release + picker
-   exclusion + events + reset-plan update. *(Collisions stop.)*
-2. **Persisted open order** — `open_order` table + funnel write-through + one-open block +
-   resume-by-load.
-3. **Account screen** — `/account/open-order` (ownership-bound) + My Account link + cancel.
-4. **Sweep worker** — 24h release in the crm lifespan + deterministic-clock scenario test.
+1. ✅ **Reservation core** (`4c0ff31`) — `0002` migration (columns) + atomic self-healing
+   hold/release + events + reset-plan update.
+2. ✅ **Persisted open order + reserve-at-pick** (`053cf60`) — `0003` `open_order` table +
+   funnel write-through (create/hold at submit, link, complete) + one-open block +
+   resume-by-load + the `reserve_next_msisdn` soft→hard *claim* so a held number flows
+   through provisioning. *(Collisions now stop for a live signup.)*
+3. ⬜ **Account screen** — `/account/open-order` (ownership-bound) + My Account link + cancel.
+4. ⬜ **Sweep worker** — 24h release in the crm lifespan + deterministic-clock scenario test.
 
-Ship 1–2 first (correctness), then 3–4 (UX + hygiene).
+Ship 1–2 first (correctness — done), then 3–4 (UX + hygiene).
