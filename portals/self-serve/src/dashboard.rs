@@ -29,12 +29,29 @@ pub async fn dashboard(
     let email = identity.as_ref().map(|i| i.email.clone());
     let customer_id = identity.as_ref().and_then(|i| i.customer_id.clone());
 
+    // v-reservation: a pending (incomplete) open order surfaces a low-prominence
+    // "Resume open order" link on EVERY dashboard variant — including the
+    // empty/get-started state, which is exactly where a mid-signup customer (a
+    // customer with a held number but no active line yet) lands. Keyed on email,
+    // best-effort. Fetched once here so all render paths carry it.
+    let open_order = match (email.as_deref(), &state.clients) {
+        (Some(e), Some(clients)) => clients
+            .inventory
+            .open_order_by_identity(e)
+            .await
+            .ok()
+            .filter(|v| !v.is_null()),
+        _ => None,
+    };
+    let oo = || minijinja::Value::from_serialize(&open_order);
+
     let Some(customer_id) = customer_id else {
         return render(
             &state,
             "dashboard_empty.html",
             context! {
                 email => email,
+                open_order => oo(),
                 request => request_ctx("/", portal.identity_email()),
             },
         );
@@ -46,6 +63,7 @@ pub async fn dashboard(
             "dashboard_empty.html",
             context! {
                 email => email,
+                open_order => oo(),
                 request => request_ctx("/", portal.identity_email()),
             },
         );
@@ -64,6 +82,7 @@ pub async fn dashboard(
             "dashboard_empty.html",
             context! {
                 email => email,
+                open_order => oo(),
                 request => request_ctx("/", portal.identity_email()),
             },
         );
@@ -112,15 +131,6 @@ pub async fn dashboard(
         .filter(|o| o.get("promotion").is_some())
         .collect();
 
-    // v-reservation: a pending (incomplete) open order surfaces a low-prominence
-    // "resume" link. Absent → the dashboard shows nothing about it.
-    let open_order = clients
-        .inventory
-        .open_order_by_identity(email.as_deref().unwrap_or(""))
-        .await
-        .ok()
-        .filter(|v| !v.is_null());
-
     render(
         &state,
         "dashboard.html",
@@ -129,7 +139,7 @@ pub async fn dashboard(
             customer_id => customer_id,
             lines => minijinja::Value::from_serialize(&lines),
             assigned_offers => minijinja::Value::from_serialize(&assigned_offers),
-            open_order => minijinja::Value::from_serialize(&open_order),
+            open_order => oo(),
             request => request_ctx("/", portal.identity_email()),
         },
     )

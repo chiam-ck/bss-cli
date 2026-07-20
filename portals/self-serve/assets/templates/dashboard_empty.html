@@ -9,6 +9,19 @@
     happen in the next step.
   </p>
 
+  {# v-reservation: a signup left in progress — offer to resume/cancel it. #}
+  {% if open_order %}
+    <div class="dashboard-empty-open-order">
+      <p>
+        You have an order in progress for number
+        <strong>{{ open_order.msisdn }}</strong> that isn't finished yet.
+      </p>
+      <a class="welcome-cta welcome-cta--primary" href="/account/open-order">
+        Resume or cancel your order
+      </a>
+    </div>
+  {% endif %}
+
   <div class="dashboard-empty-cta-row">
     <a class="welcome-cta welcome-cta--primary" href="/plans">Browse plans</a>
     <form method="post" action="/auth/logout" class="dashboard-logout-form">
