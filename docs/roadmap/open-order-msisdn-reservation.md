@@ -202,7 +202,10 @@ Requires **Phase 0 amendments** at build time (do not edit without one):
    funnel write-through (create/hold at submit, link, complete) + one-open block +
    resume-by-load + the `reserve_next_msisdn` soft→hard *claim* so a held number flows
    through provisioning. *(Collisions now stop for a live signup.)*
-3. ⬜ **Account screen** — `/account/open-order` (ownership-bound) + My Account link + cancel.
+3. ✅ **Account screen** — `GET /account/open-order` (ownership-bound: keyed on the
+   session email, cancel derives the id from the session) + `POST …/cancel` (releases the
+   hold) + a dashboard "Resume open order" link shown only when one exists +
+   `open_order.html`. Section-degrading.
 4. ⬜ **Sweep worker** — 24h release in the crm lifespan + deterministic-clock scenario test.
 
 Ship 1–2 first (correctness — done), then 3–4 (UX + hygiene).

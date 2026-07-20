@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Your open order · {{ branding().brand_name }} self-serve{% endblock %}
+
+{% block main %}
+<section class="open-order">
+  <h1 class="page-title">Your open order</h1>
+
+  {% if open_order %}
+    <p class="page-subtitle">
+      You have an order in progress. Finish it to activate your line, or cancel it
+      to release the number so you can start again.
+    </p>
+    <div class="open-order-card">
+      <dl class="open-order-details">
+        <dt>Plan</dt><dd>{{ open_order.plan_code }}</dd>
+        <dt>Number</dt><dd>{{ open_order.msisdn }}</dd>
+        <dt>Stopped at</dt><dd>{{ open_order.step }}</dd>
+        {% if open_order.reserved_until %}
+          <dt>Held until</dt>
+          <dd>{{ open_order.reserved_until[:16] | replace('T', ' ') }} UTC</dd>
+        {% endif %}
+      </dl>
+      <div class="open-order-actions">
+        <a class="welcome-cta"
+           href="/signup/{{ open_order.plan_code }}?msisdn={{ open_order.msisdn }}">
+          Resume order
+        </a>
+        <form method="post" action="/account/open-order/cancel" class="open-order-cancel">
+          <button type="submit" class="welcome-cta">Cancel order</button>
+        </form>
+      </div>
+    </div>
+  {% else %}
+    <p class="page-subtitle">You have no order in progress.</p>
+    <a class="welcome-cta" href="/plans">Browse plans</a>
+  {% endif %}
+
+  <nav class="open-order-nav">
+    <a class="welcome-cta" href="/">Back to dashboard</a>
+  </nav>
+</section>
+{% endblock %}

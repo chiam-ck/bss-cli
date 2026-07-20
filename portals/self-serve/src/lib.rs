@@ -25,6 +25,7 @@ pub mod error_messages;
 pub mod kyc;
 pub mod middleware;
 pub mod offerings;
+pub mod open_order;
 pub mod payment_methods;
 pub mod profile;
 pub mod prompts;
@@ -163,6 +164,11 @@ pub fn build_router(state: AppState) -> Router {
             post(payment_methods::set_default),
         )
         .route("/billing/history", get(account_reads::history))
+        .route("/account/open-order", get(open_order::open_order_view))
+        .route(
+            "/account/open-order/cancel",
+            post(open_order::open_order_cancel),
+        )
         .route("/esim/:subscription_id", get(account_reads::esim_view))
         .route(
             "/plan/change",

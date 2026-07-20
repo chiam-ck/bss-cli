@@ -42,6 +42,10 @@
     <a class="welcome-cta" href="/payment-methods">Payment methods</a>
     <a class="welcome-cta" href="/billing/history">Charge history</a>
     <a class="welcome-cta" href="/profile/contact">Contact details</a>
+    {# v-reservation: only shown when a signup is mid-flight. #}
+    {% if open_order %}
+      <a class="welcome-cta" href="/account/open-order">Resume open order</a>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

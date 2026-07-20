@@ -112,6 +112,15 @@ pub async fn dashboard(
         .filter(|o| o.get("promotion").is_some())
         .collect();
 
+    // v-reservation: a pending (incomplete) open order surfaces a low-prominence
+    // "resume" link. Absent → the dashboard shows nothing about it.
+    let open_order = clients
+        .inventory
+        .open_order_by_identity(email.as_deref().unwrap_or(""))
+        .await
+        .ok()
+        .filter(|v| !v.is_null());
+
     render(
         &state,
         "dashboard.html",
@@ -120,6 +129,7 @@ pub async fn dashboard(
             customer_id => customer_id,
             lines => minijinja::Value::from_serialize(&lines),
             assigned_offers => minijinja::Value::from_serialize(&assigned_offers),
+            open_order => minijinja::Value::from_serialize(&open_order),
             request => request_ctx("/", portal.identity_email()),
         },
     )
