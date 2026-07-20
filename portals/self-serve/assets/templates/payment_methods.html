@@ -9,11 +9,11 @@
     <p class="form-error" role="alert">{{ error }}</p>
   {% endif %}
 
-  {% if request.query_params.get('flash') == 'added' %}
+  {% if flash == 'added' %}
     <p class="form-flash" role="status">Card added.</p>
-  {% elif request.query_params.get('flash') == 'removed' %}
+  {% elif flash == 'removed' %}
     <p class="form-flash" role="status">Card removed.</p>
-  {% elif request.query_params.get('flash') == 'default_set' %}
+  {% elif flash == 'default_set' %}
     <p class="form-flash" role="status">Default payment method updated.</p>
   {% endif %}
 

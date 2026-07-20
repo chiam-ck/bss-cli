@@ -63,7 +63,7 @@
           <td>{{ badge(t.state) }}</td>
           <td>{{ t.agent_id or "—" }}</td>
           <td class="crm-row-actions">
-            {% for label, to_state in ticket_actions_by_id.get(t.id, []) %}
+            {% for label, to_state in ticket_actions_by_id[t.id] | default([]) %}
             <form method="post" action="/case/{{ case.id }}/ticket/{{ t.id }}/transition">
               <input type="hidden" name="to_state" value="{{ to_state }}" />
               <button type="submit" class="crm-mini-btn">{{ label }}</button>

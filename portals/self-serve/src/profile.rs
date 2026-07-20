@@ -7,7 +7,7 @@
 //! success and failure. The email change commits CRM + portal_auth atomically
 //! (the documented cross-schema exception).
 
-use axum::extract::{RawForm, State};
+use axum::extract::{Query, RawForm, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::Extension;
@@ -109,12 +109,29 @@ pub(crate) async fn audit(
 pub async fn contact_view(
     State(state): State<AppState>,
     Extension(portal): Extension<PortalSession>,
+    Query(q): Query<FlashQuery>,
 ) -> Response {
     let customer_id = match require_linked_customer(&portal, "/profile/contact") {
         Ok(c) => c,
         Err(r) => return r,
     };
-    render_contact(&state, &portal, &customer_id, None, StatusCode::OK).await
+    render_contact(
+        &state,
+        &portal,
+        &customer_id,
+        None,
+        q.flash.as_deref(),
+        StatusCode::OK,
+    )
+    .await
+}
+
+/// `?flash=<code>` post-redirect-get confirmation marker (see the
+/// `Redirect::to(".../?flash=...")` writes in this module).
+#[derive(serde::Deserialize)]
+pub struct FlashQuery {
+    #[serde(default)]
+    flash: Option<String>,
 }
 
 /// Render `profile_contact.html` (shared by the view + the error re-renders).
@@ -123,6 +140,7 @@ async fn render_contact(
     portal: &PortalSession,
     customer_id: &str,
     error: Option<&str>,
+    flash: Option<&str>,
     status: StatusCode,
 ) -> Response {
     let (mediums, individual) = match &state.clients {
@@ -161,7 +179,7 @@ async fn render_contact(
             individual => individual,
             pending_email_change => pending,
             error => error,
-            flash => Option::<String>::None,
+            flash => flash,
             request => request_ctx("/profile/contact", portal.identity_email()),
         },
     );
@@ -275,6 +293,7 @@ pub async fn name_update(
                 &portal,
                 &customer_id,
                 Some(render_rule(&pv.rule)),
+                None,
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
             .await
@@ -438,6 +457,7 @@ async fn direct_medium_update(
                 &portal,
                 &customer_id,
                 Some(render_rule(&pv.rule)),
+                None,
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
             .await
@@ -536,6 +556,7 @@ pub async fn email_change_start(
                 &portal,
                 &customer_id,
                 Some(render_rule(&rule)),
+                None,
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
             .await

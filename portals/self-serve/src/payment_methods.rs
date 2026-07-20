@@ -6,7 +6,7 @@
 //! (`checkout-init`/`checkout-return`) is deferred (prod-only). One `bss-clients`
 //! write per route; `portal_action` on success + failure.
 
-use axum::extract::{Path, RawForm, State};
+use axum::extract::{Path, Query, RawForm, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::Extension;
@@ -42,12 +42,29 @@ fn add_template(provider: &str) -> &'static str {
 pub async fn list_methods(
     State(state): State<AppState>,
     Extension(portal): Extension<PortalSession>,
+    Query(q): Query<FlashQuery>,
 ) -> Response {
     let customer_id = match require_linked_customer(&portal, "/payment-methods") {
         Ok(c) => c,
         Err(r) => return r,
     };
-    render_list(&state, &portal, &customer_id, None, StatusCode::OK).await
+    render_list(
+        &state,
+        &portal,
+        &customer_id,
+        None,
+        q.flash.as_deref(),
+        StatusCode::OK,
+    )
+    .await
+}
+
+/// `?flash=<code>` post-redirect-get confirmation marker (see the
+/// `Redirect::to("/payment-methods?flash=...")` writes in this module).
+#[derive(serde::Deserialize)]
+pub struct FlashQuery {
+    #[serde(default)]
+    flash: Option<String>,
 }
 
 async fn render_list(
@@ -55,6 +72,7 @@ async fn render_list(
     portal: &PortalSession,
     customer_id: &str,
     error: Option<&str>,
+    flash: Option<&str>,
     status: StatusCode,
 ) -> Response {
     let methods = match &state.clients {
@@ -71,7 +89,7 @@ async fn render_list(
         context! {
             methods => methods,
             error => error,
-            flash => Option::<String>::None,
+            flash => flash,
             request => request_ctx("/payment-methods", portal.identity_email()),
         },
     );
@@ -401,6 +419,7 @@ async fn method_mutation(
                 &portal,
                 &customer_id,
                 Some(render_rule(&pv.rule)),
+                None,
                 StatusCode::UNPROCESSABLE_ENTITY,
             )
             .await
