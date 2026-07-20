@@ -3,8 +3,9 @@
 //!
 //! Add/remove/set-default are step-up-gated. The mock add tokenizes the PAN
 //! server-side (v0.10 behaviour); the Stripe Checkout add flow
-//! (`checkout-init`/`checkout-return`) is deferred (prod-only). One `bss-clients`
-//! write per route; `portal_action` on success + failure.
+//! (`checkout-init`/`checkout-return`) mints a `mode=setup` Checkout Session and
+//! registers the resulting `pm_*` on return (same shape as the signup COF flow).
+//! One `bss-clients` write per route; `portal_action` on success + failure.
 
 use axum::extract::{Path, Query, RawForm, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -22,7 +23,10 @@ use crate::profile::{
     audit as audit_action, field as pick_field, parse_form as parse_form_pairs, user_agent as ua_of,
 };
 use crate::routes::render;
-use crate::signup::local_tokenize;
+use crate::signup::{
+    local_tokenize, stripe_create_checkout_session, stripe_extract_pm,
+    stripe_retrieve_checkout_session,
+};
 use crate::stepup::check_step_up;
 use crate::templating::request_ctx;
 use crate::AppState;
@@ -265,6 +269,186 @@ pub async fn add_method(
         Err(e) => {
             tracing::error!(error = %e, "portal.payment_methods.add_failed");
             (StatusCode::INTERNAL_SERVER_ERROR, "Add failed").into_response()
+        }
+    }
+}
+
+// ── Stripe Checkout add flow (prod: BSS_PAYMENT_PROVIDER=stripe) ──────────────
+//
+// The stripe add template posts "Continue to Stripe" straight to
+// `/payment-methods/add/checkout-init`; that route step-up-gates, mints a
+// `mode=setup` Checkout Session, and 303-redirects to Stripe's hosted card
+// form. Stripe redirects the customer back to `/payment-methods/add/checkout-
+// return?cs_id=cs_...`, where we pull the saved `pm_*` and register it. Mirrors
+// `signup.rs`'s COF checkout and the retired python-legacy routes.
+
+/// `?cs_id=cs_...` — Stripe fills `{CHECKOUT_SESSION_ID}` into the return URL.
+#[derive(serde::Deserialize)]
+pub struct CheckoutReturnQuery {
+    cs_id: String,
+}
+
+/// `POST /payment-methods/add/checkout-init` — step-up, ensure `cus_*`, mint the
+/// Checkout Session, 303 to Stripe.
+pub async fn add_checkout_init(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    headers: HeaderMap,
+    RawForm(body): RawForm,
+) -> Response {
+    let form = parse_form_pairs(&body);
+    let customer_id = match require_linked_customer(&portal, "/payment-methods") {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    if let Err(r) = check_step_up(
+        &state,
+        &portal,
+        "payment_method_add",
+        &headers,
+        &form,
+        "/payment-methods/add/checkout-init",
+    )
+    .await
+    {
+        return r;
+    }
+
+    let render_err = |state: &AppState, msg: &str| -> Response {
+        let mut r = render(
+            state,
+            add_template("stripe"),
+            context! {
+                error => msg,
+                fields => serde_json::json!({}),
+                payment_provider => "stripe",
+                request => request_ctx("/payment-methods", portal.identity_email()),
+            },
+        );
+        *r.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+        r
+    };
+
+    let api_key = state.settings.payment_stripe_api_key.clone();
+    if api_key.is_empty() {
+        return render_err(
+            &state,
+            "Payment is misconfigured (Stripe key missing). Please contact support.",
+        );
+    }
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Unavailable").into_response();
+    };
+
+    // Seed Stripe's customer with the verified login email (fallback synthetic).
+    let email = portal
+        .identity_email()
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| format!("{customer_id}@bss-cli.local"));
+    let cus_id = match clients.payment.ensure_customer(&customer_id, &email).await {
+        Ok(v) => v
+            .get("customer_external_ref")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        Err(e) => {
+            tracing::warn!(error = %e, "portal.payment_methods.ensure_customer_failed");
+            return render_err(
+                &state,
+                "Couldn't reach the payment service. Please try again.",
+            );
+        }
+    };
+
+    let public_url = state.settings.public_url.trim_end_matches('/');
+    let return_url =
+        format!("{public_url}/payment-methods/add/checkout-return?cs_id={{CHECKOUT_SESSION_ID}}");
+    let cancel_url = format!("{public_url}/payment-methods");
+    // No signup session here — pass an empty marker; the return handler validates
+    // on `metadata[bss_customer_id]` instead.
+    match stripe_create_checkout_session(
+        &api_key,
+        &cus_id,
+        &return_url,
+        &cancel_url,
+        &customer_id,
+        "",
+    )
+    .await
+    {
+        Ok(url) => {
+            tracing::info!(customer_id = %customer_id, "portal.payment_methods.checkout_redirect");
+            Redirect::to(&url).into_response()
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "portal.payment_methods.checkout_session_create_failed");
+            render_err(&state, "Couldn't reach Stripe. Please try again.")
+        }
+    }
+}
+
+/// `GET /payment-methods/add/checkout-return` — retrieve the session, pull the
+/// saved `pm_*`, register it as a card on file, redirect to the list.
+pub async fn add_checkout_return(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    Query(q): Query<CheckoutReturnQuery>,
+) -> Response {
+    let customer_id = match require_linked_customer(&portal, "/payment-methods") {
+        Ok(c) => c,
+        Err(r) => return r,
+    };
+    let api_key = state.settings.payment_stripe_api_key.clone();
+    if api_key.is_empty() || !q.cs_id.starts_with("cs_") {
+        return Redirect::to("/payment-methods?flash=error").into_response();
+    }
+
+    let cs = match stripe_retrieve_checkout_session(&api_key, &q.cs_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, cs_id = %q.cs_id, "portal.payment_methods.checkout_session_retrieve_failed");
+            return Redirect::to("/payment-methods?flash=error").into_response();
+        }
+    };
+
+    // Defence in depth: refuse a session that isn't this customer's.
+    let meta_customer = cs
+        .get("metadata")
+        .and_then(|m| m.get("bss_customer_id"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if meta_customer != customer_id {
+        tracing::warn!(cs_id = %q.cs_id, "portal.payment_methods.checkout_metadata_mismatch");
+        return Redirect::to("/payment-methods?flash=error").into_response();
+    }
+
+    let pm_id = match stripe_extract_pm(&api_key, cs.get("setup_intent")).await {
+        Some(pm) if pm.starts_with("pm_") => pm,
+        _ => {
+            tracing::warn!(cs_id = %q.cs_id, "portal.payment_methods.checkout_no_pm");
+            return Redirect::to("/payment-methods?flash=error").into_response();
+        }
+    };
+
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Unavailable").into_response();
+    };
+    match clients
+        .payment
+        .create_stripe_payment_method(&customer_id, &pm_id)
+        .await
+    {
+        Ok(_) => Redirect::to("/payment-methods?flash=added").into_response(),
+        Err(ClientError::Policy(pv)) => {
+            if !is_known(&pv.rule) {
+                tracing::info!(rule = %pv.rule, "portal.payment_methods.unknown_policy_rule");
+            }
+            Redirect::to(&format!("/payment-methods?flash=error&rule={}", pv.rule)).into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "portal.payment_methods.checkout_register_failed");
+            Redirect::to("/payment-methods?flash=error").into_response()
         }
     }
 }

@@ -15,6 +15,8 @@
     <p class="form-flash" role="status">Card removed.</p>
   {% elif flash == 'default_set' %}
     <p class="form-flash" role="status">Default payment method updated.</p>
+  {% elif flash == 'error' %}
+    <p class="form-error" role="alert">We couldn't add that card. Please try again.</p>
   {% endif %}
 
   {% if methods %}

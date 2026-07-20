@@ -156,6 +156,14 @@ pub fn build_router(state: AppState) -> Router {
             get(payment_methods::add_method_form).post(payment_methods::add_method),
         )
         .route(
+            "/payment-methods/add/checkout-init",
+            post(payment_methods::add_checkout_init),
+        )
+        .route(
+            "/payment-methods/add/checkout-return",
+            get(payment_methods::add_checkout_return),
+        )
+        .route(
             "/payment-methods/:pm_id/remove",
             post(payment_methods::remove_method),
         )

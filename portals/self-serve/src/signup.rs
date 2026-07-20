@@ -1172,7 +1172,7 @@ fn fail_cof(state: &AppState, sig: &mut SignupSession, rule: &str) -> Response {
 // ── Stripe Checkout REST calls (direct reqwest, D4 — mirrors the tokenizer) ───
 
 /// `POST /v1/checkout/sessions` (`mode=setup`) → the hosted-form URL.
-async fn stripe_create_checkout_session(
+pub(crate) async fn stripe_create_checkout_session(
     api_key: &str,
     cus_id: &str,
     success_url: &str,
@@ -1205,7 +1205,10 @@ async fn stripe_create_checkout_session(
 }
 
 /// `GET /v1/checkout/sessions/{id}?expand[]=setup_intent`.
-async fn stripe_retrieve_checkout_session(api_key: &str, cs_id: &str) -> Result<Value, String> {
+pub(crate) async fn stripe_retrieve_checkout_session(
+    api_key: &str,
+    cs_id: &str,
+) -> Result<Value, String> {
     stripe_request(
         reqwest::Client::new()
             .get(format!(
@@ -1219,7 +1222,10 @@ async fn stripe_retrieve_checkout_session(api_key: &str, cs_id: &str) -> Result<
 
 /// Pull `pm_*` from the (expanded) `setup_intent`; refetch the SetupIntent if it
 /// came back as a bare id string rather than an object.
-async fn stripe_extract_pm(api_key: &str, setup_intent: Option<&Value>) -> Option<String> {
+pub(crate) async fn stripe_extract_pm(
+    api_key: &str,
+    setup_intent: Option<&Value>,
+) -> Option<String> {
     match setup_intent {
         Some(Value::Object(o)) => o
             .get("payment_method")
