@@ -920,12 +920,15 @@ pub async fn release_holds_for(
     .bind(now)
     .fetch_all(&mut *conn)
     .await?;
-    rows.iter().map(|r| r.try_get("msisdn").map_err(ApiError::from)).collect()
+    rows.iter()
+        .map(|r| r.try_get("msisdn").map_err(ApiError::from))
+        .collect()
 }
 
 // ── open_order (v-reservation phase 2) ──────────────────────────────────────
 
-const OPEN_ORDER_COLS: &str = "id, owner_identity, customer_id, plan_code, msisdn, iccid, step, status, reserved_until";
+const OPEN_ORDER_COLS: &str =
+    "id, owner_identity, customer_id, plan_code, msisdn, iccid, step, status, reserved_until";
 
 fn open_order_row(r: &PgRow) -> Result<OpenOrderRow, ApiError> {
     Ok(OpenOrderRow {

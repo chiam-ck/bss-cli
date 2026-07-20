@@ -153,7 +153,9 @@ impl KycAdapter {
     /// mirrors the Python `select_kyc_adapter`). Called from `build_state_with_db`.
     pub fn didit(api_key: &str, workflow_id: &str, pool: PgPool) -> Result<Self, String> {
         if api_key.is_empty() {
-            return Err("BSS_PORTAL_KYC_PROVIDER=didit requires BSS_PORTAL_KYC_DIDIT_API_KEY".into());
+            return Err(
+                "BSS_PORTAL_KYC_PROVIDER=didit requires BSS_PORTAL_KYC_DIDIT_API_KEY".into(),
+            );
         }
         if workflow_id.is_empty() {
             return Err(
@@ -293,7 +295,9 @@ impl DiditKycAdapter {
         let start = Instant::now();
         let result = self
             .http
-            .get(format!("{DIDIT_BASE_URL}/v2/session/{session_id}/decision/"))
+            .get(format!(
+                "{DIDIT_BASE_URL}/v2/session/{session_id}/decision/"
+            ))
             .header("x-api-key", &self.api_key)
             .send()
             .await;
@@ -423,7 +427,10 @@ impl DiditKycAdapter {
 /// Reduce a Didit decision payload to the BSS-bound shape. **THE PII REDUCTION
 /// POINT** — after this returns, raw document_number / name / address / image
 /// URLs are gone. Port of `_build_attestation`.
-fn build_attestation(decision: &serde_json::Value, corroboration_id: Option<String>) -> KycAttestation {
+fn build_attestation(
+    decision: &serde_json::Value,
+    corroboration_id: Option<String>,
+) -> KycAttestation {
     let idv = decision.get("id_verification");
     let get_str = |k: &str| -> String {
         idv.and_then(|v| v.get(k))
@@ -434,26 +441,41 @@ fn build_attestation(decision: &serde_json::Value, corroboration_id: Option<Stri
     let raw_doc_number = get_str("document_number");
     let document_country = {
         let c = get_str("issuing_state");
-        if c.is_empty() { "SGP".to_string() } else { c }
+        if c.is_empty() {
+            "SGP".to_string()
+        } else {
+            c
+        }
     };
 
     let normalized = raw_doc_number.to_uppercase();
     let normalized = normalized.trim();
     let digest = sha256_hex(&format!("{normalized}|{document_country}|{DIDIT_PROVIDER}"));
     let last4: String = if normalized.chars().count() >= 4 {
-        normalized.chars().skip(normalized.chars().count() - 4).collect()
+        normalized
+            .chars()
+            .skip(normalized.chars().count() - 4)
+            .collect()
     } else {
         normalized.to_string()
     };
 
     let dob = {
         let d = get_str("date_of_birth");
-        if d.is_empty() { "1900-01-01".to_string() } else { d }
+        if d.is_empty() {
+            "1900-01-01".to_string()
+        } else {
+            d
+        }
     };
 
     let raw_type = {
         let t = get_str("document_type").to_lowercase();
-        if t.is_empty() { "identity card".to_string() } else { t }
+        if t.is_empty() {
+            "identity card".to_string()
+        } else {
+            t
+        }
     };
     let document_type = match raw_type.as_str() {
         "identity card" => "nric",

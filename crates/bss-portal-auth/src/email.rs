@@ -292,7 +292,10 @@ pub struct ResendEmailAdapter {
 impl ResendEmailAdapter {
     /// `api_key` + `from_address` must be non-empty (the caller
     /// `select_adapter` already guards, but keep the invariant local too).
-    pub fn new(api_key: impl Into<String>, from_address: impl Into<String>) -> Result<Self, String> {
+    pub fn new(
+        api_key: impl Into<String>,
+        from_address: impl Into<String>,
+    ) -> Result<Self, String> {
         let api_key = api_key.into();
         let from = from_address.into();
         if api_key.is_empty() {
@@ -484,7 +487,10 @@ pub fn select_adapter(
                         .to_string(),
                 );
             }
-            Ok(Box::new(ResendEmailAdapter::new(resend_api_key, from_address)?))
+            Ok(Box::new(ResendEmailAdapter::new(
+                resend_api_key,
+                from_address,
+            )?))
         }
         "smtp" => Err("smtp email adapter is reserved (post-v0.16)".to_string()),
         other => Err(format!(

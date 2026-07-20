@@ -88,8 +88,7 @@ impl InventoryClient {
         plan_code: &str,
         msisdn: &str,
     ) -> Result<Value, ClientError> {
-        let body =
-            json!({ "identity": identity, "plan_code": plan_code, "msisdn": msisdn });
+        let body = json!({ "identity": identity, "plan_code": plan_code, "msisdn": msisdn });
         self.post("/inventory-api/v1/open-order", Some(&body)).await
     }
 
@@ -113,15 +112,21 @@ impl InventoryClient {
         customer_id: &str,
     ) -> Result<Value, ClientError> {
         let body = json!({ "customer_id": customer_id });
-        self.post(&format!("/inventory-api/v1/open-order/{id}/link-customer"), Some(&body))
-            .await
+        self.post(
+            &format!("/inventory-api/v1/open-order/{id}/link-customer"),
+            Some(&body),
+        )
+        .await
     }
 
     /// `POST /inventory-api/v1/open-order/{id}/advance` — record the funnel step.
     pub async fn advance_open_order(&self, id: &str, step: &str) -> Result<Value, ClientError> {
         let body = json!({ "step": step });
-        self.post(&format!("/inventory-api/v1/open-order/{id}/advance"), Some(&body))
-            .await
+        self.post(
+            &format!("/inventory-api/v1/open-order/{id}/advance"),
+            Some(&body),
+        )
+        .await
     }
 
     /// `POST /inventory-api/v1/open-order/{id}/complete` — funnel finished.
@@ -134,8 +139,11 @@ impl InventoryClient {
     /// Sends an empty object so the (defaulted) request body deserializes.
     pub async fn cancel_open_order(&self, id: &str) -> Result<Value, ClientError> {
         let body = json!({});
-        self.post(&format!("/inventory-api/v1/open-order/{id}/cancel"), Some(&body))
-            .await
+        self.post(
+            &format!("/inventory-api/v1/open-order/{id}/cancel"),
+            Some(&body),
+        )
+        .await
     }
 
     /// `POST /inventory-api/v1/esim/reserve` — reserve the next eSIM profile

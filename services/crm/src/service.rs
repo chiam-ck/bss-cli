@@ -1213,8 +1213,15 @@ pub async fn hold_msisdn(
     let now = bss_clock::now();
     let reserved_until = now + chrono::Duration::seconds(ttl_secs);
     let mut tx = st.pool.begin().await?;
-    let held = repo::hold_msisdn(&mut tx, msisdn, reserved_for, reserved_until, now, &ctx.tenant)
-        .await?;
+    let held = repo::hold_msisdn(
+        &mut tx,
+        msisdn,
+        reserved_for,
+        reserved_until,
+        now,
+        &ctx.tenant,
+    )
+    .await?;
     if !held {
         return Err(PolicyViolation::with_context(
             "msisdn.hold.unavailable",
@@ -1297,7 +1304,8 @@ pub async fn create_or_resume_open_order(
     let mut tx = st.pool.begin().await?;
 
     // Resume path — the owner already has an open order.
-    if let Some(existing) = repo::get_open_order_by_identity(&mut tx, identity, &ctx.tenant).await? {
+    if let Some(existing) = repo::get_open_order_by_identity(&mut tx, identity, &ctx.tenant).await?
+    {
         if existing.msisdn.as_deref() != Some(msisdn) {
             return Err(PolicyViolation::with_context(
                 "open_order.already_open",
@@ -1311,7 +1319,15 @@ pub async fn create_or_resume_open_order(
         }
         // Same number → resume: refresh the hold + window (idempotent for the
         // same holder; reclaims it if it had expired).
-        repo::hold_msisdn(&mut tx, msisdn, &existing.id, reserved_until, now, &ctx.tenant).await?;
+        repo::hold_msisdn(
+            &mut tx,
+            msisdn,
+            &existing.id,
+            reserved_until,
+            now,
+            &ctx.tenant,
+        )
+        .await?;
         repo::set_open_order_state(&mut tx, &existing.id, None, None, Some(reserved_until), now)
             .await?;
         tx.commit().await?;
@@ -1325,9 +1341,17 @@ pub async fn create_or_resume_open_order(
 
     // New path.
     let id = format!("OO-{}", uuid::Uuid::new_v4().simple());
-    let inserted =
-        repo::insert_open_order(&mut tx, &id, identity, plan_code, msisdn, reserved_until, now, &ctx.tenant)
-            .await?;
+    let inserted = repo::insert_open_order(
+        &mut tx,
+        &id,
+        identity,
+        plan_code,
+        msisdn,
+        reserved_until,
+        now,
+        &ctx.tenant,
+    )
+    .await?;
     if !inserted {
         // Lost a race to a concurrent create for the same owner — resume it.
         tx.rollback().await?;
@@ -1402,9 +1426,17 @@ pub async fn complete_open_order(
 ) -> Result<Value, ApiError> {
     let now = bss_clock::now();
     let mut tx = st.pool.begin().await?;
-    repo::set_open_order_state(&mut tx, id, Some("completed"), Some("completed"), None, now).await?;
-    stage(&mut tx, ctx, "open_order.completed", "open_order", id, json!({ "open_order_id": id }))
+    repo::set_open_order_state(&mut tx, id, Some("completed"), Some("completed"), None, now)
         .await?;
+    stage(
+        &mut tx,
+        ctx,
+        "open_order.completed",
+        "open_order",
+        id,
+        json!({ "open_order_id": id }),
+    )
+    .await?;
     tx.commit().await?;
     Ok(json!({ "open_order_id": id, "status": "completed" }))
 }
@@ -1421,7 +1453,15 @@ pub async fn cancel_open_order(
     let mut tx = st.pool.begin().await?;
     let released = repo::release_holds_for(&mut tx, id, now).await?;
     for m in &released {
-        stage(&mut tx, ctx, "inventory.msisdn.released", "msisdn", m, json!({ "msisdn": m, "reserved_for": id })).await?;
+        stage(
+            &mut tx,
+            ctx,
+            "inventory.msisdn.released",
+            "msisdn",
+            m,
+            json!({ "msisdn": m, "reserved_for": id }),
+        )
+        .await?;
     }
     repo::set_open_order_state(&mut tx, id, None, Some(terminal_status), None, now).await?;
     stage(
@@ -1439,7 +1479,9 @@ pub async fn cancel_open_order(
 
 /// Read an open order by id.
 pub async fn get_open_order(st: &AppState, id: &str) -> Result<Option<Value>, ApiError> {
-    Ok(repo::get_open_order(&st.pool, id).await?.map(|o| open_order_json(&o)))
+    Ok(repo::get_open_order(&st.pool, id)
+        .await?
+        .map(|o| open_order_json(&o)))
 }
 
 /// Read the owner's current open order (status='open'), if any.

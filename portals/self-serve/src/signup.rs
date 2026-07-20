@@ -502,7 +502,11 @@ pub async fn signup_submit(
     // Link the customer onto the open order (best-effort — the hold is already
     // keyed on the open-order id; this just records who the funnel belongs to).
     if let Some(oo_id) = &sig.open_order_id {
-        if let Err(e) = clients.inventory.link_open_order_customer(oo_id, &customer_id).await {
+        if let Err(e) = clients
+            .inventory
+            .link_open_order_customer(oo_id, &customer_id)
+            .await
+        {
             tracing::warn!(error = %e, open_order_id = %oo_id, "portal.signup.open_order_link_failed");
         }
     }
@@ -688,8 +692,14 @@ pub async fn signup_step_kyc(
 
     if state.kyc_adapter.is_prebaked() {
         // Synchronous: complete the attest in this request and advance.
-        return complete_kyc_attest(&state, &mut sig, &kyc_session.session_id, ua.as_deref(), false)
-            .await;
+        return complete_kyc_attest(
+            &state,
+            &mut sig,
+            &kyc_session.session_id,
+            ua.as_deref(),
+            false,
+        )
+        .await;
     }
 
     // Real provider (Didit) — render the cross-device handoff (URL + QR) inside
@@ -959,7 +969,11 @@ pub async fn signup_step_cof_checkout_init(
 
     let api_key = state.settings.payment_stripe_api_key.clone();
     if api_key.is_empty() {
-        return fail_cof(&state, &mut sig, "policy.payment.checkout.stripe_unconfigured");
+        return fail_cof(
+            &state,
+            &mut sig,
+            "policy.payment.checkout.stripe_unconfigured",
+        );
     }
     let Some(clients) = &state.clients else {
         return (StatusCode::SERVICE_UNAVAILABLE, "Signup unavailable").into_response();
@@ -967,7 +981,11 @@ pub async fn signup_step_cof_checkout_init(
     let customer_id = sig.customer_id.clone().unwrap_or_default();
 
     // Step 1+2: ensure the cus_* exists (cached after first call).
-    let cus_id = match clients.payment.ensure_customer(&customer_id, &sig.email).await {
+    let cus_id = match clients
+        .payment
+        .ensure_customer(&customer_id, &sig.email)
+        .await
+    {
         Ok(v) => v
             .get("customer_external_ref")
             .and_then(Value::as_str)
@@ -976,7 +994,11 @@ pub async fn signup_step_cof_checkout_init(
         Err(ClientError::Policy(pv)) => return fail_cof(&state, &mut sig, &pv.rule),
         Err(e) => {
             tracing::warn!(error = %e, "portal.signup.ensure_customer_failed");
-            return fail_cof(&state, &mut sig, "policy.payment.checkout.ensure_customer_failed");
+            return fail_cof(
+                &state,
+                &mut sig,
+                "policy.payment.checkout.ensure_customer_failed",
+            );
         }
     };
 
@@ -1005,7 +1027,11 @@ pub async fn signup_step_cof_checkout_init(
         }
         Err(e) => {
             tracing::warn!(error = %e, "portal.signup.checkout_session_create_failed");
-            fail_cof(&state, &mut sig, "policy.payment.checkout.session_create_failed")
+            fail_cof(
+                &state,
+                &mut sig,
+                "policy.payment.checkout.session_create_failed",
+            )
         }
     }
 }
@@ -1055,7 +1081,11 @@ pub async fn signup_step_cof_checkout_return(
         .unwrap_or_default();
     if meta_session != sig.session_id {
         tracing::warn!(cs_id = %q.cs_id, "portal.signup.checkout_session_metadata_mismatch");
-        let _ = fail_cof(&state, &mut sig, "policy.payment.checkout.metadata_mismatch");
+        let _ = fail_cof(
+            &state,
+            &mut sig,
+            "policy.payment.checkout.metadata_mismatch",
+        );
         return Redirect::to(&progress_url(&sig)).into_response();
     }
 
@@ -1064,7 +1094,11 @@ pub async fn signup_step_cof_checkout_return(
         Some(pm) if pm.starts_with("pm_") => pm,
         _ => {
             tracing::warn!(cs_id = %q.cs_id, "portal.signup.checkout_no_pm");
-            let _ = fail_cof(&state, &mut sig, "policy.payment.checkout.no_payment_method");
+            let _ = fail_cof(
+                &state,
+                &mut sig,
+                "policy.payment.checkout.no_payment_method",
+            );
             return Redirect::to(&progress_url(&sig)).into_response();
         }
     };
@@ -1079,10 +1113,7 @@ pub async fn signup_step_cof_checkout_return(
         .await
     {
         Ok(method) => {
-            sig.payment_method_id = method
-                .get("id")
-                .and_then(Value::as_str)
-                .map(String::from);
+            sig.payment_method_id = method.get("id").and_then(Value::as_str).map(String::from);
             record_step(
                 &state,
                 &sig,
@@ -1177,7 +1208,9 @@ async fn stripe_create_checkout_session(
 async fn stripe_retrieve_checkout_session(api_key: &str, cs_id: &str) -> Result<Value, String> {
     stripe_request(
         reqwest::Client::new()
-            .get(format!("https://api.stripe.com/v1/checkout/sessions/{cs_id}"))
+            .get(format!(
+                "https://api.stripe.com/v1/checkout/sessions/{cs_id}"
+            ))
             .query(&[("expand[]", "setup_intent")])
             .bearer_auth(api_key),
     )
@@ -1215,7 +1248,9 @@ async fn stripe_request(req: reqwest::RequestBuilder) -> Result<Value, String> {
     if let Some(err) = body.get("error") {
         return Err(format!(
             "stripe error: {}",
-            err.get("message").and_then(Value::as_str).unwrap_or("unknown")
+            err.get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
         ));
     }
     Ok(body)

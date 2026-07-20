@@ -52,13 +52,20 @@ pub async fn webhook_didit(
             reason = "webhook_secret_unset",
             "portal_auth.webhook.misconfigured"
         );
-        return json_response(StatusCode::UNAUTHORIZED, r#"{"code":"webhook_secret_unset"}"#);
+        return json_response(
+            StatusCode::UNAUTHORIZED,
+            r#"{"code":"webhook_secret_unset"}"#,
+        );
     }
 
     // Case-insensitive header map for the signature verifier.
     let hdrs: HashMap<String, String> = headers
         .iter()
-        .filter_map(|(k, v)| v.to_str().ok().map(|s| (k.as_str().to_string(), s.to_string())))
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|s| (k.as_str().to_string(), s.to_string()))
+        })
         .collect();
 
     if let Err(e) = verify_signature_default(secret, &body, &hdrs, SignatureScheme::DiditHmac) {
@@ -118,9 +125,17 @@ pub async fn webhook_didit(
         .or_else(|| payload.get("id"))
         .and_then(|v| v.as_str())
         .map(String::from)
-        .or_else(|| headers.get("x-didit-event-id").and_then(|v| v.to_str().ok()).map(String::from))
+        .or_else(|| {
+            headers
+                .get("x-didit-event-id")
+                .and_then(|v| v.to_str().ok())
+                .map(String::from)
+        })
         .unwrap_or_else(|| {
-            let ts = payload.get("timestamp").and_then(|v| v.as_str()).unwrap_or("");
+            let ts = payload
+                .get("timestamp")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             format!("{session_id}:{event_type}:{ts}")
         });
 
