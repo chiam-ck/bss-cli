@@ -1775,3 +1775,67 @@
     gap: 8px;
   }
 }
+
+/* ─── Open order (v-reservation phase 3) ─────────────────────── */
+.open-order {
+  max-width: 640px;
+  margin: 32px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.open-order-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 24px;
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.open-order-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 24px;
+  margin: 0;
+  align-items: baseline;
+}
+.open-order-details dt {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.open-order-details dd {
+  margin: 0;
+  font-family: var(--mono);
+  color: var(--fg);
+}
+.open-order-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.open-order-actions form {
+  margin: 0;
+}
+.open-order-nav {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+/* The pending-order nudge on the empty dashboard. */
+.dashboard-empty-open-order {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 20px;
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.dashboard-empty-open-order p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
