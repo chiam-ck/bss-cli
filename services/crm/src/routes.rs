@@ -816,6 +816,10 @@ pub fn inventory_router() -> Router<AppState> {
             &format!("{INV}/open-order/:id/cancel"),
             post(cancel_open_order),
         )
+        .route(
+            &format!("{INV}/open-order/sweep-now"),
+            post(open_order_sweep_now),
+        )
         .route(&format!("{INV}/esim"), get(list_esims))
         .route(&format!("{INV}/esim/reserve"), post(reserve_esim))
         .route(&format!("{INV}/esim/:iccid"), get(get_esim))
@@ -1082,6 +1086,14 @@ async fn cancel_open_order(
     let status = b.status.as_deref().unwrap_or("cancelled");
     let v = svc::cancel_open_order(&s, &ctx, &id, status).await?;
     Ok(Json(v))
+}
+
+/// `POST /inventory-api/v1/open-order/sweep-now` — drive one expiry sweep pass
+/// synchronously (the deterministic seam the tick loop runs on a timer). Used by
+/// scenarios that advance the clock, and as an operator escape hatch.
+async fn open_order_sweep_now(State(s): State<AppState>) -> Json<Value> {
+    crate::worker::tick_once(&s).await;
+    Json(json!({ "swept": true }))
 }
 
 #[derive(Deserialize)]

@@ -1002,6 +1002,31 @@ pub async fn insert_open_order(
     Ok(n.rows_affected() > 0)
 }
 
+/// Lock a batch of expired open orders (`status='open'`, hold window passed) for
+/// the sweep. `FOR UPDATE SKIP LOCKED` so peer replicas grab disjoint rows.
+/// Returns their ids (the hold's `reserved_for`).
+pub async fn lock_expired_open_orders(
+    conn: &mut PgConnection,
+    now: DateTime<Utc>,
+    limit: i64,
+    tenant: &str,
+) -> Result<Vec<String>, ApiError> {
+    let rows = sqlx::query(
+        "SELECT id FROM inventory.open_order \
+         WHERE status='open' AND reserved_until IS NOT NULL AND reserved_until <= $1 \
+           AND tenant_id=$2 \
+         ORDER BY reserved_until LIMIT $3 FOR UPDATE SKIP LOCKED",
+    )
+    .bind(now)
+    .bind(tenant)
+    .bind(limit)
+    .fetch_all(&mut *conn)
+    .await?;
+    rows.iter()
+        .map(|r| r.try_get("id").map_err(ApiError::from))
+        .collect()
+}
+
 /// Link the customer id onto an open order (create-customer step).
 pub async fn link_open_order_customer(
     conn: &mut PgConnection,

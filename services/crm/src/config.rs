@@ -16,6 +16,9 @@ pub struct Settings {
     pub loyalty_api_token: String,
     /// v0.17 — MSISDN pool low-watermark (emits `inventory.msisdn.pool_low`).
     pub msisdn_pool_low_threshold: i64,
+    /// v-reservation phase 4 — open-order expiry sweep cadence, seconds.
+    /// 0 disables the in-process worker (tests / external tick driver).
+    pub open_order_sweep_seconds: i64,
     pub api_token: String,
 }
 
@@ -32,6 +35,7 @@ impl Settings {
             loyalty_base_url: env_or("BSS_LOYALTY_BASE_URL", "http://loyalty-http:8080"),
             loyalty_api_token: env_or("BSS_LOYALTY_API_TOKEN", ""),
             msisdn_pool_low_threshold: env_i64("BSS_INVENTORY_MSISDN_POOL_LOW_THRESHOLD", 50),
+            open_order_sweep_seconds: env_i64("BSS_OPEN_ORDER_SWEEP_SECONDS", 300),
             api_token: env_or("BSS_API_TOKEN", ""),
         }
     }

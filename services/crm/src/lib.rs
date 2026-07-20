@@ -18,6 +18,7 @@ pub mod routes;
 pub mod schemas;
 pub mod service;
 pub mod state;
+pub mod worker;
 
 use std::sync::Arc;
 

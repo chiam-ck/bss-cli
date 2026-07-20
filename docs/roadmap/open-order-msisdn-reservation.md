@@ -206,6 +206,11 @@ Requires **Phase 0 amendments** at build time (do not edit without one):
    session email, cancel derives the id from the session) + `POST …/cancel` (releases the
    hold) + a dashboard "Resume open order" link shown only when one exists +
    `open_order.html`. Section-degrading.
-4. ⬜ **Sweep worker** — 24h release in the crm lifespan + deterministic-clock scenario test.
+4. ✅ **Sweep worker** — in-process expiry sweep in the crm lifespan
+   (`BSS_OPEN_ORDER_SWEEP_SECONDS`, default 300s; `FOR UPDATE SKIP LOCKED`,
+   `bss_clock::now()`): expired open orders → `expired` + MSISDN released +
+   `open_order.expired`/`inventory.msisdn.released` events. `POST …/open-order/sweep-now`
+   is the synchronous/deterministic seam. Live-verified via a 1s-hold lapse.
 
-Ship 1–2 first (correctness — done), then 3–4 (UX + hygiene).
+**All four phases shipped.** Collisions stop at pick, the order is a resumable per-customer
+record, the customer can view/resume/cancel it, and abandoned holds auto-release after 24h.

@@ -59,6 +59,22 @@ async fn main() -> Result<(), MainError> {
         loyalty,
         settings: settings.clone(),
     };
+
+    // v-reservation phase 4 — in-process open-order expiry sweep (0 disables:
+    // tests drive `sweep-now` directly). The only automatic release trigger.
+    if settings.open_order_sweep_seconds > 0 {
+        let st = state.clone();
+        let interval = settings.open_order_sweep_seconds as u64;
+        tokio::spawn(async move {
+            crm::worker::tick_loop(st, interval).await;
+        });
+    } else {
+        tracing::info!(
+            reason = "BSS_OPEN_ORDER_SWEEP_SECONDS=0",
+            "open_order.sweep.disabled"
+        );
+    }
+
     let app = crm::create_app(state, token_map);
 
     let listener = TcpListener::bind("0.0.0.0:8000").await?;
