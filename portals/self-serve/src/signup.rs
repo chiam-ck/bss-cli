@@ -872,9 +872,11 @@ pub async fn signup_step_cof(
         Err(r) => return r,
     };
 
-    // Stripe Checkout (init/return) is deferred; in sandbox the provider is mock.
+    // Stripe mode: the card is captured via the hosted Stripe Checkout flow
+    // (init → Stripe → return), which the progress template drives with a button
+    // posting to `/signup/step/cof/checkout-init`. Nothing to auto-complete here —
+    // just re-render the current fragment (shows the checkout button / in-flight).
     if state.settings.payment_provider == "stripe" {
-        tracing::warn!("portal.signup.cof.stripe_deferred");
         return render_step_fragment(&state, &sig);
     }
 
@@ -882,6 +884,297 @@ pub async fn signup_step_cof(
         return render_step_fragment(&state, &sig);
     }
     signup_step_cof_mock(&state, &mut sig, ua.as_deref()).await
+}
+
+/// Query for the Stripe Checkout return (`?session=…&cs_id=cs_…`).
+#[derive(Deserialize)]
+pub struct CheckoutReturnQuery {
+    pub session: String,
+    pub cs_id: String,
+}
+
+/// `POST /signup/step/cof/checkout-init` — mint a Stripe Checkout Session
+/// (`mode=setup`, saves a card without charging) and 303-redirect to Stripe's
+/// hosted form. Port of `signup_step_cof_checkout_init`.
+pub async fn signup_step_cof_checkout_init(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    Query(q): Query<SessionQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, "/plans") {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let mut sig = match resolve(&state, &q.session, &identity) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    if sig.step != SignupStep::PendingCof && sig.step != SignupStep::PendingCofElements {
+        return Redirect::to(&progress_url(&sig)).into_response();
+    }
+
+    let api_key = state.settings.payment_stripe_api_key.clone();
+    if api_key.is_empty() {
+        return fail_cof(&state, &mut sig, "policy.payment.checkout.stripe_unconfigured");
+    }
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Signup unavailable").into_response();
+    };
+    let customer_id = sig.customer_id.clone().unwrap_or_default();
+
+    // Step 1+2: ensure the cus_* exists (cached after first call).
+    let cus_id = match clients.payment.ensure_customer(&customer_id, &sig.email).await {
+        Ok(v) => v
+            .get("customer_external_ref")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        Err(ClientError::Policy(pv)) => return fail_cof(&state, &mut sig, &pv.rule),
+        Err(e) => {
+            tracing::warn!(error = %e, "portal.signup.ensure_customer_failed");
+            return fail_cof(&state, &mut sig, "policy.payment.checkout.ensure_customer_failed");
+        }
+    };
+
+    // Step 3: create the Checkout Session. Stripe fills {CHECKOUT_SESSION_ID}.
+    let public_url = state.settings.public_url.trim_end_matches('/');
+    let return_url = format!(
+        "{public_url}/signup/step/cof/checkout-return?session={}&cs_id={{CHECKOUT_SESSION_ID}}",
+        sig.session_id
+    );
+    let cancel_url = format!("{public_url}{}", progress_url(&sig));
+    match stripe_create_checkout_session(
+        &api_key,
+        &cus_id,
+        &return_url,
+        &cancel_url,
+        &customer_id,
+        &sig.session_id,
+    )
+    .await
+    {
+        Ok(url) => {
+            sig.step = SignupStep::PendingCofElements; // "checkout in flight"
+            state.signup_store.update(&sig);
+            tracing::info!(signup_session = %sig.session_id, "portal.signup.checkout_redirect");
+            Redirect::to(&url).into_response()
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "portal.signup.checkout_session_create_failed");
+            fail_cof(&state, &mut sig, "policy.payment.checkout.session_create_failed")
+        }
+    }
+}
+
+/// `GET /signup/step/cof/checkout-return` — Stripe redirects the customer back
+/// here. Retrieve the session, pull the resulting `pm_*`, register it, advance to
+/// pending_order. Port of `signup_step_cof_checkout_return`.
+pub async fn signup_step_cof_checkout_return(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    headers: HeaderMap,
+    Query(q): Query<CheckoutReturnQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, "/plans") {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let ua = user_agent(&headers);
+    let mut sig = match resolve(&state, &q.session, &identity) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    if sig.step != SignupStep::PendingCof && sig.step != SignupStep::PendingCofElements {
+        return Redirect::to(&progress_url(&sig)).into_response();
+    }
+
+    let api_key = state.settings.payment_stripe_api_key.clone();
+    if api_key.is_empty() || !q.cs_id.starts_with("cs_") {
+        let _ = fail_cof(&state, &mut sig, "policy.payment.checkout.bad_return");
+        return Redirect::to(&progress_url(&sig)).into_response();
+    }
+
+    let cs = match stripe_retrieve_checkout_session(&api_key, &q.cs_id).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, cs_id = %q.cs_id, "portal.signup.checkout_session_retrieve_failed");
+            let _ = fail_cof(&state, &mut sig, "policy.payment.checkout.retrieve_failed");
+            return Redirect::to(&progress_url(&sig)).into_response();
+        }
+    };
+
+    // Defence in depth: refuse if the session metadata isn't ours.
+    let meta_session = cs
+        .get("metadata")
+        .and_then(|m| m.get("bss_signup_session"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if meta_session != sig.session_id {
+        tracing::warn!(cs_id = %q.cs_id, "portal.signup.checkout_session_metadata_mismatch");
+        let _ = fail_cof(&state, &mut sig, "policy.payment.checkout.metadata_mismatch");
+        return Redirect::to(&progress_url(&sig)).into_response();
+    }
+
+    // Extract the pm_* — for mode=setup it's at setup_intent.payment_method.
+    let pm_id = match stripe_extract_pm(&api_key, cs.get("setup_intent")).await {
+        Some(pm) if pm.starts_with("pm_") => pm,
+        _ => {
+            tracing::warn!(cs_id = %q.cs_id, "portal.signup.checkout_no_pm");
+            let _ = fail_cof(&state, &mut sig, "policy.payment.checkout.no_payment_method");
+            return Redirect::to(&progress_url(&sig)).into_response();
+        }
+    };
+
+    let Some(clients) = &state.clients else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "Signup unavailable").into_response();
+    };
+    let customer_id = sig.customer_id.clone().unwrap_or_default();
+    match clients
+        .payment
+        .create_stripe_payment_method(&customer_id, &pm_id)
+        .await
+    {
+        Ok(method) => {
+            sig.payment_method_id = method
+                .get("id")
+                .and_then(Value::as_str)
+                .map(String::from);
+            record_step(
+                &state,
+                &sig,
+                Some(&customer_id),
+                "signup_add_card",
+                "/signup/step/cof/checkout-return",
+                true,
+                None,
+                ua.as_deref(),
+            )
+            .await;
+            sig.step = SignupStep::PendingOrder;
+            state.signup_store.update(&sig);
+            Redirect::to(&progress_url(&sig)).into_response()
+        }
+        Err(ClientError::Policy(pv)) => {
+            record_step(
+                &state,
+                &sig,
+                Some(&customer_id),
+                "signup_add_card",
+                "/signup/step/cof/checkout-return",
+                false,
+                Some(&pv.rule),
+                ua.as_deref(),
+            )
+            .await;
+            if !is_known(&pv.rule) {
+                tracing::info!(rule = %pv.rule, "portal.signup.unknown_policy_rule");
+            }
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some(pv.rule.clone());
+            state.signup_store.update(&sig);
+            Redirect::to(&progress_url(&sig)).into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "portal.signup.checkout_register_failed");
+            Redirect::to(&progress_url(&sig)).into_response()
+        }
+    }
+}
+
+/// `/signup/{plan}/progress?session={id}` — the signup progress page URL.
+fn progress_url(sig: &SignupSession) -> String {
+    format!("/signup/{}/progress?session={}", sig.plan, sig.session_id)
+}
+
+/// Mark the signup failed with a policy rule and re-render the fragment.
+fn fail_cof(state: &AppState, sig: &mut SignupSession, rule: &str) -> Response {
+    sig.step = SignupStep::Failed;
+    sig.step_error = Some(rule.to_string());
+    state.signup_store.update(sig);
+    render_step_fragment(state, sig)
+}
+
+// ── Stripe Checkout REST calls (direct reqwest, D4 — mirrors the tokenizer) ───
+
+/// `POST /v1/checkout/sessions` (`mode=setup`) → the hosted-form URL.
+async fn stripe_create_checkout_session(
+    api_key: &str,
+    cus_id: &str,
+    success_url: &str,
+    cancel_url: &str,
+    bss_customer_id: &str,
+    signup_session: &str,
+) -> Result<String, String> {
+    // Form values are URL-decoded by Stripe, so the encoded {CHECKOUT_SESSION_ID}
+    // braces in success_url arrive as the literal placeholder Stripe expects.
+    let form = [
+        ("mode", "setup"),
+        ("payment_method_types[0]", "card"),
+        ("customer", cus_id),
+        ("success_url", success_url),
+        ("cancel_url", cancel_url),
+        ("metadata[bss_customer_id]", bss_customer_id),
+        ("metadata[bss_signup_session]", signup_session),
+    ];
+    let body = stripe_request(
+        reqwest::Client::new()
+            .post("https://api.stripe.com/v1/checkout/sessions")
+            .bearer_auth(api_key)
+            .form(&form),
+    )
+    .await?;
+    body.get("url")
+        .and_then(Value::as_str)
+        .map(String::from)
+        .ok_or_else(|| "checkout session response had no url".to_string())
+}
+
+/// `GET /v1/checkout/sessions/{id}?expand[]=setup_intent`.
+async fn stripe_retrieve_checkout_session(api_key: &str, cs_id: &str) -> Result<Value, String> {
+    stripe_request(
+        reqwest::Client::new()
+            .get(format!("https://api.stripe.com/v1/checkout/sessions/{cs_id}"))
+            .query(&[("expand[]", "setup_intent")])
+            .bearer_auth(api_key),
+    )
+    .await
+}
+
+/// Pull `pm_*` from the (expanded) `setup_intent`; refetch the SetupIntent if it
+/// came back as a bare id string rather than an object.
+async fn stripe_extract_pm(api_key: &str, setup_intent: Option<&Value>) -> Option<String> {
+    match setup_intent {
+        Some(Value::Object(o)) => o
+            .get("payment_method")
+            .and_then(Value::as_str)
+            .map(String::from),
+        Some(Value::String(si_id)) => {
+            let si = stripe_request(
+                reqwest::Client::new()
+                    .get(format!("https://api.stripe.com/v1/setup_intents/{si_id}"))
+                    .bearer_auth(api_key),
+            )
+            .await
+            .ok()?;
+            si.get("payment_method")
+                .and_then(Value::as_str)
+                .map(String::from)
+        }
+        _ => None,
+    }
+}
+
+/// Send a Stripe request; map transport + Stripe-`error` bodies to `Err`.
+async fn stripe_request(req: reqwest::RequestBuilder) -> Result<Value, String> {
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let body: Value = resp.json().await.map_err(|e| e.to_string())?;
+    if let Some(err) = body.get("error") {
+        return Err(format!(
+            "stripe error: {}",
+            err.get("message").and_then(Value::as_str).unwrap_or("unknown")
+        ));
+    }
+    Ok(body)
 }
 
 async fn signup_step_cof_mock(

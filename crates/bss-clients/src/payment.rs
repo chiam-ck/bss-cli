@@ -177,6 +177,59 @@ impl PaymentClient {
             .map_err(|e| ClientError::Transport(e.to_string()))
     }
 
+    /// `POST /payment-customer/ensure` — mint/cache the provider customer ref
+    /// (`cus_*` for Stripe, cached per BSS customer + provider). Backs the signup
+    /// Stripe Checkout flow. Returns `{customer_external_ref, provider}`.
+    pub async fn ensure_customer(
+        &self,
+        customer_id: &str,
+        email: &str,
+    ) -> Result<Value, ClientError> {
+        let body = json!({ "customer_id": customer_id, "email": email });
+        let resp = self
+            .inner
+            .request(Method::POST, "/payment-customer/ensure", Some(&body), None)
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
+    /// Register a Stripe-tokenized card (a `pm_*` id from Stripe Checkout).
+    /// last4/brand/exp are placeholders — the payment service holds the truth and
+    /// derives the real card summary from Stripe. Backs the signup Checkout return.
+    pub async fn create_stripe_payment_method(
+        &self,
+        customer_id: &str,
+        pm_id: &str,
+    ) -> Result<Value, ClientError> {
+        let body = json!({
+            "customerId": customer_id,
+            "type": "card",
+            "tokenizationProvider": "stripe",
+            "providerToken": pm_id,
+            "cardSummary": {
+                "brand": "",
+                "last4": "",
+                "expMonth": 0,
+                "expYear": 0,
+                "country": "SG",
+            },
+        });
+        let resp = self
+            .inner
+            .request(
+                Method::POST,
+                "/tmf-api/paymentMethodManagement/v4/paymentMethod",
+                Some(&body),
+                None,
+            )
+            .await?;
+        resp.json()
+            .await
+            .map_err(|e| ClientError::Transport(e.to_string()))
+    }
+
     /// `POST …/paymentMethod/{id}/setDefault` — the server owns the
     /// "exactly one default per customer" invariant. Backs the "Set default" CTA.
     pub async fn set_default_method(&self, method_id: &str) -> Result<Value, ClientError> {

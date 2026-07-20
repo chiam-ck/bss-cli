@@ -205,6 +205,14 @@ pub fn build_router(state: AppState) -> Router {
             get(signup::signup_step_kyc_callback),
         )
         .route("/signup/step/cof", post(signup::signup_step_cof))
+        .route(
+            "/signup/step/cof/checkout-init",
+            post(signup::signup_step_cof_checkout_init),
+        )
+        .route(
+            "/signup/step/cof/checkout-return",
+            get(signup::signup_step_cof_checkout_return),
+        )
         .route("/signup/step/order", post(signup::signup_step_order))
         .route("/signup/step/poll", get(signup::signup_step_poll))
         // Didit KYC webhook — HMAC-authed inside the handler, on the public
