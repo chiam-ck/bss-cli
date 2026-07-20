@@ -123,11 +123,13 @@ static CACHE: Mutex<Cache> = Mutex::new(Cache {
 });
 
 /// Repo-root fallback for the dev `.bss-cli/` location. Compile-time path
-/// (`rust/crates/bss-cockpit` → repo root); only used when `BSS_COCKPIT_DIR` is
+/// (`crates/bss-cockpit` → repo root); only used when `BSS_COCKPIT_DIR` is
 /// unset (deployed cockpit containers always set it to a bind-mounted volume).
+/// Was `../../..` pre-flip (`rust/crates/bss-cockpit`); the flip moved the crate
+/// up one level, so it's now `../..`.
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
+        .join("../..")
         .to_path_buf()
 }
 

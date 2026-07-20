@@ -13,10 +13,45 @@ use bss_knowledge::{chunk_markdown, kind_for, kind_rank_weight, INDEXED_PATHS};
 use serde_json::{json, Value};
 
 fn repo_root() -> std::path::PathBuf {
+    // crates/bss-knowledge → crates → repo root. (Was `../../..` pre-flip when the
+    // crate lived at rust/crates/bss-knowledge; the flip moved it up one level.)
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
+        .join("../..")
         .canonicalize()
         .expect("resolve repo root")
+}
+
+/// Regenerate `golden/chunker.json` from the current docs. Run when an indexed
+/// doc legitimately changes (e.g. a Phase 0 amendment to CLAUDE.md):
+/// `cargo test -p bss-knowledge --test chunker_golden regen_chunker_golden -- --ignored`
+/// then re-run the parity test (a fresh cargo invocation re-embeds the file).
+#[test]
+#[ignore]
+fn regen_chunker_golden() {
+    let root = repo_root();
+    let old: Value =
+        serde_json::from_str(include_str!("golden/chunker.json")).expect("parse golden");
+    let mut out = serde_json::Map::new();
+    for doc_path in old.as_object().expect("golden object").keys() {
+        let text = std::fs::read_to_string(root.join(doc_path))
+            .unwrap_or_else(|e| panic!("read {doc_path}: {e}"));
+        let arr: Vec<Value> = chunk_markdown(doc_path, &text)
+            .into_iter()
+            .map(|c| {
+                json!({
+                    "source_path": c.source_path,
+                    "anchor": c.anchor,
+                    "heading_path": c.heading_path,
+                    "content": c.content,
+                })
+            })
+            .collect();
+        out.insert(doc_path.clone(), Value::Array(arr));
+    }
+    let pretty = serde_json::to_string_pretty(&Value::Object(out)).expect("serialize");
+    let dest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/chunker.json");
+    std::fs::write(&dest, pretty).expect("write golden");
+    eprintln!("regenerated {}", dest.display());
 }
 
 #[test]
