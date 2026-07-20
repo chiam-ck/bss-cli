@@ -75,7 +75,7 @@ Dockerfiles reworked to `chef → planner → cook → build`, source-only rebui
 `--healthcheck` flag + image-level `HEALTHCHECK`, so the compose `service_healthy` gates work
 on the Rust images; (3) Alembic freeze → sqlx baseline — `rust/migrations/0001_baseline.sql` +
 `bss_db::migrate` + `bss admin migrate [--baseline]` (single runner) replace `alembic upgrade
-head`; (4) motto-#6 re-measure — all budgets met with big headroom (RAM ~138 MiB steady-state vs 4 GB,
+head`; (4) motto-#6 re-measure — all budgets met with big headroom (RAM ~91 MiB long-idle / ≤~160 warmed vs 4 GB,
 cold-start 3.08 s, p99 6–8 ms), full report in `06-MOTTO6-REMEASURE.md`; (5)
 `make rust-doctrine-check` (`scripts/rust_doctrine_check.sh`, 14 grep guards, all
 verified-firing) + `rust-fmt`/`rust-lint`/`rust-test` dev targets; (6) runbook pass
@@ -261,7 +261,7 @@ All three motto-#6 budgets met with large headroom:
 
 | Metric | Budget | Python | Rust | Δ |
 |---|---|---|---|---|
-| RAM (11 app, steady-state) | <4 GB | 1204 MiB | **~138 MiB** | ~8.7× smaller (3.4% of budget) |
+| RAM (11 app, idle) | <4 GB | 1204 MiB | **~91 MiB** (≤~138 post-boot / ~160 warmed) | ~13× smaller idle (2.2% of budget) |
 | Cold start (all 11) | <30 s | 6.36 s | **3.08 s** | ~2.1× faster |
 | p99 `/health` floor | <50 ms | 12.8 ms | **6.16 ms** | ~2× |
 | p99 real DB read | <50 ms | (floor only) | **8.47 ms** (`/vas/offering`) | under budget |

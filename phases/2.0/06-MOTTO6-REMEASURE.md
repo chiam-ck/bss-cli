@@ -20,50 +20,56 @@ margins**, not an assertion.
 
 | Metric | Budget | Python (`05-BASELINE`) | **Rust (now)** | Improvement |
 |---|---|---|---|---|
-| Full-stack RAM (11 app) | < 4 GB | 1204 MiB (1.18 GiB) | **~138 MiB (0.13 GiB)** steady-state | **~8.7× smaller** — **3.4%** of budget |
+| Full-stack RAM (11 app) | < 4 GB | 1204 MiB (1.18 GiB) | **~91 MiB idle** (≤ ~138 post-boot / ~160 under load) | **~13× smaller idle** — **2.2%** of budget |
 | Cold start (all 11 together) | < 30 s | 6.36 s | **3.08 s** | **~2.1× faster** |
 | p99 `/health` floor | < 50 ms | 12.8 ms | **6.16 ms** | ~2× lower tail |
 | p99 real DB read (under load) | < 50 ms | (floor only) | **8.47 ms** (`/vas/offering`) | **under budget** |
 
 All three motto-#6 budgets are met with large headroom. RAM is the headline: the
-whole app plane runs in **~138 MiB** steady-state — **3.4%** of the 4 GB budget. (An
-earlier snapshot read ~82 MiB, but that was taken seconds after boot before the MQ
-consumers had connected — see §2 for the honest breakdown.)
+whole app plane **idles under 100 MiB** (~91 MiB long-idle, **2.2%** of the 4 GB
+budget), rising to a ~138 MiB post-boot transient and a ~160 MiB under-load high —
+every band is ≤ 4% of budget. See §2 for the idle-band breakdown and the correction
+to the original "138 is the honest number" reading.
 
 ## 2. Runtime memory (app plane, steady-state idle)
 
-`docker stats --no-stream`, **steady-state idle** (all RabbitMQ consumers connected +
-background workers ticking, no request load):
+`docker stats --no-stream`. Two Rust columns: the **post-boot settle** reading
+(2026-07-19, minutes after boot) and a **long-idle** reading (2026-07-20, 11–16 h
+uptime, all **9** RabbitMQ consumers confirmed attached via the mgmt API, background
+workers ticking, zero request load):
 
-| Container | RSS (Rust) | (Python was) |
-|---|---|---|
-| subscription | 27.8 MiB | 107.3 |
-| som | 26.6 MiB | 96.3 |
-| rating | 19.2 MiB | ~90 |
-| com | 17.2 MiB | 100.1 |
-| crm | 11.0 MiB | 106.0 |
-| payment | 10.0 MiB | 104.1 |
-| mediation | 9.3 MiB | 91.3 |
-| provisioning-sim | 9.3 MiB | 93.3 |
-| portal-self-serve | 3.0 MiB | 155.5 |
-| portal-csr | 2.5 MiB | 137.2 |
-| catalog | 2.0 MiB | 101.4 |
-| **Total (11)** | **~138 MiB** | **1204 MiB** |
+| Container | Rust long-idle (07-20) | Rust post-boot (07-19) | (Python was) |
+|---|---|---|---|
+| crm | 16.0 MiB | 11.0 | 106.0 |
+| mediation | 11.3 MiB | 9.3 | 91.3 |
+| provisioning-sim | 10.5 MiB | 9.3 | 93.3 |
+| rating | 9.9 MiB | 19.2 | ~90 |
+| som | 9.4 MiB | 26.6 | 96.3 |
+| subscription | 8.9 MiB | 27.8 | 107.3 |
+| portal-csr | 5.7 MiB | 2.5 | 137.2 |
+| payment | 5.5 MiB | 10.0 | 104.1 |
+| catalog | 4.8 MiB | 2.0 | 101.4 |
+| com | 4.9 MiB | 17.2 | 100.1 |
+| portal-self-serve | 4.5 MiB | 3.0 | 155.5 |
+| **Total (11)** | **~91 MiB** | **~138 MiB** | **1204 MiB** |
 
 Per-container RSS collapses from ~90–155 MiB (Python interpreter + FastAPI +
-SQLAlchemy/asyncpg + aio-pika + OTel, per process) to **~2–28 MiB** static binaries.
-The heavier Rust services (subscription/som/rating/com, ~17–28 MiB) are exactly the
-ones running **background workers + RabbitMQ consumers** — the renewal tick loop, the
-`usage.rated`/provisioning/order consumers holding channels + prefetch buffers. The
-pure request/response services + the two portals are ~2–11 MiB (the portals, Python's
-137–155 MiB memory tail, are now 2–3 MiB).
+SQLAlchemy/asyncpg + aio-pika + OTel, per process) to **~4–16 MiB** static binaries.
+Every one of the 11 containers idles in single/low-double-digit MiB; the whole app
+plane **idles under 100 MiB** — **2.2%** of the 4 GB budget, ~13× smaller than the
+Python idle baseline.
 
-**On the ~82 vs ~138 figures (why 138 is the honest one).** An earlier snapshot caught
-the app plane at ~81.7 MiB, but it was taken seconds after boot — *before* the MQ
-consumers finished attaching to RabbitMQ (som read 3 MiB then vs ~27 settled). **~138
-MiB is the honest steady-state idle**: consumers connected, workers running, zero
-request load. ~82 MiB is the just-booted low; ~160 MiB is the under-load high (§4).
-The Python 1204 MiB baseline was measured idle, so idle-vs-idle → **~8.7× smaller**.
+**Correction to the original "138 is the honest number" note.** The 07-19 pass read
+~82 MiB seconds after boot and ~138 MiB once settled, and attributed the rise to the
+MQ consumers attaching — concluding 138 was the honest steady-state. The 07-20 long-
+idle re-measure **with all 9 consumers verifiably connected** (mgmt API `/api/consumers`
+= 9; som/com observed consuming `provisioning.task.completed` / `service_order.completed`
+end-to-end) is **~91 MiB**. So the ~138 was a **post-boot transient**, not the cost of
+consumers being connected: the heavy consumer/worker services shed the boot-time
+processing buffers over idle (subscription 27.8→8.9, som 26.6→9.4, rating 19.2→9.9,
+com 17.2→4.9 MiB) as the allocator returned pages to the OS. Honest idle band:
+**~91 MiB long-idle → ~138 MiB post-boot settle → ~160 MiB under-load high (§4)** —
+all ≤ 4% of the 4 GB budget. Idle-vs-idle against Python's 1204 MiB is **~13× smaller**.
 
 ## 3. Cold start (all 11 started together)
 
@@ -132,6 +138,8 @@ Identical to `05-BASELINE.md` §6, against the `docker-compose.rust.yml` stack:
 ```bash
 # RAM (app plane, idle):
 docker stats --no-stream --format '{{.Name}} {{.MemUsage}}' | grep bss-cli-
+# Prove the async plane is attached first (else RAM reads low + degraded):
+curl -s -u <mq-user>:<mq-pass> http://<mq-host>:15672/api/consumers | jq length   # expect 9
 # Image sizes:
 docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep ':rust'
 # Cold start: docker stop all 11, docker start together, poll each /health → 200, max.
