@@ -52,6 +52,33 @@ impl InventoryClient {
             .await
     }
 
+    /// `POST /inventory-api/v1/msisdn/{msisdn}/hold` — soft-hold a specific number
+    /// for `reserved_for` (the holder / open-order id) with a TTL (default 24h
+    /// when `ttl_secs` is `None`). Atomic + self-healing server-side; a
+    /// `msisdn.hold.unavailable` policy violation means someone else holds it.
+    /// Phase 1 of the reservation feature.
+    pub async fn hold_msisdn(
+        &self,
+        msisdn: &str,
+        reserved_for: &str,
+        ttl_secs: Option<i64>,
+    ) -> Result<Value, ClientError> {
+        let mut body = json!({ "reserved_for": reserved_for });
+        if let Some(t) = ttl_secs {
+            body["ttl_secs"] = json!(t);
+        }
+        let path = format!("/inventory-api/v1/msisdn/{msisdn}/hold");
+        self.post(&path, Some(&body)).await
+    }
+
+    /// `POST /inventory-api/v1/msisdn/release-hold` — release every soft hold owned
+    /// by `reserved_for` back to the pool. Idempotent (returns `{released: [...]}`).
+    pub async fn release_msisdn_hold(&self, reserved_for: &str) -> Result<Value, ClientError> {
+        let body = json!({ "reserved_for": reserved_for });
+        self.post("/inventory-api/v1/msisdn/release-hold", Some(&body))
+            .await
+    }
+
     /// `POST /inventory-api/v1/esim/reserve` — reserve the next eSIM profile
     /// (`{iccid, imsi, activationCode, ...}`).
     pub async fn reserve_esim(&self) -> Result<Value, ClientError> {

@@ -87,7 +87,8 @@ fn crm_reset_router(pool: bss_db::PgPool) -> Router {
                     TableReset::update(
                         "msisdn_pool",
                         "UPDATE \"inventory\".\"msisdn_pool\" SET status = 'available', \
-                         reserved_at = NULL, assigned_to_subscription_id = NULL, quarantine_until = NULL",
+                         reserved_at = NULL, reserved_until = NULL, reserved_for = NULL, \
+                         assigned_to_subscription_id = NULL, quarantine_until = NULL",
                     ),
                     TableReset::update(
                         "esim_profile",

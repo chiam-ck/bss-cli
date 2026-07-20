@@ -144,6 +144,10 @@ pub struct MsisdnRow {
     pub status: String,
     pub reserved_at: Option<DateTime<Utc>>,
     pub assigned_to_subscription_id: Option<String>,
+    /// Soft-hold expiry (v-reservation). `None` = hard reserve / not held.
+    pub reserved_until: Option<DateTime<Utc>>,
+    /// Soft-hold owner (the open-order / holder id). `None` = not soft-held.
+    pub reserved_for: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -184,7 +188,8 @@ const INT_COLS: &str = "id, customer_id, channel, direction, summary, body, agen
      related_case_id, related_ticket_id, occurred_at";
 const PORT_COLS: &str = "id, direction, donor_carrier, donor_msisdn, target_subscription_id, \
      requested_port_date, state, rejection_reason, created_at, updated_at";
-const MSISDN_COLS: &str = "msisdn, status, reserved_at, assigned_to_subscription_id";
+const MSISDN_COLS: &str =
+    "msisdn, status, reserved_at, assigned_to_subscription_id, reserved_until, reserved_for";
 const ESIM_COLS: &str = "iccid, imsi, profile_state, smdp_server, matching_id, activation_code, \
      assigned_msisdn, assigned_to_subscription_id, reserved_at, downloaded_at, activated_at";
 
@@ -305,6 +310,8 @@ fn msisdn_row(r: &PgRow) -> Result<MsisdnRow, ApiError> {
         status: r.try_get("status")?,
         reserved_at: r.try_get("reserved_at")?,
         assigned_to_subscription_id: r.try_get("assigned_to_subscription_id")?,
+        reserved_until: r.try_get("reserved_until")?,
+        reserved_for: r.try_get("reserved_for")?,
     })
 }
 
@@ -848,6 +855,57 @@ pub async fn list_msisdns(
     q = q.bind(limit).bind(offset);
     let rows = q.fetch_all(pool).await?;
     rows.iter().map(msisdn_row).collect()
+}
+
+/// Atomic self-healing **soft hold** on a specific MSISDN (v-reservation, phase 1).
+/// Succeeds iff the number is `available` OR a soft hold whose `reserved_until`
+/// has already passed (self-healing reclaim — no dependence on the sweep). Single
+/// UPDATE, so there is no read-then-write race between concurrent pickers.
+/// Returns `true` if the hold was taken.
+pub async fn hold_msisdn(
+    conn: &mut PgConnection,
+    msisdn: &str,
+    reserved_for: &str,
+    reserved_until: DateTime<Utc>,
+    now: DateTime<Utc>,
+    tenant: &str,
+) -> Result<bool, ApiError> {
+    let n = sqlx::query(
+        "UPDATE inventory.msisdn_pool \
+         SET status='reserved', reserved_at=$3, reserved_until=$4, reserved_for=$5, updated_at=$3 \
+         WHERE msisdn=$1 AND tenant_id=$2 \
+           AND (status='available' \
+                OR (status='reserved' AND reserved_until IS NOT NULL AND reserved_until < $3))",
+    )
+    .bind(msisdn)
+    .bind(tenant)
+    .bind(now)
+    .bind(reserved_until)
+    .bind(reserved_for)
+    .execute(&mut *conn)
+    .await?;
+    Ok(n.rows_affected() > 0)
+}
+
+/// Release every soft hold owned by `reserved_for` back to `available`. Only ever
+/// touches soft holds (`reserved_until IS NOT NULL`) — never a hard reserve or an
+/// assigned number. Returns the released MSISDNs (for event emission). Idempotent.
+pub async fn release_holds_for(
+    conn: &mut PgConnection,
+    reserved_for: &str,
+    now: DateTime<Utc>,
+) -> Result<Vec<String>, ApiError> {
+    let rows = sqlx::query(
+        "UPDATE inventory.msisdn_pool \
+         SET status='available', reserved_at=NULL, reserved_until=NULL, reserved_for=NULL, updated_at=$2 \
+         WHERE reserved_for=$1 AND status='reserved' AND reserved_until IS NOT NULL \
+         RETURNING msisdn",
+    )
+    .bind(reserved_for)
+    .bind(now)
+    .fetch_all(&mut *conn)
+    .await?;
+    rows.iter().map(|r| r.try_get("msisdn").map_err(ApiError::from)).collect()
 }
 
 pub async fn get_esim(pool: &PgPool, iccid: &str) -> Result<Option<EsimRow>, ApiError> {

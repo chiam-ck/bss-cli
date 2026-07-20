@@ -1188,6 +1188,71 @@ pub async fn reserve_next_msisdn(
         .ok_or_else(|| ApiError::Internal("msisdn vanished".into()))
 }
 
+/// Soft-hold a specific MSISDN for `reserved_for` with a TTL (seconds). The
+/// pick-time reservation (phase 1). Atomic + self-healing at the repo layer;
+/// emits `inventory.msisdn.reserved`. Fails with a policy violation if the number
+/// is not available (or an unexpired hold by someone else).
+pub async fn hold_msisdn(
+    st: &AppState,
+    ctx: &RequestCtx,
+    msisdn: &str,
+    reserved_for: &str,
+    ttl_secs: i64,
+) -> Result<MsisdnRow, ApiError> {
+    let now = bss_clock::now();
+    let reserved_until = now + chrono::Duration::seconds(ttl_secs);
+    let mut tx = st.pool.begin().await?;
+    let held = repo::hold_msisdn(&mut tx, msisdn, reserved_for, reserved_until, now, &ctx.tenant)
+        .await?;
+    if !held {
+        return Err(PolicyViolation::with_context(
+            "msisdn.hold.unavailable",
+            format!("MSISDN {msisdn} is not available to hold"),
+            json!({ "msisdn": msisdn }),
+        )
+        .into());
+    }
+    stage(
+        &mut tx,
+        ctx,
+        "inventory.msisdn.reserved",
+        "msisdn",
+        msisdn,
+        json!({ "msisdn": msisdn, "reserved_for": reserved_for, "reserved_until": reserved_until }),
+    )
+    .await?;
+    tx.commit().await?;
+    repo::get_msisdn(&st.pool, msisdn)
+        .await?
+        .ok_or_else(|| ApiError::Internal("msisdn vanished".into()))
+}
+
+/// Release every soft hold owned by `reserved_for` back to the pool. Idempotent
+/// (0 holds → empty result). Emits `inventory.msisdn.released` per number. Used by
+/// order-cancel and the (later) 24h expiry sweep.
+pub async fn release_msisdn_hold(
+    st: &AppState,
+    ctx: &RequestCtx,
+    reserved_for: &str,
+) -> Result<Value, ApiError> {
+    let now = bss_clock::now();
+    let mut tx = st.pool.begin().await?;
+    let released = repo::release_holds_for(&mut tx, reserved_for, now).await?;
+    for m in &released {
+        stage(
+            &mut tx,
+            ctx,
+            "inventory.msisdn.released",
+            "msisdn",
+            m,
+            json!({ "msisdn": m, "reserved_for": reserved_for }),
+        )
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(json!({ "reserved_for": reserved_for, "released": released }))
+}
+
 pub async fn assign_msisdn(st: &AppState, msisdn: &str) -> Result<MsisdnRow, ApiError> {
     let mut tx = st.pool.begin().await?;
     let row = repo::get_msisdn_conn(&mut tx, msisdn).await?;

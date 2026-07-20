@@ -789,6 +789,11 @@ pub fn inventory_router() -> Router<AppState> {
             &format!("{INV}/msisdn/:msisdn/release"),
             post(release_msisdn),
         )
+        .route(&format!("{INV}/msisdn/:msisdn/hold"), post(hold_msisdn))
+        .route(
+            &format!("{INV}/msisdn/release-hold"),
+            post(release_msisdn_hold),
+        )
         .route(&format!("{INV}/esim"), get(list_esims))
         .route(&format!("{INV}/esim/reserve"), post(reserve_esim))
         .route(&format!("{INV}/esim/:iccid"), get(get_esim))
@@ -914,6 +919,43 @@ async fn add_range(
 ) -> Result<impl IntoResponse, ApiError> {
     let v = svc::add_msisdn_range(&s, &ctx, &b.prefix, b.count).await?;
     Ok((StatusCode::CREATED, Json(v)))
+}
+
+/// Default soft-hold TTL — 24h (the reservation window). Overridable per request.
+const DEFAULT_HOLD_TTL_SECS: i64 = 24 * 60 * 60;
+
+#[derive(Deserialize)]
+struct HoldRequest {
+    #[serde(alias = "reservedFor")]
+    reserved_for: String,
+    #[serde(default, alias = "ttlSecs")]
+    ttl_secs: Option<i64>,
+}
+
+async fn hold_msisdn(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Path(msisdn): Path<String>,
+    Json(b): Json<HoldRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let ttl = b.ttl_secs.unwrap_or(DEFAULT_HOLD_TTL_SECS);
+    let m = svc::hold_msisdn(&s, &ctx, &msisdn, &b.reserved_for, ttl).await?;
+    Ok(Json(schemas::to_msisdn_response(&m)))
+}
+
+#[derive(Deserialize)]
+struct ReleaseHoldRequest {
+    #[serde(alias = "reservedFor")]
+    reserved_for: String,
+}
+
+async fn release_msisdn_hold(
+    State(s): State<AppState>,
+    Extension(ctx): Extension<RequestCtx>,
+    Json(b): Json<ReleaseHoldRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let v = svc::release_msisdn_hold(&s, &ctx, &b.reserved_for).await?;
+    Ok(Json(v))
 }
 
 #[derive(Deserialize)]
