@@ -14,7 +14,7 @@ use std::sync::Arc;
 use bss_clients::CatalogClient;
 use bss_context::RequestCtx;
 use bss_db::PgPool;
-use bss_events::{stage_event, MqChannel};
+use bss_events::{resubscribe_backoff, stage_event, MqChannel, INITIAL_RESUBSCRIBE_BACKOFF};
 use futures_util::StreamExt;
 use lapin::options::BasicAckOptions;
 use lapin::types::AMQPValue;
@@ -51,60 +51,76 @@ impl From<sqlx::Error> for HandleError {
     }
 }
 
-/// Bind the queue and drive the consume loop forever. Spawned as a background
-/// task from `main`; returns only on an unrecoverable stream error.
+/// Bind the queue and drive the consume loop, re-subscribing (with backoff)
+/// whenever the broker drops the stream. Spawned as a background task from
+/// `main`; never returns (the async plane stays up across broker blips).
 pub async fn run(
     mq: Arc<MqChannel>,
     pool: PgPool,
     catalog: CatalogClient,
 ) -> Result<(), lapin::Error> {
-    let mut consumer = mq
-        .declare_and_bind(QUEUE, ROUTING_KEY, CONSUMER_TAG)
-        .await?;
-    tracing::info!(queue = QUEUE, "mq.consumer.started");
-
-    while let Some(delivery) = consumer.next().await {
-        let delivery = match delivery {
-            Ok(d) => d,
+    let mut backoff = INITIAL_RESUBSCRIBE_BACKOFF;
+    loop {
+        let mut consumer = match mq.declare_and_bind(QUEUE, ROUTING_KEY, CONSUMER_TAG).await {
+            Ok(c) => c,
             Err(e) => {
-                tracing::warn!(error = %e, "mq.delivery.error");
+                tracing::warn!(error = %e, queue = QUEUE, "mq.consumer.bind_failed");
+                resubscribe_backoff(&mut backoff).await;
                 continue;
             }
         };
+        tracing::info!(queue = QUEUE, "mq.consumer.started");
 
-        // Continue the trace the publisher seeded on the message so the rated-usage
-        // events stay in the originating trace (custom loop predates bind_consumer).
-        let span = tracing::info_span!(
-            "mq.consume",
-            otel.name = format!("consume {QUEUE}"),
-            otel.kind = "consumer",
-            messaging.destination = QUEUE,
-        );
-        bss_telemetry::continue_trace(&span, traceparent(&delivery).as_deref());
-
-        match serde_json::from_slice::<Value>(&delivery.data) {
-            Ok(body) => {
-                tracing::info!(
-                    usage_event_id = str_field_log(&body, "usageEventId"),
-                    subscription_id = str_field_log(&body, "subscriptionId"),
-                    "mq.usage.recorded.received"
-                );
-                if let Err(err) = handle_usage_recorded(&body, &catalog, &pool, Some(&mq))
-                    .instrument(span)
-                    .await
-                {
-                    log_handle_error(&body, &err);
+        let mut got_any = false;
+        while let Some(delivery) = consumer.next().await {
+            got_any = true;
+            let delivery = match delivery {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!(error = %e, "mq.delivery.error");
+                    continue;
                 }
+            };
+
+            // Continue the trace the publisher seeded on the message so the rated-usage
+            // events stay in the originating trace (custom loop predates bind_consumer).
+            let span = tracing::info_span!(
+                "mq.consume",
+                otel.name = format!("consume {QUEUE}"),
+                otel.kind = "consumer",
+                messaging.destination = QUEUE,
+            );
+            bss_telemetry::continue_trace(&span, traceparent(&delivery).as_deref());
+
+            match serde_json::from_slice::<Value>(&delivery.data) {
+                Ok(body) => {
+                    tracing::info!(
+                        usage_event_id = str_field_log(&body, "usageEventId"),
+                        subscription_id = str_field_log(&body, "subscriptionId"),
+                        "mq.usage.recorded.received"
+                    );
+                    if let Err(err) = handle_usage_recorded(&body, &catalog, &pool, Some(&mq))
+                        .instrument(span)
+                        .await
+                    {
+                        log_handle_error(&body, &err);
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "mq.usage.recorded.bad_json"),
             }
-            Err(e) => tracing::warn!(error = %e, "mq.usage.recorded.bad_json"),
+
+            // Always ack — the handler owns its own error handling; rating never requeues.
+            if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
+                tracing::warn!(error = %e, "mq.ack.failed");
+            }
         }
 
-        // Always ack — the handler owns its own error handling; rating never requeues.
-        if let Err(e) = delivery.ack(BasicAckOptions::default()).await {
-            tracing::warn!(error = %e, "mq.ack.failed");
+        if got_any {
+            backoff = INITIAL_RESUBSCRIBE_BACKOFF;
         }
+        tracing::warn!(queue = QUEUE, "mq.consumer.stream_ended; re-subscribing");
+        resubscribe_backoff(&mut backoff).await;
     }
-    Ok(())
 }
 
 /// Fetch tariff → decide → stage + publish. Separated from the loop so it can be

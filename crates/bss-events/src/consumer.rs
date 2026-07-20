@@ -64,6 +64,36 @@ use tracing::Instrument;
 
 use crate::MqChannel;
 
+// ── consumer re-subscription backoff ────────────────────────────────────────
+//
+// lapin does not auto-recover a dropped consumer: when the broker/channel dies,
+// the `Consumer` stream simply ends (`next()` → `None`). Without a re-subscribe
+// loop the consume task would return and the service would stop consuming until
+// a process restart — the async-plane "wedge". Every consume loop wraps its
+// bind + drain in `loop { … resubscribe_backoff … }`; re-binding runs through
+// `MqChannel::healthy_channel`, which reconnects the underlying connection.
+
+use std::time::Duration;
+
+/// First re-subscription delay after a consumer stream drops.
+pub const INITIAL_RESUBSCRIBE_BACKOFF: Duration = Duration::from_secs(1);
+/// Cap for the exponential re-subscription backoff.
+pub const MAX_RESUBSCRIBE_BACKOFF: Duration = Duration::from_secs(30);
+
+/// The next backoff after `current`: double, capped at [`MAX_RESUBSCRIBE_BACKOFF`].
+/// Pure — the math is unit-tested without a broker.
+pub fn next_resubscribe_backoff(current: Duration) -> Duration {
+    (current * 2).min(MAX_RESUBSCRIBE_BACKOFF)
+}
+
+/// Sleep for `*current`, then advance it toward the cap. Callers reset `*current`
+/// to [`INITIAL_RESUBSCRIBE_BACKOFF`] after a healthy run (≥1 delivery) so a brief
+/// blip re-subscribes fast while a sustained outage backs off.
+pub async fn resubscribe_backoff(current: &mut Duration) {
+    tokio::time::sleep(*current).await;
+    *current = next_resubscribe_backoff(*current);
+}
+
 /// A message handler — runs its domain writes on the supplied connection (the
 /// consumer's transaction, shared with the inbox claim so they commit atomically).
 /// Returns `Err(reason)` to trigger retry/park; the handler must NOT commit.
@@ -99,106 +129,130 @@ pub async fn bind_consumer(
     retry_backoff_ms: u64,
     handler: EventHandler,
 ) -> Result<(), lapin::Error> {
-    let mut consumer = mq
-        .bind_safe_consumer(queue_name, routing_key, consumer_tag, retry_backoff_ms)
-        .await?;
-    tracing::info!(queue = queue_name, routing_key, "mq.consumer.started");
-
-    while let Some(delivery) = consumer.next().await {
-        let delivery = match delivery {
-            Ok(d) => d,
+    let mut backoff = INITIAL_RESUBSCRIBE_BACKOFF;
+    loop {
+        let mut consumer = match mq
+            .bind_safe_consumer(queue_name, routing_key, consumer_tag, retry_backoff_ms)
+            .await
+        {
+            Ok(c) => c,
             Err(e) => {
-                tracing::warn!(error = %e, "mq.delivery.error");
+                tracing::warn!(error = %e, queue = queue_name, "mq.consumer.bind_failed");
+                resubscribe_backoff(&mut backoff).await;
                 continue;
             }
         };
+        tracing::info!(queue = queue_name, routing_key, "mq.consumer.started");
 
-        let message_id = delivery
-            .properties
-            .message_id()
-            .as_ref()
-            .map(|s| s.as_str().to_string());
+        let mut got_any = false;
+        while let Some(delivery) = consumer.next().await {
+            got_any = true;
+            let delivery = match delivery {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!(error = %e, "mq.delivery.error");
+                    continue;
+                }
+            };
 
-        let body: Value = match serde_json::from_slice(&delivery.data) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::warn!(error = %e, queue = queue_name, "mq.consumer.bad_json");
-                ack(&delivery, queue_name).await;
-                continue;
-            }
-        };
+            let message_id = delivery
+                .properties
+                .message_id()
+                .as_ref()
+                .map(|s| s.as_str().to_string());
 
-        // Continue the originating trace: the publisher (relay or inline) stamped a
-        // `traceparent` message header off the trace that staged the event, so the
-        // handler's own staged events + downstream S2S calls stay in one trace.
-        let span = tracing::info_span!(
-            "mq.consume",
-            otel.name = format!("consume {queue_name}"),
-            otel.kind = "consumer",
-            messaging.destination = queue_name,
-        );
-        bss_telemetry::continue_trace(&span, traceparent(&delivery).as_deref());
+            let body: Value = match serde_json::from_slice(&delivery.data) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(error = %e, queue = queue_name, "mq.consumer.bad_json");
+                    ack(&delivery, queue_name).await;
+                    continue;
+                }
+            };
 
-        let outcome = process_one(
-            &pool,
-            inbox_schema,
-            queue_name,
-            &handler,
-            message_id.as_deref(),
-            body,
-        )
-        .instrument(span)
-        .await;
+            // Continue the originating trace: the publisher (relay or inline) stamped a
+            // `traceparent` message header off the trace that staged the event, so the
+            // handler's own staged events + downstream S2S calls stay in one trace.
+            let span = tracing::info_span!(
+                "mq.consume",
+                otel.name = format!("consume {queue_name}"),
+                otel.kind = "consumer",
+                messaging.destination = queue_name,
+            );
+            bss_telemetry::continue_trace(&span, traceparent(&delivery).as_deref());
 
-        match outcome {
-            Ok(_) => ack(&delivery, queue_name).await,
-            Err(reason) => {
-                let deaths = lapin_death_count(&delivery);
-                match decide_retry(deaths, max_retries) {
-                    RetryAction::Retry { attempt } => {
-                        tracing::warn!(
-                            queue = queue_name,
-                            attempt,
-                            max_retries,
-                            error = %reason,
-                            "mq.message.retry"
-                        );
-                        // Nack without requeue → dead-letters to the retry queue.
-                        if let Err(e) = delivery
-                            .nack(BasicNackOptions {
-                                requeue: false,
-                                ..Default::default()
-                            })
-                            .await
-                        {
-                            tracing::warn!(error = %e, "mq.nack.failed");
+            let outcome = process_one(
+                &pool,
+                inbox_schema,
+                queue_name,
+                &handler,
+                message_id.as_deref(),
+                body,
+            )
+            .instrument(span)
+            .await;
+
+            match outcome {
+                Ok(_) => ack(&delivery, queue_name).await,
+                Err(reason) => {
+                    let deaths = lapin_death_count(&delivery);
+                    match decide_retry(deaths, max_retries) {
+                        RetryAction::Retry { attempt } => {
+                            tracing::warn!(
+                                queue = queue_name,
+                                attempt,
+                                max_retries,
+                                error = %reason,
+                                "mq.message.retry"
+                            );
+                            // Nack without requeue → dead-letters to the retry queue.
+                            if let Err(e) = delivery
+                                .nack(BasicNackOptions {
+                                    requeue: false,
+                                    ..Default::default()
+                                })
+                                .await
+                            {
+                                tracing::warn!(error = %e, "mq.nack.failed");
+                            }
                         }
-                    }
-                    RetryAction::Park => {
-                        tracing::error!(
-                            queue = queue_name,
-                            attempts = deaths,
-                            error = %reason,
-                            "mq.message.parked"
-                        );
-                        if let Err(e) = mq
-                            .publish_parked(
-                                queue_name,
-                                &delivery.data,
-                                message_id.as_deref(),
-                                &reason,
-                            )
-                            .await
-                        {
-                            tracing::warn!(error = %e, "mq.park.failed");
+                        RetryAction::Park => {
+                            tracing::error!(
+                                queue = queue_name,
+                                attempts = deaths,
+                                error = %reason,
+                                "mq.message.parked"
+                            );
+                            if let Err(e) = mq
+                                .publish_parked(
+                                    queue_name,
+                                    &delivery.data,
+                                    message_id.as_deref(),
+                                    &reason,
+                                )
+                                .await
+                            {
+                                tracing::warn!(error = %e, "mq.park.failed");
+                            }
+                            ack(&delivery, queue_name).await;
                         }
-                        ack(&delivery, queue_name).await;
                     }
                 }
             }
         }
+
+        // Stream ended → the broker/channel dropped (lapin doesn't auto-recover).
+        // Re-subscribe: bind_safe_consumer runs through healthy_channel(), which
+        // reconnects the underlying connection/channel on demand.
+        if got_any {
+            backoff = INITIAL_RESUBSCRIBE_BACKOFF;
+        }
+        tracing::warn!(
+            queue = queue_name,
+            "mq.consumer.stream_ended; re-subscribing"
+        );
+        resubscribe_backoff(&mut backoff).await;
     }
-    Ok(())
 }
 
 /// Outcome of processing one delivery through the handler transaction.
@@ -278,5 +332,33 @@ fn lapin_death_count(delivery: &lapin::message::Delivery) -> u32 {
         Some(AMQPValue::LongInt(n)) => (*n).max(0) as u32,
         Some(AMQPValue::ShortInt(n)) => (*n).max(0) as u32,
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resubscribe_backoff_doubles_then_caps() {
+        // 1s → 2s → 4s → 8s → 16s → 30s (32 capped) → 30s (stays).
+        assert_eq!(
+            next_resubscribe_backoff(INITIAL_RESUBSCRIBE_BACKOFF),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            next_resubscribe_backoff(Duration::from_secs(8)),
+            Duration::from_secs(16)
+        );
+        // 16 * 2 = 32 → capped at 30.
+        assert_eq!(
+            next_resubscribe_backoff(Duration::from_secs(16)),
+            MAX_RESUBSCRIBE_BACKOFF
+        );
+        // Already at the cap → stays at the cap (no overflow, monotone).
+        assert_eq!(
+            next_resubscribe_backoff(MAX_RESUBSCRIBE_BACKOFF),
+            MAX_RESUBSCRIBE_BACKOFF
+        );
     }
 }

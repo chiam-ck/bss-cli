@@ -47,11 +47,15 @@ fn normalize_vhost(mq_url: &str) -> String {
 /// relay for days (the P7 E2E incident). So the channel + connection live behind a
 /// mutex and [`MqChannel::healthy_channel`] recreates them on demand.
 ///
-/// Reconnection covers the **publish** path (the relay + inline publishes, which is
-/// what wedged). A [`Consumer`] returned by [`declare_and_bind`]/[`bind_safe_consumer`]
-/// is bound to the channel live at setup time; if that channel later dies the
-/// consumer stream ends and the service's consume loop must re-invoke the bind to
-/// re-subscribe (consumer-loop re-subscription is tracked separately).
+/// Reconnection covers the **publish** path (the relay + inline publishes) here, and
+/// the **consume** path in the consumer loops: a [`Consumer`] returned by
+/// [`declare_and_bind`]/[`bind_safe_consumer`] is bound to the channel live at setup
+/// time, so if that channel later dies the consumer stream ends — and the consume
+/// loops ([`bind_consumer`] + the custom rating/provisioning-sim loops) detect that,
+/// back off, and re-invoke the bind to re-subscribe (which reconnects through
+/// `healthy_channel`). So neither plane wedges on a broker blip.
+///
+/// [`bind_consumer`]: crate::bind_consumer
 ///
 /// [`declare_and_bind`]: MqChannel::declare_and_bind
 /// [`bind_safe_consumer`]: MqChannel::bind_safe_consumer

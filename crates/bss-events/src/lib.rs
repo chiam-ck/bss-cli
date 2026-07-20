@@ -16,7 +16,9 @@ pub mod router;
 pub mod topology;
 
 pub use consumer::{
-    bind_consumer, death_count, decide_retry, EventHandler, RetryAction, CLAIM_INBOX_SQL,
+    bind_consumer, death_count, decide_retry, next_resubscribe_backoff, resubscribe_backoff,
+    EventHandler, RetryAction, CLAIM_INBOX_SQL, INITIAL_RESUBSCRIBE_BACKOFF,
+    MAX_RESUBSCRIBE_BACKOFF,
 };
 pub use event::{stage_event, DomainEvent};
 pub use mq::MqChannel;
