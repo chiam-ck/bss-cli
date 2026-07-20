@@ -136,7 +136,24 @@
           </button>
         </form>
       {% elif signup.step == 'pending_order' %}
-        Card on file. Placing the order for {{ plan_id }}…
+        You're all set. Review and confirm to place your order:
+        <div class="signup-review">
+          <dl class="signup-review-details">
+            <dt>Plan</dt><dd>{{ plan_id }}</dd>
+            <dt>Number</dt><dd>{{ signup.msisdn }}</dd>
+          </dl>
+          <p class="signup-review-note">
+            Your card on file will be charged for the plan and your eSIM will be
+            provisioned right away.
+          </p>
+          <button type="button"
+                  hx-post="/signup/step/order?session={{ session_id }}"
+                  hx-target="#signup-progress"
+                  hx-swap="outerHTML"
+                  class="welcome-cta welcome-cta--primary">
+            Place order &amp; activate
+          </button>
+        </div>
       {% elif signup.step == 'pending_activation' %}
         Order placed. SOM is provisioning your eSIM (typically 1–3 seconds)…
       {% else %}
@@ -190,12 +207,9 @@
        they hit Back / hit cancel-URL, the body above renders a "retry"
        button. NO auto-poll here — Stripe's redirect is what advances
        the state, not our polling. #}
-  {% elif signup.step == 'pending_order' %}
-    <div hx-post="/signup/step/order?session={{ session_id }}"
-         hx-trigger="load"
-         hx-target="#signup-progress"
-         hx-swap="outerHTML"
-         class="progress-trigger" hidden></div>
+  {# pending_order no longer auto-fires — the "Place order & activate" button in
+     the body above is the explicit confirmation, so an order (and its charge) is
+     never placed without the customer clicking. #}
   {% elif signup.step == 'pending_activation' and progress_with_trigger %}
     <div hx-get="/signup/step/poll?session={{ session_id }}"
          hx-trigger="load delay:500ms"

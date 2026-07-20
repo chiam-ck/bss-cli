@@ -5,6 +5,15 @@
 <h1 class="page-title">Sign up for <span class="accent">{{ plan.id }}</span></h1>
 <p class="page-subtitle">{{ plan.name }} · SGD {{ plan.price }}/mo · {{ plan.data }} data · {{ plan.voice }} voice{% if plan.roaming %} · {{ plan.roaming }} roaming{% endif %}</p>
 
+{% if error %}
+  <p class="form-error" role="alert">
+    {{ error }}
+    {% if 'order in progress' in error %}
+      <a href="/account/open-order">View your open order</a>.
+    {% endif %}
+  </p>
+{% endif %}
+
 <form class="signup-form" method="post" action="/signup">
   <input type="hidden" name="plan" value="{{ plan.id }}" />
   <input type="hidden" name="msisdn" value="{{ msisdn }}" />

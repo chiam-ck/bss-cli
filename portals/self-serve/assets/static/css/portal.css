@@ -1839,3 +1839,37 @@
   color: var(--fg-muted);
   font-size: 14px;
 }
+
+/* Signup "review & confirm" card (before the order is placed). */
+.signup-review {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 18px 20px;
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 12px;
+}
+.signup-review-details {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 20px;
+  margin: 0;
+  align-items: baseline;
+}
+.signup-review-details dt {
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.signup-review-details dd {
+  margin: 0;
+  font-family: var(--mono);
+  color: var(--fg);
+}
+.signup-review-note {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
