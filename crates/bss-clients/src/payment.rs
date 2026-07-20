@@ -188,7 +188,12 @@ impl PaymentClient {
         let body = json!({ "customer_id": customer_id, "email": email });
         let resp = self
             .inner
-            .request(Method::POST, "/payment-customer/ensure", Some(&body), None)
+            .request(
+                Method::POST,
+                "/admin-api/v1/payment-customer/ensure",
+                Some(&body),
+                None,
+            )
             .await?;
         resp.json()
             .await
