@@ -35,6 +35,7 @@ pub mod signup;
 pub mod signup_session;
 pub mod stepup;
 pub mod templating;
+pub mod webhooks;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -198,9 +199,17 @@ pub fn build_router(state: AppState) -> Router {
         .route("/signup", post(signup::signup_submit))
         .route("/signup/promo/preview", get(signup::signup_promo_preview))
         .route("/signup/step/kyc", post(signup::signup_step_kyc))
+        .route("/signup/step/kyc/poll", get(signup::signup_step_kyc_poll))
+        .route(
+            "/signup/step/kyc/callback",
+            get(signup::signup_step_kyc_callback),
+        )
         .route("/signup/step/cof", post(signup::signup_step_cof))
         .route("/signup/step/order", post(signup::signup_step_order))
         .route("/signup/step/poll", get(signup::signup_step_poll))
+        // Didit KYC webhook — HMAC-authed inside the handler, on the public
+        // allowlist (no perimeter token / session). Trust anchor for v0.15 KYC.
+        .route("/webhooks/didit", post(webhooks::webhook_didit))
         .route("/signup/:plan_id", get(signup::signup_form))
         .route("/signup/:plan_id/msisdn", get(signup::msisdn_picker))
         .route("/signup/:plan_id/progress", get(signup::signup_progress))
@@ -336,6 +345,27 @@ pub async fn build_state_with_db() -> AppState {
                     orch.cap_limits(),
                     orch.llm_model.clone(),
                 ));
+                // v0.15 — the Didit KYC adapter needs the DB pool (corroboration
+                // lookup + cap guard + external_call). Build it here; prebaked
+                // (the build_state default) stays for every other provider.
+                if state.settings.kyc_provider.eq_ignore_ascii_case("didit") {
+                    match kyc::KycAdapter::didit(
+                        &state.settings.kyc_didit_api_key,
+                        &state.settings.kyc_didit_workflow_id,
+                        pool.clone(),
+                    ) {
+                        Ok(adapter) => {
+                            tracing::info!("portal.kyc.didit_enabled");
+                            state.kyc_adapter = adapter;
+                        }
+                        // Fail loud, never silent — but keep the portal bootable
+                        // on prebaked rather than crashing the whole surface.
+                        Err(e) => tracing::error!(
+                            error = %e,
+                            "portal.kyc.didit_misconfigured — staying on prebaked"
+                        ),
+                    }
+                }
                 state.db = Some(pool);
             }
             Err(e) => tracing::warn!(error = %e, "portal.db.connect_failed"),

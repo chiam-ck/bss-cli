@@ -29,6 +29,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 sqlx = { workspace = true }
+reqwest = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 qrcode = { workspace = true }
@@ -46,6 +47,7 @@ bss-models = { workspace = true }
 bss-portal-auth = { workspace = true }
 bss-portal-ui = { workspace = true }
 bss-telemetry = { workspace = true }
+bss-webhooks = { workspace = true }
 
 [dev-dependencies]
 tower = { workspace = true }

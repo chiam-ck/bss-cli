@@ -12,10 +12,43 @@
 //! hashed in the same shape a real adapter produces, so the downstream
 //! `document_hash_unique_per_tenant` policy still sees distinct values per email.
 
+use std::time::{Duration, Instant};
+
 use sha2::{Digest, Sha256};
+use sqlx::PgPool;
 
 const PREBAKED_PROVIDER: &str = "prebaked";
 const PREBAKED_ATTESTATION_ID: &str = "KYC-PREBAKED-001";
+
+// ── Didit (v0.15 real hosted-UI adapter) ─────────────────────────────────────
+const DIDIT_PROVIDER: &str = "didit";
+const DIDIT_BASE_URL: &str = "https://verification.didit.me";
+const FREE_TIER_MONTHLY_CAP: i64 = 500;
+const FREE_TIER_WARN_THRESHOLD: i64 = 450;
+const CORROBORATION_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const CORROBORATION_POLL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Errors the Didit flow can surface. `CapExhausted` (monthly free-tier hit) and
+/// `CorroborationTimeout` (no HMAC-verified webhook within the window) map 1:1 to
+/// the Python `KycCapExhausted` / `KycCorroborationTimeout`; `Http` covers the
+/// network/decode failures. Doctrine: never silently downgrade to prebaked.
+#[derive(Debug)]
+pub enum KycError {
+    CapExhausted(String),
+    CorroborationTimeout(String),
+    Http(String),
+}
+
+impl std::fmt::Display for KycError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KycError::CapExhausted(m) => write!(f, "kyc.cap_exhausted: {m}"),
+            KycError::CorroborationTimeout(m) => write!(f, "kyc.corroboration_timeout: {m}"),
+            KycError::Http(m) => write!(f, "kyc.http_error: {m}"),
+        }
+    }
+}
+impl std::error::Error for KycError {}
 
 /// Result of `initiate()`. The portal redirects the customer to `redirect_url`;
 /// later `session_id` is used to fetch the attestation.
@@ -82,28 +115,370 @@ impl PrebakedKycAdapter {
     }
 }
 
-/// The configured KYC adapter. Only the prebaked variant is ported in this slice;
-/// `Didit` lands with its handoff/poll routes.
+/// The configured KYC adapter — `prebaked` (dev/scenario, synchronous) or
+/// `didit` (real hosted-UI, async + corroborating webhook).
 #[derive(Debug, Clone)]
 pub enum KycAdapter {
     Prebaked(PrebakedKycAdapter),
+    Didit(DiditKycAdapter),
 }
 
 impl KycAdapter {
-    /// Select from `BSS_PORTAL_KYC_PROVIDER`. `didit` is not yet ported — it
-    /// currently falls back to prebaked with a warning rather than failing boot,
-    /// since the Didit routes it needs don't exist yet either.
+    /// Select the no-DB adapter from `BSS_PORTAL_KYC_PROVIDER`. `prebaked` always
+    /// resolves here; `didit` needs a DB pool (corroboration lookup) so it is
+    /// built in `build_state_with_db` via [`KycAdapter::didit`] — asked for here
+    /// without a pool it falls back to prebaked with a **loud** warning (never
+    /// silent). Unknown names also warn + prebaked.
     pub fn from_provider(provider: &str) -> Self {
         match provider.to_lowercase().as_str() {
             "prebaked" | "myinfo" | "" => KycAdapter::Prebaked(PrebakedKycAdapter),
+            "didit" => {
+                tracing::warn!(
+                    "portal.kyc.didit_needs_db — prebaked until the DB pool is attached \
+                     (build_state_with_db); this path is the no-DB fallback only"
+                );
+                KycAdapter::Prebaked(PrebakedKycAdapter)
+            }
             other => {
                 tracing::warn!(
                     provider = other,
-                    "portal.kyc.provider_not_ported — falling back to prebaked (Didit lands with its routes)"
+                    "portal.kyc.unknown_provider — falling back to prebaked"
                 );
                 KycAdapter::Prebaked(PrebakedKycAdapter)
             }
         }
+    }
+
+    /// Construct the Didit adapter with a DB pool (fail-fast on missing creds —
+    /// mirrors the Python `select_kyc_adapter`). Called from `build_state_with_db`.
+    pub fn didit(api_key: &str, workflow_id: &str, pool: PgPool) -> Result<Self, String> {
+        if api_key.is_empty() {
+            return Err("BSS_PORTAL_KYC_PROVIDER=didit requires BSS_PORTAL_KYC_DIDIT_API_KEY".into());
+        }
+        if workflow_id.is_empty() {
+            return Err(
+                "BSS_PORTAL_KYC_PROVIDER=didit requires BSS_PORTAL_KYC_DIDIT_WORKFLOW_ID".into(),
+            );
+        }
+        Ok(KycAdapter::Didit(DiditKycAdapter::new(
+            api_key.to_string(),
+            workflow_id.to_string(),
+            pool,
+        )))
+    }
+
+    /// `true` for the synchronous prebaked adapter — the signup flow completes
+    /// the attest in-request; `false` (Didit) drives the cross-device handoff.
+    pub fn is_prebaked(&self) -> bool {
+        matches!(self, KycAdapter::Prebaked(_))
+    }
+
+    /// Uniform async dispatch — start a verification session.
+    pub async fn initiate(&self, email: &str, return_url: &str) -> Result<KycSession, KycError> {
+        match self {
+            KycAdapter::Prebaked(a) => Ok(a.initiate(email, return_url)),
+            KycAdapter::Didit(a) => a.initiate(email, return_url).await,
+        }
+    }
+
+    /// Uniform async dispatch — read back the verified attestation.
+    pub async fn fetch_attestation(&self, session_id: &str) -> Result<KycAttestation, KycError> {
+        match self {
+            KycAdapter::Prebaked(a) => Ok(a.fetch_attestation(session_id)),
+            KycAdapter::Didit(a) => a.fetch_attestation(session_id).await,
+        }
+    }
+}
+
+/// The real Didit hosted-UI KYC adapter. Port of `bss_self_serve.kyc.didit`.
+///
+/// Trust model: Didit's decision endpoint returns unsigned JSON, so the trust
+/// anchor is the HMAC-signed webhook recorded in
+/// `integrations.kyc_webhook_corroboration`. `fetch_attestation` blocks on that
+/// row before returning. Privacy: the decision carries raw NRIC / name / address
+/// / biometrics; `build_attestation` reduces the document number to `last4 +
+/// hash` and drops everything else — nothing else crosses the BSS boundary.
+#[derive(Clone)]
+pub struct DiditKycAdapter {
+    api_key: String,
+    workflow_id: String,
+    http: reqwest::Client,
+    pool: PgPool,
+    poll_interval: Duration,
+    poll_timeout: Duration,
+}
+
+impl std::fmt::Debug for DiditKycAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Never render the api_key.
+        f.debug_struct("DiditKycAdapter")
+            .field("workflow_id", &self.workflow_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl DiditKycAdapter {
+    pub fn new(api_key: String, workflow_id: String, pool: PgPool) -> Self {
+        Self {
+            api_key,
+            workflow_id,
+            http: reqwest::Client::new(),
+            pool,
+            poll_interval: CORROBORATION_POLL_INTERVAL,
+            poll_timeout: CORROBORATION_POLL_TIMEOUT,
+        }
+    }
+
+    async fn initiate(&self, email: &str, return_url: &str) -> Result<KycSession, KycError> {
+        self.guard_free_tier_cap().await?;
+
+        let body = serde_json::json!({
+            "workflow_id": self.workflow_id,
+            "vendor_data": format!("bss-cli-{email}"),
+            "callback": return_url,
+        });
+        let start = Instant::now();
+        let result = self
+            .http
+            .post(format!("{DIDIT_BASE_URL}/v2/session/"))
+            .header("x-api-key", &self.api_key)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await;
+
+        let payload = match self.decode_json(result).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.record_external_call("initiate", None, false, start.elapsed(), None)
+                    .await;
+                return Err(e);
+            }
+        };
+        let session_id = payload
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let url = payload
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        self.record_external_call(
+            "initiate",
+            Some(&session_id),
+            true,
+            start.elapsed(),
+            Some(&session_id),
+        )
+        .await;
+        Ok(KycSession {
+            session_id,
+            redirect_url: url,
+        })
+    }
+
+    async fn fetch_attestation(&self, session_id: &str) -> Result<KycAttestation, KycError> {
+        // 1. Wait for the corroborating HMAC-verified webhook row.
+        let corroboration = self.wait_for_corroboration(session_id).await;
+        let Some((corroboration_id, _status)) = corroboration else {
+            return Err(KycError::CorroborationTimeout(format!(
+                "No verified webhook delivery for Didit session {session_id} within {}s",
+                self.poll_timeout.as_secs()
+            )));
+        };
+
+        // 2. Fetch the (unsigned) decision body for the supplementary fields.
+        let start = Instant::now();
+        let result = self
+            .http
+            .get(format!("{DIDIT_BASE_URL}/v2/session/{session_id}/decision/"))
+            .header("x-api-key", &self.api_key)
+            .send()
+            .await;
+        let decision = match self.decode_json(result).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.record_external_call(
+                    "fetch_attestation",
+                    Some(session_id),
+                    false,
+                    start.elapsed(),
+                    None,
+                )
+                .await;
+                return Err(e);
+            }
+        };
+        self.record_external_call(
+            "fetch_attestation",
+            Some(session_id),
+            true,
+            start.elapsed(),
+            None,
+        )
+        .await;
+
+        // 3. PII reduction. After this, raw doc number / name / address are gone.
+        Ok(build_attestation(&decision, Some(corroboration_id)))
+    }
+
+    /// Await success or map an HTTP/status/decode failure into `KycError::Http`.
+    async fn decode_json(
+        &self,
+        result: Result<reqwest::Response, reqwest::Error>,
+    ) -> Result<serde_json::Value, KycError> {
+        let resp = result.map_err(|e| KycError::Http(e.to_string()))?;
+        let status = resp.status();
+        if !status.is_success() {
+            let preview: String = resp
+                .text()
+                .await
+                .unwrap_or_default()
+                .chars()
+                .take(200)
+                .collect();
+            return Err(KycError::Http(format!("didit HTTP {status}: {preview}")));
+        }
+        resp.json::<serde_json::Value>()
+            .await
+            .map_err(|e| KycError::Http(e.to_string()))
+    }
+
+    /// Hard-block at the monthly free-tier cap. No silent fallback (Motto).
+    async fn guard_free_tier_cap(&self) -> Result<(), KycError> {
+        let count: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM integrations.external_call \
+             WHERE provider = $1 AND operation = 'initiate' \
+             AND occurred_at >= date_trunc('month', now())",
+        )
+        .bind(DIDIT_PROVIDER)
+        .fetch_one(&self.pool)
+        .await
+        .unwrap_or(0);
+
+        if count >= FREE_TIER_MONTHLY_CAP {
+            tracing::warn!(count, cap = FREE_TIER_MONTHLY_CAP, "didit.cap_exhausted");
+            return Err(KycError::CapExhausted(format!(
+                "Didit free-tier monthly cap ({FREE_TIER_MONTHLY_CAP}) reached"
+            )));
+        }
+        if count >= FREE_TIER_WARN_THRESHOLD {
+            tracing::warn!(count, cap = FREE_TIER_MONTHLY_CAP, "didit.cap_warning");
+        }
+        Ok(())
+    }
+
+    /// Poll `integrations.kyc_webhook_corroboration` for the row. Returns
+    /// `(corroboration_id, decision_status)` once the HMAC-verified webhook lands.
+    async fn wait_for_corroboration(&self, session_id: &str) -> Option<(String, String)> {
+        let deadline = Instant::now() + self.poll_timeout;
+        loop {
+            let row: Option<(uuid::Uuid, String)> = sqlx::query_as(
+                "SELECT id, decision_status FROM integrations.kyc_webhook_corroboration \
+                 WHERE provider = $1 AND provider_session_id = $2",
+            )
+            .bind(DIDIT_PROVIDER)
+            .bind(session_id)
+            .fetch_optional(&self.pool)
+            .await
+            .ok()
+            .flatten();
+            if let Some((id, status)) = row {
+                return Some((id.to_string(), status));
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            tokio::time::sleep(self.poll_interval).await;
+        }
+    }
+
+    async fn record_external_call(
+        &self,
+        operation: &str,
+        aggregate_id: Option<&str>,
+        success: bool,
+        latency: Duration,
+        provider_call_id: Option<&str>,
+    ) {
+        let _ = sqlx::query(
+            "INSERT INTO integrations.external_call \
+             (provider, operation, aggregate_type, aggregate_id, success, latency_ms, provider_call_id) \
+             VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(DIDIT_PROVIDER)
+        .bind(operation)
+        .bind(aggregate_id.map(|_| "kyc_session"))
+        .bind(aggregate_id)
+        .bind(success)
+        .bind(latency.as_millis() as i32)
+        .bind(provider_call_id)
+        .execute(&self.pool)
+        .await;
+    }
+}
+
+/// Reduce a Didit decision payload to the BSS-bound shape. **THE PII REDUCTION
+/// POINT** — after this returns, raw document_number / name / address / image
+/// URLs are gone. Port of `_build_attestation`.
+fn build_attestation(decision: &serde_json::Value, corroboration_id: Option<String>) -> KycAttestation {
+    let idv = decision.get("id_verification");
+    let get_str = |k: &str| -> String {
+        idv.and_then(|v| v.get(k))
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string()
+    };
+    let raw_doc_number = get_str("document_number");
+    let document_country = {
+        let c = get_str("issuing_state");
+        if c.is_empty() { "SGP".to_string() } else { c }
+    };
+
+    let normalized = raw_doc_number.to_uppercase();
+    let normalized = normalized.trim();
+    let digest = sha256_hex(&format!("{normalized}|{document_country}|{DIDIT_PROVIDER}"));
+    let last4: String = if normalized.chars().count() >= 4 {
+        normalized.chars().skip(normalized.chars().count() - 4).collect()
+    } else {
+        normalized.to_string()
+    };
+
+    let dob = {
+        let d = get_str("date_of_birth");
+        if d.is_empty() { "1900-01-01".to_string() } else { d }
+    };
+
+    let raw_type = {
+        let t = get_str("document_type").to_lowercase();
+        if t.is_empty() { "identity card".to_string() } else { t }
+    };
+    let document_type = match raw_type.as_str() {
+        "identity card" => "nric",
+        "passport" => "passport",
+        "driver's license" => "drivers_license",
+        "fin" => "fin",
+        other => other,
+    }
+    .to_string();
+
+    let provider_reference = decision
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+
+    KycAttestation {
+        provider: DIDIT_PROVIDER.to_string(),
+        provider_reference,
+        document_type,
+        document_country,
+        document_number_last4: last4,
+        document_number_hash: digest,
+        date_of_birth: dob,
+        corroboration_id,
     }
 }
 
@@ -191,6 +566,44 @@ mod tests {
             assert_eq!(att.date_of_birth, "1990-01-01");
             assert!(att.corroboration_id.is_none());
         }
+    }
+
+    #[test]
+    fn didit_build_attestation_reduces_pii() {
+        // A representative decision payload — raw NRIC + name + address present.
+        let decision = serde_json::json!({
+            "session_id": "sess-abc-123",
+            "id_verification": {
+                "document_number": "s1234567d",
+                "issuing_state": "SGP",
+                "date_of_birth": "1985-03-02",
+                "document_type": "Identity Card",
+                "first_name": "Ada",       // must NOT survive
+                "last_name": "Lovelace",   // must NOT survive
+                "address": "1 Raffles Pl"  // must NOT survive
+            }
+        });
+        let att = build_attestation(&decision, Some("corr-1".to_string()));
+        assert_eq!(att.provider, "didit");
+        assert_eq!(att.provider_reference, "sess-abc-123");
+        assert_eq!(att.document_type, "nric");
+        assert_eq!(att.document_country, "SGP");
+        assert_eq!(att.document_number_last4, "567D"); // normalized upper, last4
+        assert_eq!(att.date_of_birth, "1985-03-02");
+        assert_eq!(att.corroboration_id.as_deref(), Some("corr-1"));
+        // Digest is domain-separated sha256(NORMALIZED|COUNTRY|didit).
+        assert_eq!(att.document_number_hash, sha256_hex("S1234567D|SGP|didit"));
+        // The reduced shape has no field that could carry name/address.
+        assert_eq!(att.document_number_hash.len(), 64);
+    }
+
+    #[test]
+    fn didit_build_attestation_defaults_on_empty() {
+        let att = build_attestation(&serde_json::json!({}), None);
+        assert_eq!(att.document_country, "SGP");
+        assert_eq!(att.date_of_birth, "1900-01-01");
+        assert_eq!(att.document_type, "nric"); // "identity card" default
+        assert!(att.corroboration_id.is_none());
     }
 
     #[test]

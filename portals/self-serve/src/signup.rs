@@ -26,7 +26,7 @@ use bss_portal_auth::{record_portal_action, LinkError, PortalActionRecord};
 
 use crate::deps::require_verified_email;
 use crate::error_messages::{is_known, render as render_rule};
-use crate::kyc::KycAdapter;
+use crate::kyc::KycError;
 use crate::middleware::PortalSession;
 use crate::offerings::{find_plan, flatten_offerings};
 use crate::prompts::{prebaked_signature, KYC_PREBAKED_ATTESTATION_ID};
@@ -595,7 +595,7 @@ fn render_step_fragment(state: &AppState, sig: &SignupSession) -> Response {
     )
 }
 
-// ── POST /signup/step/kyc — step 2 (prebaked synchronous path) ───────────────
+// ── POST /signup/step/kyc — step 2 (prebaked sync OR Didit handoff) ──────────
 
 pub async fn signup_step_kyc(
     State(state): State<AppState>,
@@ -622,29 +622,161 @@ pub async fn signup_step_kyc(
         q.session
     );
 
-    // Prebaked `initiate` never raises `KycCapExhausted`; the Didit handoff path
-    // (pending_kyc_handoff + QR + poll) is deferred with its routes.
-    let KycAdapter::Prebaked(adapter) = &state.kyc_adapter;
-    let kyc_session = adapter.initiate(&sig.email, &return_url);
+    // Uniform async dispatch — prebaked returns immediately, Didit POSTs a
+    // hosted session. `KycCapExhausted` is a hard block (no fallback, Motto).
+    let kyc_session = match state.kyc_adapter.initiate(&sig.email, &return_url).await {
+        Ok(s) => s,
+        Err(KycError::CapExhausted(_)) => {
+            tracing::warn!("portal.signup.kyc.cap_exhausted");
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some("kyc.cap_exhausted".to_string());
+            state.signup_store.update(&sig);
+            return render_step_fragment(&state, &sig);
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "portal.signup.kyc.initiate_failed");
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some("kyc.initiate_failed".to_string());
+            state.signup_store.update(&sig);
+            return render_step_fragment(&state, &sig);
+        }
+    };
 
-    // Prebaked is synchronous: complete the attest in this request and advance.
-    complete_kyc_attest(&state, &mut sig, &kyc_session.session_id, ua.as_deref()).await
+    if state.kyc_adapter.is_prebaked() {
+        // Synchronous: complete the attest in this request and advance.
+        return complete_kyc_attest(&state, &mut sig, &kyc_session.session_id, ua.as_deref(), false)
+            .await;
+    }
+
+    // Real provider (Didit) — render the cross-device handoff (URL + QR) inside
+    // the progress card and let the desktop poll advance the signup when the
+    // corroboration webhook arrives (NOT the post-verification redirect).
+    sig.kyc_provider_session_id = Some(kyc_session.session_id.clone());
+    sig.kyc_verify_url = Some(kyc_session.redirect_url.clone());
+    sig.kyc_verify_qr = Some(crate::qrpng::qr_data_uri(&kyc_session.redirect_url, 8, 2));
+    sig.step = SignupStep::PendingKycHandoff;
+    state.signup_store.update(&sig);
+    render_step_fragment(&state, &sig)
+}
+
+// ── GET /signup/step/kyc/poll — desktop poll for the corroboration row ───────
+
+pub async fn signup_step_kyc_poll(
+    State(state): State<AppState>,
+    Extension(portal): Extension<PortalSession>,
+    headers: HeaderMap,
+    Query(q): Query<SessionQuery>,
+) -> Response {
+    let identity = match require_verified_email(&portal, "/plans") {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let ua = user_agent(&headers);
+    let mut sig = match resolve(&state, &q.session, &identity) {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    // Already advanced/failed, or initiate hasn't populated the session id yet —
+    // re-render the current fragment so its trigger re-arms.
+    if sig.step != SignupStep::PendingKycHandoff {
+        return render_step_fragment(&state, &sig);
+    }
+    let Some(psid) = sig
+        .kyc_provider_session_id
+        .clone()
+        .filter(|s| !s.is_empty())
+    else {
+        return render_step_fragment(&state, &sig);
+    };
+    let Some(pool) = &state.db else {
+        return render_step_fragment(&state, &sig);
+    };
+
+    // Didit progresses Not Started → In Progress/In Review → terminal (Approved /
+    // Declined / Expired), updated in place by the webhook. Only act on terminal.
+    let status: Option<String> = sqlx::query_scalar(
+        "SELECT decision_status FROM integrations.kyc_webhook_corroboration \
+         WHERE provider = 'didit' AND provider_session_id = $1",
+    )
+    .bind(&psid)
+    .fetch_optional(pool)
+    .await
+    .ok()
+    .flatten();
+
+    match status.as_deref() {
+        None | Some("Not Started") | Some("In Progress") | Some("In Review") => {
+            render_step_fragment(&state, &sig)
+        }
+        Some(s @ ("Declined" | "Expired")) => {
+            sig.step = SignupStep::Failed;
+            sig.step_error = Some(format!("kyc.{}", s.to_lowercase()));
+            state.signup_store.update(&sig);
+            render_step_fragment(&state, &sig)
+        }
+        Some("Approved") => {
+            // Complete the BSS attest — advances to pending_cof and renders the
+            // next fragment (whose own trigger fires the next step).
+            complete_kyc_attest(&state, &mut sig, &psid, ua.as_deref(), false).await
+        }
+        // Unknown terminal status — keep waiting (forward-compat).
+        Some(_) => render_step_fragment(&state, &sig),
+    }
+}
+
+// ── GET /signup/step/kyc/callback — return path from the hosted UI ───────────
+
+pub async fn signup_step_kyc_callback(
+    State(state): State<AppState>,
+    Query(q): Query<SessionQuery>,
+) -> Response {
+    // Public route (allowlist) — the verifying device (often a phone WITHOUT the
+    // desktop's portal session cookie) lands here. It must not require auth; it
+    // just shows a friendly "verification complete, return to your computer"
+    // page. The desktop's poll loop is what actually advances the signup.
+    render(
+        &state,
+        "signup_kyc_confirmation.html",
+        context! {
+            session_id => q.session,
+            request => request_ctx("/signup/step/kyc/callback", None),
+        },
+    )
 }
 
 /// Shared finisher: fetch the attestation, submit it to BSS, advance the signup.
-/// Port of `_complete_kyc_attest` (the prebaked synchronous branch; the Didit
-/// `redirect_after` callback variant lands with the handoff routes).
+/// Port of `_complete_kyc_attest` — used by the prebaked synchronous path and the
+/// Didit poll (`redirect_after = false`). `redirect_after` 303s to the progress
+/// page instead of returning a fragment (the callback-device variant).
 async fn complete_kyc_attest(
     state: &AppState,
     sig: &mut SignupSession,
     kyc_session_id: &str,
     ua: Option<&str>,
+    redirect_after: bool,
 ) -> Response {
-    let KycAdapter::Prebaked(adapter) = &state.kyc_adapter;
-    // Prebaked `fetch_attestation` never raises `KycCorroborationTimeout`.
-    let attestation = adapter.fetch_attestation(kyc_session_id);
+    let attestation = match state.kyc_adapter.fetch_attestation(kyc_session_id).await {
+        Ok(a) => a,
+        Err(KycError::CorroborationTimeout(_)) => {
+            tracing::info!(
+                provider_session = kyc_session_id,
+                "portal.signup.kyc.corroboration_timeout"
+            );
+            sig.step_error = Some("kyc.corroboration_timeout".to_string());
+            state.signup_store.update(sig);
+            return kyc_finish(state, sig, redirect_after);
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "portal.signup.kyc.fetch_failed");
+            sig.step_error = Some("kyc.fetch_failed".to_string());
+            state.signup_store.update(sig);
+            return kyc_finish(state, sig, redirect_after);
+        }
+    };
 
     let customer_id = sig.customer_id.clone().unwrap_or_default();
+    // Same attestation_token for both providers — the CRM distinguishes them by
+    // `provider` + `corroboration_id` (Didit's trust anchor is the webhook row).
     let token = prebaked_signature(&sig.email);
     let opts = AttestKycOpts {
         provider_reference: Some(&attestation.provider_reference),
@@ -680,7 +812,7 @@ async fn complete_kyc_attest(
             .await;
             sig.step = SignupStep::PendingCof;
             state.signup_store.update(sig);
-            render_step_fragment(state, sig)
+            kyc_finish(state, sig, redirect_after)
         }
         Err(ClientError::Policy(pv)) => {
             record_step(
@@ -700,12 +832,25 @@ async fn complete_kyc_attest(
             sig.step = SignupStep::Failed;
             sig.step_error = Some(pv.rule.clone());
             state.signup_store.update(sig);
-            render_step_fragment(state, sig)
+            kyc_finish(state, sig, redirect_after)
         }
         Err(e) => {
             tracing::error!(error = %e, "portal.signup.attest_kyc_failed");
             (StatusCode::INTERNAL_SERVER_ERROR, "Signup failed").into_response()
         }
+    }
+}
+
+/// Return a progress redirect (callback device) or the step fragment (poll/sync).
+fn kyc_finish(state: &AppState, sig: &SignupSession, redirect_after: bool) -> Response {
+    if redirect_after {
+        Redirect::to(&format!(
+            "/signup/{}/progress?session={}",
+            sig.plan, sig.session_id
+        ))
+        .into_response()
+    } else {
+        render_step_fragment(state, sig)
     }
 }
 
