@@ -163,10 +163,12 @@ pub struct BrandingView {
 }
 
 /// `packages/bss-branding/bss_branding/config.py → parents[3]`; here
-/// `rust/crates/bss-branding → ../../..`.
+/// `crates/bss-branding` → repo root. Was `../../..` pre-flip
+/// (`rust/crates/bss-branding`); the flip moved the crate up one level, so it's
+/// now `../..` (matches `bss-cockpit`'s `repo_root`).
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
+        .join("../..")
         .to_path_buf()
 }
 

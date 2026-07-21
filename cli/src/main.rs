@@ -14,7 +14,7 @@
 //! P6 portal bundle deliberately omitted.
 #![forbid(unsafe_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
@@ -152,14 +152,30 @@ fn bootstrap_env_from_dotenv() {
     }
 }
 
-/// `<repo>/.env` — Python resolves `parents[2]` from the module; here the binary
-/// can't know its source path at runtime, so we walk up from the current dir
-/// looking for a `.env` beside a `rust/` sibling (the repo root).
+/// `<repo>/.env` — Python resolves `parents[2]` from the module so `bss` works
+/// from any CWD. The Rust equivalent is the compile-time `CARGO_MANIFEST_DIR`
+/// (`<repo>/cli`), baked into the binary at build time — its parent is the repo
+/// root. This is what makes an installed `bss` load `.env` from `~/anywhere`.
+///
+/// Fallback: walk up from the current dir looking for a `.env` beside the
+/// workspace `crates/` dir. (Post-2.0-flip the old `rust/` sentinel never exists
+/// now that Rust is the repo root — Python lives in `python-legacy/` — so
+/// `crates/`, always present at the workspace root, is the stable marker.)
 fn repo_dotenv_path() -> Option<PathBuf> {
+    // Primary: repo root relative to this crate's source, resolved at build time.
+    let manifest_root = Path::new(env!("CARGO_MANIFEST_DIR")).parent();
+    if let Some(root) = manifest_root {
+        let candidate = root.join(".env");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+    }
+    // Fallback: walk up from CWD (covers a moved/copied repo the build path
+    // no longer points at).
     let mut dir = std::env::current_dir().ok()?;
     loop {
         let candidate = dir.join(".env");
-        if candidate.exists() && dir.join("rust").is_dir() {
+        if candidate.exists() && dir.join("crates").is_dir() {
             return Some(candidate);
         }
         if !dir.pop() {
