@@ -87,9 +87,14 @@ fn month_abbr(m: u32) -> &'static str {
 /// The first user message in a transcript, trimmed for the sessions list.
 ///
 /// Falls back to the operator-provided label, then to `(empty conversation)`.
-/// Parses the cockpit `transcript_text()` format (blank-line-separated blocks,
-/// each `role:\nbody`) rather than reaching into the message table — a future
-/// reshape of the store must not break this path.
+/// Parses the cockpit `transcript_text()` format (`role:\nbody` turns joined by a
+/// blank line) rather than reaching into the message table — a future reshape of
+/// the store must not break this path.
+///
+/// Turns are located by their role-header lines (`user:` / `assistant:` /
+/// `tool[...]:` at column 0), NOT by splitting on blank lines: a body can contain
+/// blank lines (ASCII-table tool results, multi-paragraph answers) that `split`
+/// would shred. Mirrors the orchestrator's `messages_from_transcript` fix (3bfac0a).
 pub fn first_user_message_title(transcript: &str, fallback: Option<&str>) -> String {
     let fb = || {
         fallback
@@ -97,31 +102,45 @@ pub fn first_user_message_title(transcript: &str, fallback: Option<&str>) -> Str
             .unwrap_or("(empty conversation)")
             .to_string()
     };
-    for block in transcript.split("\n\n") {
-        let block = block.trim();
-        if block.is_empty() {
+    let mut lines = transcript.lines();
+    // Find the first `user:` header.
+    if !lines.any(|l| role_header(l) == Some("user")) {
+        return fb();
+    }
+    // The title is the first non-empty content line of that user turn, up to the
+    // next role header (an empty body → fall back, matching the prior behaviour).
+    for line in lines.by_ref() {
+        if role_header(line).is_some() {
+            break;
+        }
+        let text = line.trim();
+        if text.is_empty() {
             continue;
         }
-        let (head, body) = match block.split_once('\n') {
-            Some((h, b)) => (h, b),
-            // `partition` yields ("head", "", "") when there's no newline, so a
-            // headerless block has an empty body and can never be the title.
-            None => (block, ""),
-        };
-        if head.trim().trim_end_matches(':') == "user" {
-            let text = body.trim().split('\n').next().unwrap_or("").trim();
-            if text.is_empty() {
-                return fb();
-            }
-            // Python: `text[:77] + "…"` when len > 80 — char-wise.
-            if text.chars().count() > 80 {
-                let head: String = text.chars().take(77).collect();
-                return format!("{head}…");
-            }
-            return text.to_string();
+        // Python: `text[:77] + "…"` when len > 80 — char-wise.
+        if text.chars().count() > 80 {
+            let head: String = text.chars().take(77).collect();
+            return format!("{head}…");
         }
+        return text.to_string();
     }
     fb()
+}
+
+/// If `line` is *exactly* a cockpit transcript role header (`user:`, `assistant:`,
+/// `tool:`, or `tool[<name>]:`), return the role token. Trailing whitespace is
+/// tolerated; a leading space is not — real headers sit at column 0, so indented
+/// body text (`│ Customer: …`) is never mistaken for a header. Mirrors the
+/// orchestrator's `role_header`.
+fn role_header(line: &str) -> Option<&str> {
+    let token = line.trim_end().strip_suffix(':')?;
+    if token == "user" || token == "assistant" || token == "tool" {
+        return Some(token);
+    }
+    if token.starts_with("tool[") && token.ends_with(']') {
+        return Some(token);
+    }
+    None
 }
 
 /// Group resolved rows into the display buckets, dropping empty ones. Input order
@@ -256,6 +275,21 @@ mod tests {
             "(empty conversation)"
         );
         assert_eq!(first_user_message_title("", None), "(empty conversation)");
+    }
+
+    #[test]
+    fn title_survives_blank_lines_in_a_prior_tool_body() {
+        // A tool result with internal blank lines precedes the user turn. The old
+        // split("\n\n") shredded it; the header-driven scan still finds the title.
+        let t = "tool[customer.list]:\n== Customers ==\n\n  ID   Name\n\n  C1   Ann\n\nuser:\nwho is C1?";
+        assert_eq!(first_user_message_title(t, None), "who is C1?");
+    }
+
+    #[test]
+    fn title_ignores_indented_pseudo_header() {
+        // An indented "Customer:" body line must not be treated as a header.
+        let t = "user:\n| Customer: CUST-1\n| status: active";
+        assert_eq!(first_user_message_title(t, None), "| Customer: CUST-1");
     }
 
     #[test]
