@@ -49,8 +49,8 @@ across services as an ASCII swimlane; Jaeger has the full UI.
 
 Prerequisites: Docker + Compose, a [Rust toolchain](https://rustup.rs) (to build the
 service images + the `bss` CLI), and an OpenRouter API key (or any OpenAI-compatible
-endpoint) for the chat/REPL. (BSS-CLI is all-Rust as of 2.0; the retired Python stack
-lives in `python-legacy/` as the reproducible oracle.)
+endpoint) for the chat/REPL. (BSS-CLI is all-Rust as of 2.0; the original Python
+implementation was retired at v2.0.0 — see [`docs/PYTHON-ORACLE.md`](docs/PYTHON-ORACLE.md).)
 
 ```bash
 git clone <repo> && cd bss-cli

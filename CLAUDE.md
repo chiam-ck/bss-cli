@@ -8,8 +8,17 @@
 > DB schema, and the LLM tool surface are all unchanged — so **the doctrine below
 > holds verbatim**; only the *implementation stack* changed (see "Tech stack" for the
 > Python→Rust mapping). Python file/module names that appear throughout this doc name
-> the pre-2.0 originals (preserved in `python-legacy/` + git history) and map 1:1 to
+> the pre-2.0 originals (archived at v2.0.0 + git history) and map 1:1 to
 > their Rust equivalents. See `phases/2.0/` + DECISIONS 2026-07-19 (×3).
+
+> **v2.0.0 released — Python oracle retired (Phase 0 amendment 2026-07-21).** The
+> `python-legacy/` oracle was archived and removed from the working tree at the
+> `v2.0.0` release (operator elected to cut at 2026-07-21, ahead of the 14-day
+> soak's nominal 2026-08-02 close). It remains recoverable via git tag
+> `python-oracle-final` + tarball — see `docs/PYTHON-ORACLE.md`. Alembic is retired
+> (sqlx baseline under `migrations/`); the `py-*` / `make e2e` dev loops retired
+> with it. **Known follow-up:** the demo seed (`bss_seed.demo`) was Python-only and
+> is not yet ported — `bss admin seed-demo` is the intended Rust replacement.
 
 ## What this project is
 
@@ -167,8 +176,8 @@ Two distinct planes:
 > **Stack changed in 2.0.** BSS-CLI was rewritten Python → **Rust** (strangler-fig,
 > behaviour-frozen — wire contracts, events, payloads, DB schema, and the LLM tool
 > surface are byte-compatible; see `phases/2.0/` + DECISIONS 2026-07-19). The Rust
-> workspace is the repo root; the retired Python implementation is preserved in
-> `python-legacy/` (the reproducible oracle) and git history. **Path/module names
+> workspace is the repo root; the retired Python implementation was archived at
+> v2.0.0 (git tag + tarball; see `docs/PYTHON-ORACLE.md`) and git history. **Path/module names
 > elsewhere in this doc still read as the Python originals** — the doctrine they
 > express is unchanged and maps 1:1 to the Rust equivalents (`services/<svc>/app/…`
 > → `services/<svc>/src/…`; `*.py` guards → `scripts/rust_doctrine_check.sh`;
@@ -197,7 +206,7 @@ Two distinct planes:
 - **Linting:** `rustfmt` + `clippy` (`-D warnings`; `unsafe` forbidden, `unwrap`/`expect` denied in non-test code)
 - **Container:** multi-stage `cargo-chef` Dockerfiles, non-root distroless final stage, self-probe `--healthcheck`
 
-**Pre-2.0 (Python, retired — preserved in `python-legacy/` + git history):** Python 3.12
+**Pre-2.0 (Python, retired — archived at v2.0.0; see `docs/PYTHON-ORACLE.md` + git history):** Python 3.12
 · `uv` · FastAPI · SQLAlchemy 2.0 async + asyncpg · Alembic · Pydantic v2 · `transitions` ·
 `aio-pika` · Typer + Rich · LangGraph · openai SDK · structlog · pytest · ruff + black + mypy.
 

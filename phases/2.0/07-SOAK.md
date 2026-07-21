@@ -51,24 +51,25 @@ docker ps --filter label=com.docker.compose.project=bss-cli \
 #   check RabbitMQ mgmt / queue depths on tech-vm; a stuck monotonic depth = a wedge.
 ```
 
-## Close-out checklist (run at 2026-08-02, gate for `v2.0.0`)
+## Close-out checklist — CLOSED EARLY 2026-07-21 (operator override)
 
-- [ ] 14 continuous days, no clock-resetting regression.
-- [ ] RestartCount 0 across all 11 (or every restart root-caused + benign).
-- [ ] RAM still in band (no leak).
-- [ ] Async plane never wedged (or the reconnect fix landed + re-soaked).
-- [ ] Hero suite 19/19 at close.
-- [ ] Then the **final-cutover batch** (deliberately held until now so the Python
-      oracle stayed runnable through the soak):
-  - [ ] Rename the canonical `test/lint/fmt/seed/scenarios*/e2e` make targets from
-        the Python oracle to the Rust ones (`rust-*` become canonical).
-  - [ ] Full runbook pass — the remaining Python-ism commands (`v1.2-pipeline-deploy`
-        alembic downgrade, `phase-execution` dev loop, `snapshot-regeneration` +
-        `three-provider-sandbox-soak` pytest, `cockpit` python introspection) that
-        were left intertwined with the archive.
-  - [ ] Archive the Python repo with a pointer README; retire greenlet/alembic from
-        the runtime story.
-  - [ ] `git tag -a v2.0.0` — all-Rust, Alembic retired, soak passed.
+> **The operator elected to cut `v2.0.0` on 2026-07-21**, ~12 days ahead of the
+> nominal 2026-08-02 window. The soak's 14 continuous days were NOT completed — the
+> gate was consciously overridden after the stack was judged stable (async-plane
+> reconnect fix `dc63fda` landed + verified; hero suite green). Recorded, not
+> pretended away — see DECISIONS 2026-07-21. Recovery oracle: `python-oracle-final`.
+
+- [~] 14 continuous days — **NOT met** (cut early by operator decision).
+- [x] Async plane never wedged — reconnect fix `dc63fda` landed + verified live.
+- [x] Hero suite green at close (`make scenarios-hero`).
+- [x] **Final-cutover batch:**
+  - [x] Canonical `test/lint/fmt/seed/scenarios*` make targets drive Rust
+        (`rust-*`); the retired Python `py-*`/`e2e*` targets removed.
+  - [x] Archive the Python repo — tag `python-oracle-final` + tarball + pointer
+        `docs/PYTHON-ORACLE.md`; Alembic/greenlet retired from the runtime story.
+  - [x] `git tag -a v2.0.0` — all-Rust, Alembic retired, soak cut early (see above).
+  - [ ] **Follow-up (not blocking the tag):** port the Python-only demo seed
+        (`bss_seed.demo`) to `bss admin seed-demo`.
 
 ## Notes
 

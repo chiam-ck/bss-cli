@@ -54,7 +54,11 @@ async fn welcome_renders_with_branding_and_base_layout() {
         "branding style block missing"
     );
     // Footer product attribution — deliberately NOT rebranded (stays "bss-cli").
-    assert!(body.contains("bss-cli v1.8.1"), "version footnote missing");
+    // Version comes from BSS_RELEASE (doctrine: no hardcoded version literal).
+    assert!(
+        body.contains(&format!("bss-cli v{}", bss_models::BSS_RELEASE)),
+        "version footnote missing"
+    );
 }
 
 #[tokio::test]

@@ -12,7 +12,7 @@ tags: [bss-cli, handbook, runbook, reference]
 >
 > **Repo doctrine** lives in [`CLAUDE.md`](../CLAUDE.md). **Architecture** lives in [`ARCHITECTURE.md`](../ARCHITECTURE.md). **Decisions log** lives in [`DECISIONS.md`](../DECISIONS.md). This handbook synthesizes them into one navigable document; when a fact differs, the source-of-truth files win.
 >
-> **2.0 — all-Rust (2026-07-19).** BSS-CLI was rewritten Python → Rust (behaviour-frozen — the operating model, env vars, providers, tools, and DB schema are unchanged). The Rust workspace is the repo root; `make` targets now drive Rust (`make migrate` = `bss admin migrate`, `test/fmt/lint` = cargo). The retired Python stack lives in `python-legacy/` (its dev loop is the `py-*` targets), kept as the golden-diff oracle until the `v2.0.0` release. Run steps below are updated for Rust; a few informational mentions (FastAPI, OTel auto-instrumentors, `uv run pytest` for snapshot regen) still describe the retired Python internals.
+> **2.0 — all-Rust.** BSS-CLI was rewritten Python → Rust (behaviour-frozen — the operating model, env vars, providers, tools, and DB schema are unchanged). The Rust workspace is the repo root; `make` targets drive Rust (`make migrate` = `bss admin migrate`, `test/fmt/lint` = cargo). The original Python implementation was the golden-diff oracle through the migration and was **retired at the `v2.0.0` release (2026-07-21)** — recoverable via git tag `python-oracle-final` + tarball; see [`PYTHON-ORACLE.md`](PYTHON-ORACLE.md). A few informational mentions below (FastAPI, OTel auto-instrumentors, `uv run pytest`) still describe the retired Python internals.
 
 ---
 
@@ -133,7 +133,7 @@ Phase-12 OAuth/RBAC for staff is **retired** (DECISIONS 2026-05-01), not deferre
 
 ## Part 2 — Quick start (5-minute path)
 
-> **Prerequisites:** Docker + Docker Compose, a [Rust toolchain](https://rustup.rs) (to build the `bss` CLI + the service images), and an OpenRouter API key (free at openrouter.ai). Linux / macOS. ~4 GB RAM headroom. (BSS-CLI is all-Rust as of 2.0; the retired Python stack lives in `python-legacy/` as the reproducible oracle.)
+> **Prerequisites:** Docker + Docker Compose, a [Rust toolchain](https://rustup.rs) (to build the `bss` CLI + the service images), and an OpenRouter API key (free at openrouter.ai). Linux / macOS. ~4 GB RAM headroom. (BSS-CLI is all-Rust as of 2.0; the original Python implementation was retired at v2.0.0 — see [`PYTHON-ORACLE.md`](PYTHON-ORACLE.md).)
 
 ```bash
 git clone <repo-url>
@@ -455,20 +455,18 @@ Loaded once at startup into a `TokenMap` (HMAC-SHA-256 hashed). Identity derived
 | `up-core` | `up-minimal` + `com som subscription provisioning-sim` |
 | `down` | Stops everything (rust overlay + infra) |
 | `build` | Build all Rust service + portal images |
-| `migrate` | `bss admin migrate` (Rust sqlx migrator; `--baseline` on an existing DB). `py-migrate` = `alembic upgrade head` |
-| `seed` | `bss admin seed` — 3 plans + 4 VAS (incl. roaming) + 1000 MSISDNs + 1000 eSIM profiles. `py-seed` = Python bss-seed |
+| `migrate` | `bss admin migrate` (Rust sqlx migrator; `--baseline` on an existing DB) |
+| `seed` | `bss admin seed` — 3 plans + 4 VAS (incl. roaming) + 1000 MSISDNs + 1000 eSIM profiles |
 | `knowledge-reindex` | `bss admin knowledge reindex` — doc corpus into `knowledge.doc_chunk`. Idempotent (mtime + content_hash dedup) |
 | `reset-db` | DROP every BSS schema (+ the sqlx ledger) + re-migrate + re-seed (uses `BSS_ALLOW_ADMIN_RESET` paths) |
-| `test` | `cargo test --workspace`. `py-test` = the Python oracle's per-package pytest sweep |
-| `fmt` | `cargo fmt --all --check`. `py-fmt` = `ruff format` |
-| `lint` | `cargo clippy --workspace -D warnings`. `py-lint` = `ruff check`, `lint-types` = mypy |
-| `doctrine-check` | `scripts/rust_doctrine_check.sh` — 14 grep guards over the Rust workspace. `py-doctrine-check` = the Python guards |
+| `test` | `cargo test --workspace` |
+| `fmt` | `cargo fmt --all --check` |
+| `lint` | `cargo clippy --workspace -D warnings` |
+| `doctrine-check` | `scripts/rust_doctrine_check.sh` — 14 grep guards over the Rust workspace (chat-only orchestrator mediation, clock-via-bss_clock, OTel-out-of-services, renewal-reads-snapshot, no-caller-asserted-service-identity, no-runtime-token-env-reads, astream_once-stays-in-chat, stripe-fixtures-redacted, rating-roaming-blind, ported_out-terminal, renewal-worker-lifespan-only, version-from-BSS_RELEASE, outbox-confined, branding-no-hex) |
 | `scenarios` | Run every `scenarios/*.yaml` via the Rust scenario engine. Side-effect: temporarily flips `BSS_PORTAL_EMAIL_PROVIDER → logging`, `BSS_PORTAL_KYC_PROVIDER → prebaked` (+ `BSS_KYC_ALLOW_PREBAKED=true`), `BSS_PAYMENT_PROVIDER → mock` in `.env`, recreates affected containers, restores on EXIT/INT/TERM |
-| `scenarios-hero` | Same flip-and-restore, but `--tag hero` (17 hero scenarios) |
-| `py-*` | The Python oracle's dev loop under `python-legacy/` — `py-test`, `py-fmt`, `py-lint`, `py-migrate`, `py-seed`, `py-doctrine-check` (kept for golden-diffs until the `v2.0.0` release) |
-| `python-check` | Warn-only check that the `python-legacy/` interpreter is 3.12 |
-| `check-clock` | Grep guard — every `datetime.now/utcnow` site must route through `bss-clock` |
-| `doctrine-check` | Runs `check-clock` plus 13 more grep guards (chat-only orchestrator mediation, OTel-out-of-services, no-campaignos-leak, renewal-reads-snapshot, no-caller-asserted-service-identity, no-runtime-token-env-reads, customer_id-bound-from-state, astream_once-stays-in-chat, stripe-fixtures-redacted, rating-roaming-blind, ported_out-terminal, renewal-worker-lifespan-only, version-from-BSS_RELEASE) |
+| `scenarios-hero` | Same flip-and-restore, but `--tag hero` (the hero ship-gate suite) |
+
+> The Python oracle's dev loop (`py-*`, `python-check`, `check-clock`, `lint-types`, `make e2e`) retired at v2.0.0 with `python-legacy/` — see [`PYTHON-ORACLE.md`](PYTHON-ORACLE.md).
 
 ### 3.5 Cockpit operator preferences (`settings.toml` + `OPERATOR.md`)
 
