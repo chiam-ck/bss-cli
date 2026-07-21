@@ -371,12 +371,15 @@ fn markdown_rows(text: &str, content_w: usize) -> Vec<Row> {
 
 // ─── Public surface ───────────────────────────────────────────────────
 
-/// Terminal width, clamped to a readable band (Rich auto-detects; reedline doesn't).
+/// Terminal width (Rich auto-detects and expands panels to the full console
+/// width; reedline doesn't, so we read it from crossterm). Matches the Python
+/// REPL's full-width banner/reply panels — floor only, no upper cap, so a wide
+/// terminal renders edge-to-edge as before. Falls back to 80 if size is unknown.
 fn banner_width() -> usize {
     crossterm::terminal::size()
         .map(|(cols, _)| cols as usize)
         .unwrap_or(80)
-        .clamp(60, 100)
+        .max(60)
 }
 
 /// The colored slash-command hint line (port of `_SLASH_HELP`) as styled tokens —
@@ -426,10 +429,12 @@ pub fn banner(
 
     let mut rows: Vec<Row> = Vec::new();
     for line in LOGO.split('\n') {
-        rows.push(Row::center(sgr(&logo_style, line)));
+        // Logo + the tagline/meta rows below are all left-aligned (operator
+        // preference — reads cleaner than the Rich-centered original).
+        rows.push(Row::left(sgr(&logo_style, line)));
     }
     rows.push(Row::blank());
-    rows.push(Row::center(format!(
+    rows.push(Row::left(format!(
         "{}   {}   {}   {}   {}",
         sgr("1;37", &brand.brand_name),
         sgr("2", "·"),
@@ -437,7 +442,7 @@ pub fn banner(
         sgr("2", "·"),
         sgr(fg("magenta"), "operator cockpit"),
     )));
-    rows.push(Row::center(format!(
+    rows.push(Row::left(format!(
         "{} {}   {}   {} {}",
         sgr("2", "actor"),
         sgr(fg("green"), actor),
@@ -445,7 +450,7 @@ pub fn banner(
         sgr("2", "model"),
         sgr("1;35", model),
     )));
-    rows.push(Row::center(format!(
+    rows.push(Row::left(format!(
         "{} {}   {}   {} {}",
         sgr("2", "session"),
         sgr(fg("yellow"), session_id),
