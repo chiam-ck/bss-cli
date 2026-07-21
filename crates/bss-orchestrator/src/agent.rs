@@ -460,9 +460,14 @@ mod transcript_tests {
 
         // The tool table (with its internal blank lines) is one System message.
         assert_eq!(msgs[1].role, Role::System);
-        assert!(msgs[1].content.starts_with("(prior tool result for customer.list):"));
+        assert!(msgs[1]
+            .content
+            .starts_with("(prior tool result for customer.list):"));
         assert!(msgs[1].content.contains("C1   Ann"));
-        assert!(msgs[1].content.contains("C2   Bob"), "second table row was dropped");
+        assert!(
+            msgs[1].content.contains("C2   Bob"),
+            "second table row was dropped"
+        );
 
         assert_eq!(msgs[2].role, Role::Assistant);
         assert_eq!(msgs[2].content, "3 customers registered today.");
@@ -488,7 +493,11 @@ mod transcript_tests {
         // A body line like "│ Customer:" must NOT start a new record.
         let transcript = "tool[customer.get]:\n| Customer: CUST-1\n| status: active\n\nuser:\nok";
         let msgs = messages_from_transcript(transcript);
-        assert_eq!(msgs.len(), 2, "indented 'Customer:' line wrongly split the record");
+        assert_eq!(
+            msgs.len(),
+            2,
+            "indented 'Customer:' line wrongly split the record"
+        );
         assert!(msgs[0].content.contains("status: active"));
         assert_eq!(msgs[1].content, "ok");
     }
