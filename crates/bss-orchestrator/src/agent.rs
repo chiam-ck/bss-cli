@@ -361,27 +361,32 @@ pub fn messages_from_transcript(transcript: &str) -> Vec<ChatMessage> {
         transcript
     };
 
+    // Split into records at role-header lines — NOT on blank lines. `transcript_text`
+    // emits each turn as `"{role}:\n{content}"` and joins turns with a blank line, but
+    // a *body* can itself contain blank lines (ASCII-table tool results like
+    // `tool[customer.list]`, multi-paragraph assistant answers). The old `split("\n\n")`
+    // shredded those bodies: every paragraph after the first became a block whose first
+    // line wasn't a known role, so it was dropped — leaving a mangled history that let
+    // stale earlier turns dominate the model (a fresh "what can you do?" got answered as
+    // a prior "registrations today" question). We only start a new record when a line is
+    // *exactly* a role header, so blank lines inside a body stay with their turn. The
+    // serialized format (the frozen `transcript_text` contract) is unchanged.
     let mut out = Vec::new();
-    for block in transcript.split("\n\n") {
-        let block = block.trim_matches('\n');
-        if block.is_empty() {
-            continue;
-        }
-        let (head, body) = match block.split_once('\n') {
-            Some((h, b)) => (h, b),
-            None => (block, ""),
+    let mut head: Option<String> = None;
+    let mut body: Vec<&str> = Vec::new();
+    let flush = |head: &mut Option<String>, body: &mut Vec<&str>, out: &mut Vec<ChatMessage>| {
+        let Some(role) = head.take() else {
+            return;
         };
-        let head = head.trim().trim_end_matches(':');
-        let body = body.trim();
-        if head.is_empty() {
-            continue;
-        }
-        if head == "user" {
-            out.push(ChatMessage::user(body.to_string()));
-        } else if head == "assistant" {
-            out.push(ChatMessage::assistant(body.to_string()));
-        } else if head.starts_with("tool") {
-            let tool_name = head
+        let text = body.join("\n");
+        let text = text.trim();
+        body.clear();
+        if role == "user" {
+            out.push(ChatMessage::user(text.to_string()));
+        } else if role == "assistant" {
+            out.push(ChatMessage::assistant(text.to_string()));
+        } else if role.starts_with("tool") {
+            let tool_name = role
                 .strip_prefix("tool[")
                 .and_then(|s| s.strip_suffix(']'))
                 .unwrap_or("");
@@ -390,9 +395,107 @@ pub fn messages_from_transcript(transcript: &str) -> Vec<ChatMessage> {
             } else {
                 format!("prior tool result for {tool_name}")
             };
-            out.push(ChatMessage::system(format!("({label}):\n{body}")));
+            out.push(ChatMessage::system(format!("({label}):\n{text}")));
         }
         // Unknown roles skipped silently.
+    };
+    for line in transcript.lines() {
+        if let Some(role) = role_header(line) {
+            flush(&mut head, &mut body, &mut out);
+            head = Some(role.to_string());
+        } else if head.is_some() {
+            body.push(line);
+        }
+        // Lines before the first header (e.g. the truncation-elision note) are ignored,
+        // matching the prior parser's "unknown role skipped" behaviour.
     }
+    flush(&mut head, &mut body, &mut out);
     out
+}
+
+/// If `line` is *exactly* a transcript role header (`user:`, `assistant:`, `tool:`,
+/// or `tool[<name>]:`), return the role token (without the trailing colon). Trailing
+/// whitespace is tolerated; a leading space is not — real headers have none, and
+/// requiring column 0 keeps indented body text (ASCII tables, `│ Customer: …`) from
+/// being mistaken for a header.
+fn role_header(line: &str) -> Option<&str> {
+    let l = line.trim_end();
+    let token = l.strip_suffix(':')?;
+    if token == "user" || token == "assistant" || token == "tool" {
+        return Some(token);
+    }
+    if token.starts_with("tool[") && token.ends_with(']') {
+        return Some(token);
+    }
+    None
+}
+
+#[cfg(test)]
+mod transcript_tests {
+    use super::*;
+
+    /// The regression: a tool result whose body contains a blank line (an ASCII
+    /// table, as `transcript_text` serialises `tool[customer.list]`) must survive
+    /// as ONE message, and the turns after it must be preserved — not shredded by
+    /// the old `split("\n\n")`.
+    #[test]
+    fn blank_line_in_body_does_not_shred_history() {
+        // Exactly what transcript_text() emits: "{role}:\n{content}" joined by "\n\n".
+        let transcript = concat!(
+            "user:\nhow many new customers today?",
+            "\n\n",
+            "tool[customer.list]:\n== Customers ==\n\n  ID   Name\n  C1   Ann\n\n  C2   Bob",
+            "\n\n",
+            "assistant:\n3 customers registered today.",
+            "\n\n",
+            "user:\nwhat can you do for me?",
+        );
+        let msgs = messages_from_transcript(transcript);
+
+        // 4 turns in, 4 messages out — nothing dropped.
+        assert_eq!(msgs.len(), 4, "expected 4 messages, got {}", msgs.len());
+
+        assert_eq!(msgs[0].role, Role::User);
+        assert_eq!(msgs[0].content, "how many new customers today?");
+
+        // The tool table (with its internal blank lines) is one System message.
+        assert_eq!(msgs[1].role, Role::System);
+        assert!(msgs[1].content.starts_with("(prior tool result for customer.list):"));
+        assert!(msgs[1].content.contains("C1   Ann"));
+        assert!(msgs[1].content.contains("C2   Bob"), "second table row was dropped");
+
+        assert_eq!(msgs[2].role, Role::Assistant);
+        assert_eq!(msgs[2].content, "3 customers registered today.");
+
+        // The crucial one: the current question survives as the last user turn.
+        assert_eq!(msgs[3].role, Role::User);
+        assert_eq!(msgs[3].content, "what can you do for me?");
+    }
+
+    #[test]
+    fn well_formed_transcript_unchanged() {
+        let transcript = "user:\nhi\n\nassistant:\nhello";
+        let msgs = messages_from_transcript(transcript);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(msgs[0].role, Role::User);
+        assert_eq!(msgs[0].content, "hi");
+        assert_eq!(msgs[1].role, Role::Assistant);
+        assert_eq!(msgs[1].content, "hello");
+    }
+
+    #[test]
+    fn indented_body_line_is_not_mistaken_for_header() {
+        // A body line like "│ Customer:" must NOT start a new record.
+        let transcript = "tool[customer.get]:\n| Customer: CUST-1\n| status: active\n\nuser:\nok";
+        let msgs = messages_from_transcript(transcript);
+        assert_eq!(msgs.len(), 2, "indented 'Customer:' line wrongly split the record");
+        assert!(msgs[0].content.contains("status: active"));
+        assert_eq!(msgs[1].content, "ok");
+    }
+
+    #[test]
+    fn empty_transcript_is_no_messages() {
+        assert!(messages_from_transcript("").is_empty());
+        assert!(messages_from_transcript("   \n  ").is_empty());
+    }
 }
