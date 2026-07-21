@@ -17,8 +17,8 @@
 > soak's nominal 2026-08-02 close). It remains recoverable via git tag
 > `python-oracle-final` + tarball — see `docs/PYTHON-ORACLE.md`. Alembic is retired
 > (sqlx baseline under `migrations/`); the `py-*` / `make e2e` dev loops retired
-> with it. **Known follow-up:** the demo seed (`bss_seed.demo`) was Python-only and
-> is not yet ported — `bss admin seed-demo` is the intended Rust replacement.
+> with it. The demo seed was ported to `bss admin seed-demo` (+ `--reset`); its
+> Python-only `loyalty-wipe` mode was not ported (loyalty-cli owns its own DB).
 
 ## What this project is
 

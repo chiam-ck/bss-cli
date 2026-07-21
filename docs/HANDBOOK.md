@@ -457,6 +457,8 @@ Loaded once at startup into a `TokenMap` (HMAC-SHA-256 hashed). Identity derived
 | `build` | Build all Rust service + portal images |
 | `migrate` | `bss admin migrate` (Rust sqlx migrator; `--baseline` on an existing DB) |
 | `seed` | `bss admin seed` — 3 plans + 4 VAS (incl. roaming) + 1000 MSISDNs + 1000 eSIM profiles |
+| `seed-demo` | `bss admin seed-demo` — synced demo dataset (3 customers + 2 promos + VIP assign), BSS + loyalty in lockstep. Idempotent; BSS-only when loyalty unconfigured |
+| `seed-demo-reset` | `bss admin seed-demo --reset` — surgical reverse (demo-prefix only; spares operator data) |
 | `knowledge-reindex` | `bss admin knowledge reindex` — doc corpus into `knowledge.doc_chunk`. Idempotent (mtime + content_hash dedup) |
 | `reset-db` | DROP every BSS schema (+ the sqlx ledger) + re-migrate + re-seed (uses `BSS_ALLOW_ADMIN_RESET` paths) |
 | `test` | `cargo test --workspace` |
@@ -466,7 +468,7 @@ Loaded once at startup into a `TokenMap` (HMAC-SHA-256 hashed). Identity derived
 | `scenarios` | Run every `scenarios/*.yaml` via the Rust scenario engine. Side-effect: temporarily flips `BSS_PORTAL_EMAIL_PROVIDER → logging`, `BSS_PORTAL_KYC_PROVIDER → prebaked` (+ `BSS_KYC_ALLOW_PREBAKED=true`), `BSS_PAYMENT_PROVIDER → mock` in `.env`, recreates affected containers, restores on EXIT/INT/TERM |
 | `scenarios-hero` | Same flip-and-restore, but `--tag hero` (the hero ship-gate suite) |
 
-> The Python oracle's dev loop (`py-*`, `python-check`, `check-clock`, `lint-types`, `make e2e`) retired at v2.0.0 with `python-legacy/` — see [`PYTHON-ORACLE.md`](PYTHON-ORACLE.md).
+> The Python oracle's dev loop (`py-*`, `python-check`, `check-clock`, `lint-types`, `make e2e`) retired at v2.0.0 with `python-legacy/` — see [`PYTHON-ORACLE.md`](PYTHON-ORACLE.md). (The demo seed was ported to `bss admin seed-demo`; only its `loyalty-wipe` mode + the `demo-restore` one-button did not carry over.)
 
 ### 3.5 Cockpit operator preferences (`settings.toml` + `OPERATOR.md`)
 

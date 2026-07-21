@@ -34,9 +34,12 @@ oracle (recoverable via the tag/tarball above):
   is canonical.
 - `make e2e` / `e2e-batched` / `e2e-down` + `docker-compose.e2e.yml` — the
   Python Playwright/bss-e2e suite. The Rust ship gate is `make scenarios-hero`.
-- **The demo seed** (`bss_seed.demo` → `make seed-demo` / `seed-demo-reset` /
-  `loyalty-reset` / `demo-restore`). **Not yet ported.** Follow-up: add
-  `bss admin seed-demo` as the Rust equivalent. Until then, seed demo data via
-  the tag/tarball, or by hand (see the loyalty-cli promo runbook).
+- **The demo seed** — `bss_seed.demo seed`/`reset` was **ported** to
+  `bss admin seed-demo` (+ `--reset`), re-exposed as `make seed-demo` /
+  `seed-demo-reset`. Composes loyalty server-side (catalog saga + CRM eager-sync),
+  idempotent, surgical reset. The `loyalty-wipe` mode (truncating loyalty-cli's
+  own DB + re-stamping its alembic) was **not** ported — that's loyalty-cli's own
+  concern; use its native reset. `make demo-restore` (the reset-db + loyalty-wipe +
+  seed-demo "one button") is therefore not reconstituted in-tree.
 
 Alembic is retired; migrations are the sqlx baseline under `migrations/`.

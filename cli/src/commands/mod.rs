@@ -11,6 +11,7 @@ pub mod admin_catalog;
 pub mod admin_knowledge;
 pub mod admin_migrate;
 pub mod admin_seed;
+pub mod admin_seed_demo;
 pub mod ask;
 pub mod branding;
 pub mod case;

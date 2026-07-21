@@ -32,6 +32,13 @@ enum AdminCommand {
     Knowledge(super::admin_knowledge::KnowledgeArgs),
     /// Seed reference data across every domain (idempotent — the clean reseed).
     Seed,
+    /// Seed the synced demo dataset (3 customers + 2 promos + VIP assign), BSS +
+    /// loyalty in lockstep. `--reset` surgically reverses it (demo-prefix only).
+    SeedDemo {
+        /// Remove everything `seed-demo` creates (demo-prefix only; spares operator data).
+        #[arg(long)]
+        reset: bool,
+    },
     /// Apply the sqlx schema migrations (Phase 8 — Alembic freeze → sqlx baseline).
     Migrate {
         /// Existing install: stamp the baseline as applied WITHOUT running its SQL
@@ -52,6 +59,7 @@ pub async fn run(args: AdminArgs) -> ExitCode {
         AdminCommand::Catalog(a) => super::admin_catalog::run(a).await,
         AdminCommand::Knowledge(a) => super::admin_knowledge::run(a).await,
         AdminCommand::Seed => super::admin_seed::run().await,
+        AdminCommand::SeedDemo { reset } => super::admin_seed_demo::run(reset).await,
         AdminCommand::Migrate { baseline } => super::admin_migrate::run(baseline).await,
         AdminCommand::Reset { yes } => reset(yes).await,
     }

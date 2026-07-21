@@ -68,8 +68,9 @@ docker ps --filter label=com.docker.compose.project=bss-cli \
   - [x] Archive the Python repo — tag `python-oracle-final` + tarball + pointer
         `docs/PYTHON-ORACLE.md`; Alembic/greenlet retired from the runtime story.
   - [x] `git tag -a v2.0.0` — all-Rust, Alembic retired, soak cut early (see above).
-  - [ ] **Follow-up (not blocking the tag):** port the Python-only demo seed
-        (`bss_seed.demo`) to `bss admin seed-demo`.
+  - [x] **Follow-up done (2026-07-21, post-tag):** ported the demo seed to
+        `bss admin seed-demo` (+ `--reset`); `loyalty-wipe`/`demo-restore` not
+        carried over (loyalty-cli owns its own DB). See DECISIONS 2026-07-21.
 
 ## Notes
 

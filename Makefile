@@ -1,4 +1,4 @@
-.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed doctrine-check rust-migrate rust-seed rust-fmt rust-lint rust-test rust-doctrine-check knowledge-reindex reset-db scenarios scenarios-hero scenarios-site-demo dev-mailbox-dir
+.PHONY: help up up-all up-minimal up-core down build test fmt lint migrate seed seed-demo seed-demo-reset doctrine-check rust-migrate rust-seed rust-fmt rust-lint rust-test rust-doctrine-check knowledge-reindex reset-db scenarios scenarios-hero scenarios-site-demo dev-mailbox-dir
 
 help:
 	@echo "  up                  — FULL stack (9 services + 2 portals), BYOI: uses your EXTERNAL Postgres/RabbitMQ/Jaeger. ← default"
@@ -9,6 +9,8 @@ help:
 	@echo "  build               — build all Rust service + portal images"
 	@echo "  migrate             — bss admin migrate (Rust sqlx)"
 	@echo "  seed                — bss admin seed (Rust). 3 plans + 4 VAS + 1000 MSISDNs + 1000 eSIMs"
+	@echo "  seed-demo           — synced demo dataset: 3 customers + 2 promos across BSS + loyalty (idempotent)"
+	@echo "  seed-demo-reset     — surgical reverse of seed-demo (demo-prefix only; spares operator data)"
 	@echo "  knowledge-reindex   — v0.20+ reindex doc corpus into knowledge.doc_chunk"
 	@echo "  test                — cargo test --workspace"
 	@echo "  fmt                 — cargo fmt --check"
@@ -111,9 +113,20 @@ rust-migrate:
 
 seed: rust-seed
 
-
 rust-seed:
 	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cargo run --quiet -p bss-cli -- admin seed
+
+# Synced demo dataset (3 customers + 2 promos + VIP assign), BSS + loyalty in
+# lockstep — `bss admin seed-demo`. Idempotent. Loyalty is composed server-side
+# (catalog saga + CRM eager-sync); without loyalty configured the promo lane
+# skips (BSS-only mode). `seed-demo-reset` is the surgical reverse (demo-prefix
+# only; spares operator data). Ported from the retired Python `bss_seed.demo`;
+# the loyalty full-DB wipe was NOT ported (that's loyalty-cli's own concern).
+seed-demo:
+	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cargo run --quiet -p bss-cli -- admin seed-demo
+
+seed-demo-reset:
+	@$(ENV_SOURCE); . "$$HOME/.cargo/env" 2>/dev/null || true; cargo run --quiet -p bss-cli -- admin seed-demo --reset
 
 
 # v0.20+ — operator-driven doc-corpus reindex into knowledge.doc_chunk.
