@@ -38,9 +38,9 @@ pub use pending_action::{
     consume_pending_action, stash_pending_action, PendingActionView, StashError,
 };
 pub use service::{
-    consume_step_up_token, current_session, link_to_customer, revoke_session, rotate_if_due,
-    start_email_login, start_step_up, verify_email_login, verify_step_up, LinkError, LoginError,
-    StepUpError, StepUpVerify, VerifyOutcome,
+    consume_step_up_token, current_session, link_to_customer, relink_orphaned_to_customer,
+    revoke_session, rotate_if_due, start_email_login, start_step_up, verify_email_login,
+    verify_step_up, LinkError, LoginError, StepUpError, StepUpVerify, VerifyOutcome,
 };
 pub use startup::validate_pepper_present;
 pub use tokens::{

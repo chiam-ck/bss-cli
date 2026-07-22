@@ -24,6 +24,10 @@ use serde_json::Value;
 
 use bss_portal_auth::{record_portal_action, LinkError, PortalActionRecord};
 
+/// CRM's rule code when the customer id doesn't resolve. Signup treats it as a
+/// dangling identity link rather than a dead end — see `signup_submit`.
+const RULE_CUSTOMER_NOT_FOUND: &str = "customer.kyc.not_found";
+
 use crate::deps::require_verified_email;
 use crate::error_messages::{is_known, render as render_rule};
 use crate::kyc::KycError;
@@ -380,71 +384,109 @@ pub async fn signup_submit(
     }
 
     // ── returning customer: reuse the linked CUST, resume at first incomplete step ──
+    // Set when the identity points at a customer CRM no longer has: the link is a
+    // ghost, so we fall through to the new-customer path and re-bind below.
+    let mut orphaned_customer_id: Option<String> = None;
+
     if let Some(cid) = existing_customer_id {
         sig.customer_id = Some(cid.clone());
 
         let kyc = clients.crm.get_kyc_status(&cid).await;
         let methods = clients.payment.list_methods(&cid).await;
 
-        // Either a Policy violation → fail the step (Python catches only that).
-        for res in [&kyc, &methods] {
-            if let Err(ClientError::Policy(pv)) = res {
-                record_step(
-                    &state,
-                    &sig,
-                    Some(&cid),
-                    "signup_create_customer",
-                    "/signup",
-                    false,
-                    Some(&pv.rule),
-                    ua.as_deref(),
-                )
-                .await;
-                if !is_known(&pv.rule) {
-                    tracing::info!(rule = %pv.rule, "portal.signup.unknown_policy_rule");
-                }
-                sig.step = SignupStep::Failed;
-                sig.step_error = Some(pv.rule.clone());
-                state.signup_store.update(&sig);
-                return render_failed(&state, &sig, &pv.rule).await;
-            }
-        }
-        // Non-policy transport/server errors bubble to a 500 (Python lets them propagate).
-        let (kyc, methods) = match (kyc, methods) {
-            (Ok(k), Ok(m)) => (k, m),
-            _ => {
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Signup lookup failed").into_response()
-            }
-        };
-
-        let kyc_verified = kyc.get("kyc_status").and_then(Value::as_str) == Some("verified");
-        let no_methods = methods.as_array().map(|a| a.is_empty()).unwrap_or(true);
-
-        if provider == "mock" && no_methods && form.card_pan.trim().is_empty() {
+        // The linked customer is gone from CRM (out-of-band delete, restore from a
+        // partial backup, …). Failing here bricks the identity forever — every retry
+        // burns another number hold and dies on the same 422 — so treat the link as
+        // stale, drop it, and let the new-customer path below mint a fresh CUST.
+        if matches!(&kyc, Err(ClientError::Policy(pv)) if pv.rule == RULE_CUSTOMER_NOT_FOUND) {
+            tracing::error!(
+                identity_id = %identity.id, customer_id = %cid,
+                "portal.signup.identity_link_dangling",
+            );
+            record_step(
+                &state,
+                &sig,
+                Some(&cid),
+                "signup_create_customer",
+                "/signup",
+                false,
+                Some("signup.create_customer.identity_link_dangling"),
+                ua.as_deref(),
+            )
+            .await;
+            orphaned_customer_id = Some(cid);
+            sig.customer_id = None;
             state.signup_store.update(&sig);
-            return render_failed(&state, &sig, "policy.payment.method.invalid_card").await;
-        }
-
-        sig.step = if !kyc_verified {
-            SignupStep::PendingKyc
-        } else if no_methods {
-            SignupStep::PendingCof
         } else {
-            SignupStep::PendingOrder
-        };
-        record_step(
-            &state,
-            &sig,
-            Some(&cid),
-            "signup_create_customer",
-            "/signup",
-            true,
-            Some("signup.create_customer.reused_linked_identity"),
-            ua.as_deref(),
-        )
-        .await;
+            // Either a Policy violation → fail the step (Python catches only that).
+            for res in [&kyc, &methods] {
+                if let Err(ClientError::Policy(pv)) = res {
+                    record_step(
+                        &state,
+                        &sig,
+                        Some(&cid),
+                        "signup_create_customer",
+                        "/signup",
+                        false,
+                        Some(&pv.rule),
+                        ua.as_deref(),
+                    )
+                    .await;
+                    if !is_known(&pv.rule) {
+                        tracing::info!(rule = %pv.rule, "portal.signup.unknown_policy_rule");
+                    }
+                    sig.step = SignupStep::Failed;
+                    sig.step_error = Some(pv.rule.clone());
+                    state.signup_store.update(&sig);
+                    return render_failed(&state, &sig, &pv.rule).await;
+                }
+            }
+            // Non-policy transport/server errors bubble to a 500 (Python lets them propagate).
+            let (kyc, methods) = match (kyc, methods) {
+                (Ok(k), Ok(m)) => (k, m),
+                _ => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Signup lookup failed")
+                        .into_response()
+                }
+            };
+
+            let kyc_verified = kyc.get("kyc_status").and_then(Value::as_str) == Some("verified");
+            let no_methods = methods.as_array().map(|a| a.is_empty()).unwrap_or(true);
+
+            if provider == "mock" && no_methods && form.card_pan.trim().is_empty() {
+                state.signup_store.update(&sig);
+                return render_failed(&state, &sig, "policy.payment.method.invalid_card").await;
+            }
+
+            sig.step = if !kyc_verified {
+                SignupStep::PendingKyc
+            } else if no_methods {
+                SignupStep::PendingCof
+            } else {
+                SignupStep::PendingOrder
+            };
+            record_step(
+                &state,
+                &sig,
+                Some(&cid),
+                "signup_create_customer",
+                "/signup",
+                true,
+                Some("signup.create_customer.reused_linked_identity"),
+                ua.as_deref(),
+            )
+            .await;
+            state.signup_store.update(&sig);
+            return progress_redirect(&form.plan, &sig.session_id);
+        }
+    }
+
+    // Falling through from a dangling link means they're a new customer now, so
+    // re-apply the new-customer PAN guard — it was skipped above because the
+    // identity still looked like a returning one.
+    if orphaned_customer_id.is_some() && provider == "mock" && form.card_pan.trim().is_empty() {
         state.signup_store.update(&sig);
-        return progress_redirect(&form.plan, &sig.session_id);
+        return render_failed(&state, &sig, "policy.payment.method.invalid_card").await;
     }
 
     // ── new customer: create + atomically link the identity ──
@@ -514,8 +556,29 @@ pub async fn signup_submit(
     // Atomically bind the verified identity to the new customer (before the rest
     // of the chain runs, so a mid-flow abandon still leaves the pair intact).
     if let Some(pool) = &state.db {
-        match bss_portal_auth::link_to_customer(pool, &identity.id, &customer_id).await {
-            Ok(()) => {}
+        // A ghost link is repaired by CAS on the ghost id (see
+        // `relink_orphaned_to_customer`); a virgin identity takes the normal bind.
+        let bound = match &orphaned_customer_id {
+            Some(orphan) => {
+                bss_portal_auth::relink_orphaned_to_customer(
+                    pool,
+                    &identity.id,
+                    orphan,
+                    &customer_id,
+                )
+                .await
+            }
+            None => bss_portal_auth::link_to_customer(pool, &identity.id, &customer_id).await,
+        };
+        match bound {
+            Ok(()) => {
+                if let Some(orphan) = &orphaned_customer_id {
+                    tracing::warn!(
+                        identity_id = %identity.id, orphaned_customer_id = %orphan,
+                        customer_id = %customer_id, "portal.signup.identity_relinked",
+                    );
+                }
+            }
             Err(LinkError::AlreadyLinked { existing }) => {
                 tracing::warn!(
                     identity_id = %identity.id, customer_id = %customer_id,
@@ -1887,6 +1950,20 @@ pub async fn activation_status(
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    /// The dangling-link self-heal keys off CRM's exact rule string. If CRM ever
+    /// renames it (`services/crm/src/service.rs`, `kyc_status`), the match below
+    /// silently stops firing and every affected identity is bricked again — the
+    /// original defect, with no error to point at. Pin both halves: the literal,
+    /// and its presence in the copy map so the fallback path stays honest too.
+    #[test]
+    fn dangling_link_rule_is_pinned_and_has_copy() {
+        assert_eq!(RULE_CUSTOMER_NOT_FOUND, "customer.kyc.not_found");
+        assert!(
+            is_known(RULE_CUSTOMER_NOT_FOUND),
+            "rule must have registered copy, not GENERIC_FALLBACK",
+        );
+    }
 
     #[test]
     fn format_msisdn_sg_mobile() {

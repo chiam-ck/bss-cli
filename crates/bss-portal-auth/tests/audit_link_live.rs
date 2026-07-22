@@ -8,7 +8,10 @@
 //! ```
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use bss_portal_auth::{link_to_customer, record_portal_action, LinkError, PortalActionRecord};
+use bss_portal_auth::{
+    link_to_customer, record_portal_action, relink_orphaned_to_customer, LinkError,
+    PortalActionRecord,
+};
 use sqlx::Row;
 
 #[tokio::test]
@@ -70,7 +73,42 @@ async fn link_and_audit_round_trip() {
         other => panic!("expected UnknownIdentity, got {other:?}"),
     }
 
-    // 5. record_portal_action writes one row with the resolved fields.
+    // 5. relink_orphaned_to_customer: the CAS must miss unless the caller names
+    //    the id actually on the row. This is the takeover guard — an attacker who
+    //    can pick `new_customer_id` still can't move a link they can't name.
+    let cust_c = format!("CUST-THIRD-{suffix}");
+    match relink_orphaned_to_customer(&pool, &identity_id, &cust_b, &cust_c).await {
+        Err(LinkError::AlreadyLinked { existing }) => assert_eq!(existing, cust_a),
+        other => panic!("expected AlreadyLinked on CAS miss, got {other:?}"),
+    }
+    let still: String = sqlx::query("SELECT customer_id FROM portal_auth.identity WHERE id = $1")
+        .bind(&identity_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .get("customer_id");
+    assert_eq!(still, cust_a, "CAS miss must not move the link");
+
+    // 6. Naming the real (ghost) id repairs the link.
+    relink_orphaned_to_customer(&pool, &identity_id, &cust_a, &cust_c)
+        .await
+        .expect("relink on CAS hit");
+    let repaired: String =
+        sqlx::query("SELECT customer_id FROM portal_auth.identity WHERE id = $1")
+            .bind(&identity_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .get("customer_id");
+    assert_eq!(repaired, cust_c);
+
+    // 7. Unknown identity → UnknownIdentity, not a silent no-op.
+    match relink_orphaned_to_customer(&pool, "ID-NONEXISTENT-xyz", &cust_a, &cust_c).await {
+        Err(LinkError::UnknownIdentity) => {}
+        other => panic!("expected UnknownIdentity, got {other:?}"),
+    }
+
+    // 8. record_portal_action writes one row with the resolved fields.
     let rec = PortalActionRecord {
         customer_id: Some(&cust_a),
         identity_id: Some(&identity_id),

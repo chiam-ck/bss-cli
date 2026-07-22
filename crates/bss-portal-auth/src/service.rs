@@ -682,6 +682,56 @@ pub async fn link_to_customer(
     }
 }
 
+/// Repair an identity whose linked customer no longer exists in CRM.
+///
+/// This is the ONE exception to the 1:1 non-reassignable rule in
+/// [`link_to_customer`], and it is deliberately narrow: the caller must have
+/// just proven, against the CRM service, that `orphaned_customer_id` is gone
+/// (`customer.kyc.not_found`), and the UPDATE is a compare-and-swap on that
+/// exact id. An identity linked to a *live* customer can never be moved through
+/// here — the CAS misses and you get [`LinkError::AlreadyLinked`] carrying
+/// whoever actually holds the link. So there is no account-takeover surface:
+/// the only reachable transition is ghost → new customer.
+///
+/// Without this, a dangling link bricks the identity permanently — every signup
+/// retry re-reserves a number and then dies on the same 422.
+pub async fn relink_orphaned_to_customer(
+    pool: &PgPool,
+    identity_id: &str,
+    orphaned_customer_id: &str,
+    new_customer_id: &str,
+) -> Result<(), LinkError> {
+    let updated = sqlx::query(
+        "UPDATE portal_auth.identity \
+         SET customer_id = $1, status = 'registered' \
+         WHERE id = $2 AND customer_id = $3",
+    )
+    .bind(new_customer_id)
+    .bind(identity_id)
+    .bind(orphaned_customer_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+
+    if updated == 1 {
+        return Ok(());
+    }
+
+    // CAS missed — say precisely why, so the caller can log something useful.
+    let existing: Option<Option<String>> =
+        sqlx::query("SELECT customer_id FROM portal_auth.identity WHERE id = $1")
+            .bind(identity_id)
+            .fetch_optional(pool)
+            .await?
+            .map(|r| r.get("customer_id"));
+
+    match existing {
+        None => Err(LinkError::UnknownIdentity),
+        Some(Some(current)) => Err(LinkError::AlreadyLinked { existing: current }),
+        Some(None) => link_to_customer(pool, identity_id, new_customer_id).await,
+    }
+}
+
 // ── step-up: start / verify / consume ────────────────────────────────────────
 
 /// Why a step-up start failed.

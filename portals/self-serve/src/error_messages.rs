@@ -67,6 +67,13 @@ const RULE_MESSAGES: &[(&str, &str)] = &[
         "That number was just taken by someone else. Please go back and \
          pick another number.",
     ),
+    // Account record — signup self-heals a dangling identity link, so this copy
+    // only shows on the surfaces that read a linked customer without repairing it.
+    (
+        "customer.kyc.not_found",
+        "We couldn't find your account record. Please contact support so we \
+         can restore it.",
+    ),
     // Payment
     (
         "policy.payment.method.invalid_card",
