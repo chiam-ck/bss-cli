@@ -471,6 +471,13 @@ impl Actions {
     /// Fan out `reset-operational-data` to every service that owns operational data.
     /// Hard-fails on the first error — a half-reset is worse than none.
     async fn admin_reset(&self, reset_sequences: bool) -> Result<Value, String> {
+        // Fires on the direct `bss scenario run-all` path too, where the Makefile's
+        // banner never printed. By design, but it should never be a surprise.
+        eprintln!(
+            "⚠  admin.reset_operational_data: TRUNCATING all operational data \
+             (customers, orders, subscriptions, payments, portal logins) — \
+             audit history kept. This is by design; see the scenarios target in the Makefile."
+        );
         let auth: Arc<dyn AuthProvider> =
             Arc::new(TokenAuthProvider::new(self.token.clone()).map_err(|e| e.to_string())?);
         let mut services = Vec::new();

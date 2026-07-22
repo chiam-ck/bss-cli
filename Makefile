@@ -15,8 +15,8 @@ help:
 	@echo "  test                — cargo test --workspace"
 	@echo "  fmt                 — cargo fmt --check"
 	@echo "  lint                — cargo clippy -D warnings"
-	@echo "  scenarios           — run every scenario in ./scenarios (including LLM ask: steps)"
-	@echo "  scenarios-hero      — run only the hero ship-gate scenarios"
+	@echo "  scenarios           — run every scenario in ./scenarios (including LLM ask: steps)  ⚠ WIPES ALL CUSTOMER DATA"
+	@echo "  scenarios-hero      — run only the hero ship-gate scenarios                        ⚠ WIPES ALL CUSTOMER DATA"
 	@echo "  doctrine-check      — Rust grep guards over the workspace"
 
 # 2.0: the all-Rust images are the default stack (`make up*` runs the Rust overlay
@@ -151,6 +151,19 @@ knowledge-reindex:
 # lifespan startup, NOT baked into the image — so just a recreate is
 # enough, no rebuild needed).
 define SCENARIOS_RUN
+	@printf '\033[33m'; \
+	printf '┌──────────────────────────────────────────────────────────────────────┐\n'; \
+	printf '│ ⚠  SCENARIOS WIPE ALL CUSTOMER DATA — this is by design, not a bug.   │\n'; \
+	printf '│                                                                      │\n'; \
+	printf '│ Most scenarios declare `reset_operational_data: true`, which         │\n'; \
+	printf '│ TRUNCATEs every customer, party, case, ticket, order, subscription,  │\n'; \
+	printf '│ payment and portal login in the target DB — not just rows they made. │\n'; \
+	printf '│ Audit history (audit.domain_event, portal_auth.portal_action) is     │\n'; \
+	printf '│ kept; everything else operational is gone.                           │\n'; \
+	printf '│                                                                      │\n'; \
+	printf '│ Point BSS_DB_URL at a throwaway DB if that is not what you want.     │\n'; \
+	printf '└──────────────────────────────────────────────────────────────────────┘\n'; \
+	printf '\033[0m'
 	@$(ENV_SOURCE); \
 	prev=$$(grep -E '^BSS_PORTAL_EMAIL_PROVIDER=' .env | tail -1 | cut -d= -f2-); \
 	prev_kyc=$$(grep -E '^BSS_PORTAL_KYC_PROVIDER=' .env | tail -1 | cut -d= -f2-); \
