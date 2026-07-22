@@ -11,7 +11,7 @@
 /// Python `bss_models.BSS_RELEASE` during the migration so version strings stayed
 /// identical at cutover; now independent — the Python oracle was retired at the
 /// `v2.0.0` release (2026-07-21). See docs/PYTHON-ORACLE.md.
-pub const BSS_RELEASE: &str = "2.1.2";
+pub const BSS_RELEASE: &str = "2.1.3";
 
 #[cfg(test)]
 mod tests {
@@ -19,6 +19,6 @@ mod tests {
 
     #[test]
     fn release_is_current() {
-        assert_eq!(BSS_RELEASE, "2.1.2");
+        assert_eq!(BSS_RELEASE, "2.1.3");
     }
 }
