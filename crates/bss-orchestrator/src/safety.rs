@@ -30,6 +30,16 @@ pub const DESTRUCTIVE_TOOLS: &[&str] = &[
     "provisioning.set_fault_injection",
     "admin.reset_operational_data",
     "admin.force_state",
+    // v2.1 — catalog management left `LLM_HIDDEN_TOOLS` for the cockpit surface.
+    // Gated here rather than hidden: an offering/price row is sold from the moment
+    // it lands (`catalog.list_active_offerings` feeds order creation), and a bad
+    // window silently unsells a live plan. None of the four has a one-call undo —
+    // `add_price` in particular can only be superseded, never removed — so each
+    // must land as a propose the operator reads before authorising.
+    "catalog.add_offering",
+    "catalog.add_price",
+    "catalog.window_offering",
+    "catalog.retire_offering",
 ];
 
 /// Autonomy mode for destructive gating when `allow_destructive=true`.

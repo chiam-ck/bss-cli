@@ -60,6 +60,9 @@ pub const DESTRUCTIVE_PREFIXES: &[&str] = &[
     "catalog.add_offering",
     "catalog.add_price",
     "catalog.window_offering",
+    // v2.1 — the fourth catalog verb. The other three predate it here: the cockpit
+    // could always *stage* them, they just never reached the model's surface.
+    "catalog.retire_offering",
     "provisioning.resolve_stuck",
     "provisioning.retry_failed",
     "provisioning.set_fault_injection",

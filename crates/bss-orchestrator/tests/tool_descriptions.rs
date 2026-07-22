@@ -205,9 +205,13 @@ async fn tool_descriptions_match_python_oracle() {
         "provisioning.set_fault_injection",
         "promo.create",
         "promo.assign",
-        "catalog.add_offering",
-        "catalog.add_price",
-        "catalog.window_offering",
+        // NOTE: `catalog.add_offering` / `add_price` / `window_offering` are
+        // deliberately absent from this parity list, and `catalog.retire_offering`
+        // never had an oracle counterpart. v2.1 put the catalog write family on the
+        // operator's LLM surface, which meant rewriting their descriptions as an
+        // elicitation contract — the Python docstrings described tools no model ever
+        // read. Rust is the source of truth for these four; the contract they must
+        // now hold is pinned by `catalog_writes_carry_the_elicitation_contract`.
         "usage.simulate",
         "subscription.list_mine",
         "subscription.get_mine",
@@ -358,16 +362,85 @@ fn promo_catalog_admin_usage_writes_profile_and_hidden() {
             "{name} must NOT be hidden"
         );
     }
-    // catalog admin + usage.simulate are LLM-hidden (scenario/CLI scaffolding).
-    for name in [
+    // usage.simulate stays LLM-hidden (scenario/CLI scaffolding — it burns real
+    // allowance, so it must never be reachable as a "verification" call).
+    assert!(
+        LLM_HIDDEN_TOOLS.contains(&"usage.simulate"),
+        "usage.simulate must be in LLM_HIDDEN_TOOLS"
+    );
+}
+
+/// v2.1 — catalog management on the cockpit surface. The four write verbs must be
+/// (a) visible to the model, (b) operator-only, (c) `/confirm`-gated, and (d)
+/// carrying the elicitation contract in their description, since the emitted
+/// function schema is permissive (`additionalProperties: true`) and the prose is
+/// therefore the ONLY arg contract the model gets.
+#[tokio::test]
+async fn catalog_writes_carry_the_elicitation_contract() {
+    use bss_orchestrator::tools::LLM_HIDDEN_TOOLS;
+    use bss_orchestrator::DESTRUCTIVE_TOOLS;
+
+    let registry = registry_with_catalog();
+    let names = [
         "catalog.add_offering",
         "catalog.add_price",
         "catalog.window_offering",
-        "usage.simulate",
-    ] {
+        "catalog.retire_offering",
+    ];
+    for name in names {
         assert!(
-            LLM_HIDDEN_TOOLS.contains(&name),
-            "{name} must be in LLM_HIDDEN_TOOLS"
+            OPERATOR_COCKPIT.contains(&name),
+            "{name} missing from operator_cockpit"
+        );
+        assert!(
+            !CUSTOMER_SELF_SERVE.contains(&name),
+            "{name} must never reach the customer chat surface"
+        );
+        assert!(
+            !LLM_HIDDEN_TOOLS.contains(&name),
+            "{name} must be visible to the model — /confirm is the gate, not hiding"
+        );
+        assert!(
+            DESTRUCTIVE_TOOLS.contains(&name),
+            "{name} must be /confirm-gated: no catalog write has a one-call undo"
+        );
+        let desc = &registry
+            .get(name)
+            .unwrap_or_else(|| panic!("{name} registered"))
+            .description;
+        assert!(
+            desc.contains("ELICIT BEFORE YOU CALL") || desc.contains("ELICIT"),
+            "{name} description must tell the model to ask before calling"
+        );
+        assert!(
+            desc.contains("Required:"),
+            "{name} description must name its required fields"
+        );
+        assert!(
+            desc.contains("/confirm-gated"),
+            "{name} description must say it is /confirm-gated"
+        );
+    }
+
+    // The surface actually exposes them (the profile list is a claim; this is the
+    // computed set the model receives).
+    let surface: Vec<String> = registry
+        .surface(Some("operator_cockpit"))
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    for name in names {
+        assert!(surface.contains(&name.to_string()), "{name} not on surface");
+    }
+    let chat: Vec<String> = registry
+        .surface(Some("customer_self_serve"))
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
+    for name in names {
+        assert!(
+            !chat.contains(&name.to_string()),
+            "{name} leaked onto the customer chat surface"
         );
     }
 }

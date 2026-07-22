@@ -1,13 +1,33 @@
-Admin: set valid_from / valid_to on an existing offering. Hidden from LLM.
+Set the sale window (valid_from / valid_to) on an existing offering — launch a
+    plan on a date, or stop selling it after one. Operator-only, /confirm-gated.
 
-    Args:
+    ELICIT BEFORE YOU CALL. A window is what makes a plan appear in and vanish
+    from ``catalog.list_active_offerings``, which is what order creation reads —
+    a wrong bound silently unsells a live plan. If the operator has not given at
+    least one bound, ask in plain prose and stop.
+
+    Required:
         offering_id: The offering to time-bound.
-        valid_from: Optional ISO-8601 (NULL clears).
-        valid_to: Optional ISO-8601 (NULL clears).
+        at least one of valid_from / valid_to. Passing neither is rejected: it
+            would CLEAR both bounds, which is not the same as "leave them alone".
+
+    Bounds:
+        valid_from: ISO-8601 — sellable from this instant. Explicit ``null``
+            CLEARS the bound (sellable from the beginning).
+        valid_to: ISO-8601, EXCLUSIVE — the last instant is just before this.
+            Explicit ``null`` CLEARS the bound (no end).
+
+    Both are absolute instants: get them from ``clock.now`` and the operator's
+    stated offset. Never fabricate an ISO string, and never turn a vague
+    "end of the month" into a date yourself — ask which date they mean.
+
+    Read ``catalog.get_offering(offering_id)`` first and tell the operator the
+    CURRENT window in your proposal, so they can see what they are replacing.
 
     Returns:
         Updated TMF620 offering dict.
 
     Raises:
+        MISSING_REQUIRED_FIELDS: no offering_id, or neither bound supplied.
         PolicyViolationFromServer:
             - ``catalog.offering.not_found``.

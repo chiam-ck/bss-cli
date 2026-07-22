@@ -1,22 +1,42 @@
-Admin: add a new product offering with price + allowances. Hidden from LLM.
+Create a new product offering (a sellable plan) with its recurring price and
+    bundled allowances. Operator-only, /confirm-gated.
 
-    Args:
-        offering_id: Plan ID (e.g. ``PLAN_XS``).
-        name: Display name.
-        amount: Recurring price amount as a string (Decimal-safe).
-        currency: ISO-4217. Default SGD.
-        valid_from: Optional ISO-8601; NULL = always-active.
-        valid_to: Optional ISO-8601; NULL = no end (exclusive boundary).
-        data_mb: Optional data allowance.
-        voice_minutes: Optional voice allowance.
-        sms_count: Optional SMS allowance.
-        data_roaming_mb: Optional roaming-data allowance (v0.20+). 0 is
-            permitted (plan with no included roaming, customer can still
-            top up via VAS_ROAMING_*).
+    ELICIT BEFORE YOU CALL. Do not call this tool until the operator has told
+    you every required field. If any are missing, ASK for the whole set in ONE
+    plain-prose question and stop — no banner chrome, no "/confirm to execute"
+    tail, no placeholder values. Never derive a plan id from the name, never
+    price a plan by analogy with an existing one, never assume allowances
+    "typical for this tier". A fabricated plan is indistinguishable from an
+    operator decision once it is in the catalog.
+
+    Required:
+        offering_id: Plan ID, SCREAMING_SNAKE (e.g. ``PLAN_XS``). The operator
+            chooses it. Call ``catalog.list_offerings`` first to check the id is
+            free and to show the operator the existing naming.
+        name: Display name shown to customers (e.g. ``Lite 5GB``).
+        amount: Recurring price as a decimal STRING (``"12.00"``), never a float.
+        at least one allowance: see below. Pass ``0`` for an allowance the plan
+            deliberately excludes — omitting all four is rejected.
+
+    Allowances (at least one required; each an integer):
+        data_mb: Bundled data in MB.
+        voice_minutes: Bundled outgoing minutes.
+        sms_count: Bundled SMS.
+        data_roaming_mb: Bundled roaming data (v0.20+). ``0`` is meaningful — a
+            plan with no included roaming, toppable via ``VAS_ROAMING_*``.
+
+    Optional (omit unless the operator states them):
+        currency: ISO-4217. Defaults SGD; ask before using anything else.
+        valid_from / valid_to: ISO-8601 sale window. Omitting both means
+            always-sellable, which is the common case. Get timestamps from
+            ``clock.now`` — never fabricate one. ``valid_to`` is exclusive.
 
     Returns:
         TMF620 offering dict.
 
     Raises:
+        MISSING_REQUIRED_FIELDS: you called without eliciting. Ask the operator
+            for the named fields; do not retry with invented values.
         PolicyViolationFromServer:
-            - ``catalog.offering.already_exists``: id already in use.
+            - ``catalog.offering.already_exists``: id already in use. Report the
+              clash and ask the operator for a different id.

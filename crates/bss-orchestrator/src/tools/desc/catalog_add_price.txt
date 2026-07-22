@@ -1,19 +1,41 @@
-Admin: insert a new product_offering_price row. Hidden from LLM.
+Attach a new price row to an existing offering — a price change, or a
+    time-windowed promo price alongside the base row. Operator-only,
+    /confirm-gated.
 
-    Args:
-        offering_id: The offering to attach the new price to.
-        price_id: Caller-supplied unique id for the new row.
-        amount: Recurring price amount as a string.
-        currency: ISO-4217.
-        valid_from: Optional ISO-8601. NULL = active immediately.
-        valid_to: Optional ISO-8601. NULL = no end.
-        retire_current: If True, every existing open-ended row on the
-            offering gets stamped with valid_to so the new row takes over.
+    ELICIT BEFORE YOU CALL. A price row cannot be deleted, only superseded, so
+    a guessed amount is permanent history. If the operator has not stated the
+    id, the amount, and whether this REPLACES the current price or runs
+    ALONGSIDE it, ask in one plain-prose question and stop.
+
+    Read first: ``catalog.get_offering(offering_id)`` shows the existing rows and
+    ``catalog.get_active_price(offering_id)`` shows what is live right now. Show
+    the operator the current price before asking for the new one.
+
+    Required:
+        offering_id: The offering to attach the row to. Must already exist.
+        price_id: Unique id for the new row. The operator chooses it; do not
+            mint one from a template.
+        amount: Decimal STRING (``"15.00"``), never a float.
+
+    Optional (omit unless the operator states them):
+        currency: ISO-4217. Defaults SGD.
+        valid_from: ISO-8601 from ``clock.now``. Omit for "active immediately".
+        valid_to: ISO-8601, exclusive. Omit for open-ended.
+        retire_current: ``true`` stamps ``valid_to`` on EVERY open-ended row so
+            this one takes over — a price change. ``false`` (default) leaves the
+            existing rows live, so both are active and the LOWEST amount wins —
+            a promo. These are different operator intents with different customer
+            outcomes: confirm which one is meant, never infer it from the amount.
+
+    Note: existing subscriptions charge their order-time price snapshot and are
+    NOT affected. This changes what new orders pay. Say so when you propose.
 
     Returns:
         TMF620 price dict.
 
     Raises:
+        MISSING_REQUIRED_FIELDS: you called without eliciting.
         PolicyViolationFromServer:
-            - ``catalog.offering.not_found``.
-            - ``catalog.price.already_exists``.
+            - ``catalog.offering.not_found``: check the id with
+              ``catalog.list_offerings``.
+            - ``catalog.price.already_exists``: ask for a different price_id.

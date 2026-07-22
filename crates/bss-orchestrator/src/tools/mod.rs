@@ -57,6 +57,10 @@ impl Default for ToolCtx {
     }
 }
 
+/// The observation code for an elicitation bounce — the tool needs a value only
+/// the operator can supply. See [`ToolError::is_elicitation`].
+pub const MISSING_REQUIRED_FIELDS: &str = "MISSING_REQUIRED_FIELDS";
+
 /// A structured tool failure, converted to an LLM-readable observation string.
 /// Port of `graph._tool_error_to_observation`.
 #[derive(Debug, Clone)]
@@ -67,6 +71,18 @@ pub enum ToolError {
 }
 
 impl ToolError {
+    /// True for the elicitation bounce. The agent loop reports these with
+    /// `is_error = false` so they do NOT count toward the 3-strike failure bail:
+    /// "I need to ask the operator something" is a step in a multi-turn
+    /// conversation, not a tool failure, and bailing the turn on the third
+    /// clarifying question would kill exactly the flow the gate exists to enable.
+    ///
+    /// The identical-call stuck bail is the backstop that still catches a model
+    /// re-sending the same incomplete args forever.
+    pub fn is_elicitation(&self) -> bool {
+        matches!(self, ToolError::Other { kind, .. } if kind == MISSING_REQUIRED_FIELDS)
+    }
+
     /// The observation string the ReAct loop feeds back as the tool result. The
     /// `"error":"<CODE>"` fragment is what the loop's failure-bail counter keys on.
     pub fn to_observation(&self) -> String {
@@ -120,6 +136,43 @@ pub(crate) fn req_str(args: &Value, key: &str) -> Result<String, ToolError> {
 pub(crate) fn py_list_repr(items: &[&str]) -> String {
     let inner: Vec<String> = items.iter().map(|s| format!("'{s}'")).collect();
     format!("[{}]", inner.join(", "))
+}
+
+/// The elicitation gate for multi-turn admin writes: report **every** absent
+/// required field at once so the model asks the operator one prose question
+/// instead of discovering the fields one failed call at a time.
+///
+/// Reported as a non-failure — see [`ToolError::is_elicitation`].
+pub(crate) fn require_fields(args: &Value, fields: &[&str]) -> Result<(), ToolError> {
+    let missing: Vec<&str> = fields
+        .iter()
+        .copied()
+        .filter(|k| {
+            // `map_or(true, …)` not `is_none_or` — the latter is stable since 1.82
+            // and this workspace pins MSRV 1.80.
+            args.get(*k).map_or(true, |v| {
+                v.is_null() || v.as_str().is_some_and(str::is_empty)
+            })
+        })
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(ToolError::Other {
+        kind: MISSING_REQUIRED_FIELDS.to_string(),
+        detail: format!(
+            "missing {}. Ask the operator for {} in plain prose, then call this tool \
+             again with every field supplied. Do NOT invent, guess, or default any of \
+             them — a fabricated plan id or price is a catalog corruption the audit log \
+             cannot distinguish from a real operator decision.",
+            py_list_repr(&missing),
+            if missing.len() == 1 {
+                "the value"
+            } else {
+                "all of them"
+            },
+        ),
+    })
 }
 
 /// An optional non-empty string arg.
@@ -196,15 +249,18 @@ impl ToolRegistry {
 }
 
 /// Tools present in the registry (so scenarios can call them) but intentionally
-/// NOT shown to the LLM (scenario-scaffolding + catalog/price admin writes).
-/// Port of `graph._LLM_HIDDEN_TOOLS`.
-pub const LLM_HIDDEN_TOOLS: &[&str] = &[
-    "usage.simulate",
-    "catalog.add_offering",
-    "catalog.add_price",
-    "catalog.window_offering",
-    "subscription.migrate_to_new_price",
-];
+/// NOT shown to the LLM (scenario scaffolding + the price-migration flow, which
+/// carries a regulatory-notice obligation the model can't discharge).
+/// Port of `graph._LLM_HIDDEN_TOOLS`, minus the catalog admin writes.
+///
+/// **v2.1 (Phase 0 amendment 2026-07-22)** — `catalog.add_offering` /
+/// `catalog.add_price` / `catalog.window_offering` left this set and joined
+/// [`crate::safety::DESTRUCTIVE_TOOLS`] instead, so the cockpit surfaces catalog
+/// management through propose-then-`/confirm` rather than hiding it. `/confirm`
+/// is a strictly stronger gate than invisibility: the operator reads the args
+/// before the write lands. Their descriptions now diverge from the retired Python
+/// oracle by design (the elicitation contract) — see `tool_descriptions.rs`.
+pub const LLM_HIDDEN_TOOLS: &[&str] = &["usage.simulate", "subscription.migrate_to_new_price"];
 
 /// Return the tool-name set for a profile (`customer_self_serve` /
 /// `operator_cockpit`), or an empty slice for an unknown profile. Port of
@@ -312,6 +368,7 @@ pub const OPERATOR_COCKPIT: &[&str] = &[
     "catalog.add_offering",
     "catalog.add_price",
     "catalog.window_offering",
+    "catalog.retire_offering",
     "promo.create",
     "promo.assign",
     "promo.show",

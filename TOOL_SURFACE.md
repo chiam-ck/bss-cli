@@ -114,9 +114,37 @@ These tools are wired into the `operator_cockpit` profile only. MNP is operator-
 | `catalog.get_vas` | read | |
 | `catalog.list_active_offerings` | read | v0.7 — time-bounded; lowest-active-price first |
 | `catalog.get_active_price` | read | v0.7 — lowest-active-wins resolve at a moment |
-| `catalog.add_offering` | create | v0.7 — admin only — not in LLM registry |
-| `catalog.add_price` | create | v0.7 — admin only — not in LLM registry |
-| `catalog.window_offering` | update | v0.7 — admin only — not in LLM registry |
+| `catalog.add_offering` | create | v0.7 — `operator_cockpit` only, `/confirm`-gated (v2.1) |
+| `catalog.add_price` | create | v0.7 — `operator_cockpit` only, `/confirm`-gated (v2.1) |
+| `catalog.window_offering` | update | v0.7 — `operator_cockpit` only, `/confirm`-gated (v2.1) |
+| `catalog.retire_offering` | delete | v2.1 — `operator_cockpit` only, `/confirm`-gated. Soft: `lifecycle_status=retired` + `is_sellable=false`; existing subscriptions keep their price snapshot |
+
+**Catalog writes (v2.1 — Phase 0 amendment 2026-07-22).** The four write verbs were
+`_LLM_HIDDEN_TOOLS` through v2.0: registered so the CLI and scenarios could call them,
+invisible to the model. They are now on the operator's LLM surface, gated by
+propose-then-`/confirm` (`safety.DESTRUCTIVE_TOOLS` + the cockpit's
+`DESTRUCTIVE_PREFIXES`) instead of by invisibility — a strictly stronger gate, since
+the operator reads the staged args before the write lands. Never
+`customer_self_serve`.
+
+Because the emitted function schema is permissive (`additionalProperties: true`), the
+description prose is the *only* arg contract the model receives. Each of the four
+therefore carries an **elicitation contract** — required vs. optional fields and an
+explicit "ask the operator, never assume" — backed server-side by
+`tools::require_fields`, which returns a `MISSING_REQUIRED_FIELDS` observation naming
+every absent field at once so the model asks one question rather than probing.
+`add_offering` additionally requires at least one allowance (pass `0` for a deliberate
+omission); `window_offering` requires at least one bound, with an explicit `null`
+meaning "clear this bound". The loop reports a `MISSING_REQUIRED_FIELDS` observation
+with `is_error = false` (`ToolError::is_elicitation`), so it does **not** count toward
+the 3-strike failure bail: needing more information is a step in a multi-turn
+conversation, not a tool failure, and bailing on the third clarifying question would
+kill the flow the gate exists to enable. The identical-call stuck bail remains the
+backstop against a model re-sending the same incomplete args forever.
+
+`subscription.migrate_to_new_price` stays hidden — it carries a regulatory-notice
+obligation the model cannot discharge. `usage.simulate` stays hidden — it burns real
+allowance, so it must never be reachable as a "verification" call.
 
 ## Promotion tools — `(v1.1, operator/cockpit only — never customer_self_serve)`
 

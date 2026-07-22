@@ -1456,7 +1456,54 @@ For the runbook see [§8.19](#819-knowledge-indexer-reindex--postgres-pgvector-p
 
 ### 8.1 Catalog — add an offering (with roaming)
 
-**Audience:** operators with admin access running BSS-CLI v0.7+. v0.17 introduced roaming as a first-class allowance type but the CLI flag set hasn't caught up — see [Roaming gap](#81a-roaming-gap-and-workaround).
+**Audience:** operators with admin access running BSS-CLI v0.7+.
+
+#### Three ways in
+
+| Surface | When to use it |
+|---|---|
+| `bss admin catalog *` (this section) | Scripted / repeatable changes, exact flags, CI. |
+| Cockpit chat — REPL `bss` or `localhost:9002/cockpit/<id>` (v2.1+) | Conversational. The agent asks for anything you leave out, then stages the write for `/confirm`. |
+| Cockpit browser → **Catalog** screen (v1.6.1+) | Point-and-click forms; retire is checkbox-confirmed. |
+
+All three go through the same policy-gated `admin_*` catalog surface — there is no raw-CRUD path.
+
+**The chat path (v2.1+).** `catalog.add_offering`, `catalog.add_price`,
+`catalog.window_offering`, and `catalog.retire_offering` are on the
+`operator_cockpit` tool surface, **`/confirm`-gated** like `subscription.terminate`:
+the agent's call is staged as a proposal, you read the args, you type `/confirm`, and
+the next turn executes it.
+
+The agent will **not** fill in blanks. Ask for "a new 5GB plan" and it comes back
+asking for the plan id, price, and allowances — by design, since a guessed plan id or
+price is indistinguishable from an operator decision once it is in the catalog.
+
+```
+you › add a new plan, 5GB, no voice or SMS
+bss › What plan id and monthly price should it have?
+you › PLAN_XS, 9 dollars
+bss › [staged] catalog.add_offering offering_id='PLAN_XS' name='Mini' amount='9.00' data_mb=5120
+      Pending /confirm for catalog.add_offering
+you › /confirm
+```
+
+Two things worth knowing before you confirm:
+
+- **`add_price` with `retire_current=false` is a promo, not a price change.** Both
+  rows stay live and the *lowest* amount wins. `retire_current=true` closes the old
+  rows so the new one takes over. Different customer outcomes — say which you mean.
+- **Retiring is not cancelling.** `catalog.retire_offering` stops *new* orders;
+  existing subscriptions keep renewing on their order-time price snapshot.
+
+To **retire, decommission, withdraw, or remove** an offering from the catalog, the
+verb is `catalog.retire_offering` (CLI: `bss admin catalog retire-offering`). There is
+no hard delete — retiring sets `lifecycle_status=retired` + `is_sellable=false` and
+closes any open window. (Those synonyms are spelled out because `knowledge.search` is
+Tier-0 Postgres FTS with `plainto_tsquery`, which ANDs every term: a question using a
+word absent from the corpus returns zero hits, not a near miss.)
+
+See [`docs/runbooks/add-product-offering.md`](runbooks/add-product-offering.md) and
+DECISIONS 2026-07-22.
 
 #### Prerequisites
 
@@ -1476,7 +1523,7 @@ bss admin catalog add-offering \
 
 The command writes one `product_offering` row, one `product_offering_price` row (`PRICE_PLAN_XS`), and one `bundle_allowance` row through the catalog admin service. No raw SQL.
 
-Optional flags: `--voice-min 100`, `--sms-count 100`, `--valid-from <iso>`, `--valid-to <iso>`.
+Optional flags: `--voice-min 100`, `--sms-count 100`, `--data-roaming-mb 1024`, `--valid-from <iso>`, `--valid-to <iso>`.
 
 #### Verify
 
@@ -1485,35 +1532,35 @@ bss admin catalog show          # Active catalog at the current moment
 bss catalog list                # Customer-facing read
 ```
 
-#### 8.1a Roaming gap and workaround
+#### 8.1a Roaming (v0.20+)
 
-> [!warning] **CLI gap (acknowledged):** `bss admin catalog add-offering` does **not** yet expose a `--data-roaming-mb` flag. Server-side support exists (the catalog service writes `data_roaming` rows from seed; subscription materializes balances on top-up), but the admin HTTP endpoint and CLI haven't been extended.
->
-> **Until that flag lands, two paths:**
-
-**Path A — Add the offering, then attach a `data_roaming` allowance row directly via SQL:**
+Roaming is a first-class allowance type alongside `data`, `voice`, `sms`, and
+`add-offering` writes it directly:
 
 ```bash
-# 1. Create the offering with primary allowances.
 bss admin catalog add-offering \
     --id PLAN_XS_ROAM \
     --name "Mini + Roaming" \
     --price 8.00 \
-    --data-mb 5120
-
-# 2. Attach the roaming allowance.
-psql "$BSS_DB_URL" <<SQL
-INSERT INTO catalog.bundle_allowance (id, offering_id, allowance_type, quantity, unit)
-VALUES ('BA_PLAN_XS_ROAM_ROAM', 'PLAN_XS_ROAM', 'data_roaming', 1024, 'mb');
-SQL
-
-# 3. Verify (the offering now lists 4 allowance lines: data, data_roaming, voice if any, sms if any).
-bss admin catalog show
+    --currency SGD \
+    --data-mb 5120 \
+    --data-roaming-mb 1024
 ```
 
-**Path B — Extend the seed module and re-seed (recommended for permanent additions):**
+The command writes a fourth `bundle_allowance` row (`BA_<offering>_ROAM`,
+`allowance_type='data_roaming'`, `unit='mb'`) atomically alongside the data / voice /
+SMS rows. `--data-roaming-mb 0` is permitted and means "no included roaming, but the
+customer can still top up via `VAS_ROAMING_*`" — same as the seeded `PLAN_S`.
 
-Edit `packages/bss-seed/bss_seed/catalog.py` (the `allowances` list around line 62 carries the seeded plans + their `data_roaming` rows in the standard 4-line pattern). `make seed` is idempotent (`ON CONFLICT DO NOTHING`); rows already in DB are untouched, new rows land.
+In the cockpit, the equivalent is the `data_roaming_mb` argument on
+`catalog.add_offering`; the agent will ask for it along with the other allowances.
+
+> [!info] **(v0.17–v0.19 historical.)** Earlier releases lacked the flag and this
+> section documented two workarounds: a raw `INSERT INTO catalog.bundle_allowance`,
+> and an edit + re-seed of `packages/bss-seed/bss_seed/catalog.py`. **Both are
+> retired and neither should be used.** The raw INSERT bypasses the policy layer
+> (a doctrine violation — see CLAUDE.md "no raw CRUD"), and the Python seed package
+> was deleted at v2.0.0. v0.20's `--data-roaming-mb` closes the gap.
 
 #### Customers without included roaming can still top up
 

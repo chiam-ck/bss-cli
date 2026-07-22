@@ -293,7 +293,10 @@ async fn execute_tool(
     ctx.transcript = config.transcript.clone();
     match (tool.func)(tc.args.clone(), ctx).await {
         Ok(value) => (value.to_string(), false),
-        Err(err) => (err.to_observation(), true),
+        // An elicitation bounce is a question for the operator, not a failure —
+        // reported with `is_error = false` so it doesn't burn the 3-strike budget
+        // mid-conversation. See `ToolError::is_elicitation`.
+        Err(err) => (err.to_observation(), !err.is_elicitation()),
     }
 }
 

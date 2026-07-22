@@ -1,0 +1,28 @@
+Retire an offering — stop selling it. Operator-only, /confirm-gated.
+
+    Sets ``lifecycle_status='retired'`` and ``is_sellable=false``, and stamps
+    ``valid_to=now()`` on any still-open window. There is no hard delete and no
+    one-call undo: bringing a retired plan back means a fresh
+    ``catalog.window_offering`` and a lifecycle change.
+
+    ELICIT BEFORE YOU CALL. Retire the offering the operator NAMED. If they said
+    "retire the old lite plan" and two candidates match, list them with
+    ``catalog.list_offerings`` and ask which — never pick the closest match.
+
+    Required:
+        offering_id: The offering to retire.
+
+    Before proposing, read ``catalog.get_offering(offering_id)`` and tell the
+    operator what they are retiring (id, name, current price). Existing
+    subscriptions are NOT terminated — they keep renewing on their order-time
+    price snapshot; retiring only stops NEW orders. Say that in your proposal:
+    operators reasonably expect "retire" to mean "cancel the customers too", and
+    it does not.
+
+    Returns:
+        Updated TMF620 offering dict.
+
+    Raises:
+        MISSING_REQUIRED_FIELDS: no offering_id supplied.
+        PolicyViolationFromServer:
+            - ``catalog.offering.not_found``: unknown id, or already retired.

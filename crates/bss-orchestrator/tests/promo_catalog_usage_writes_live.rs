@@ -73,7 +73,10 @@ async fn last_write_bodies_reach_validation() {
     )
     .await;
 
-    // catalog admin (LLM-hidden) — bogus offering → structured errors, nothing added.
+    // catalog admin (v2.1: LLM-visible, /confirm-gated — these call the registry
+    // directly, below the gate) — bogus offering → structured errors, nothing added.
+    // Args are complete on purpose: they clear the elicitation gate and reach the
+    // service, so what's asserted is the POLICY error, not a MISSING_REQUIRED_FIELDS.
     expect_err(
         &reg,
         "catalog.add_price",
@@ -84,6 +87,12 @@ async fn last_write_bodies_reach_validation() {
         &reg,
         "catalog.window_offering",
         json!({ "offering_id": "PLAN_NOPE", "valid_to": "2027-01-01T00:00:00+00:00" }),
+    )
+    .await;
+    expect_err(
+        &reg,
+        "catalog.retire_offering",
+        json!({ "offering_id": "PLAN_NOPE" }),
     )
     .await;
 
