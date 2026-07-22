@@ -484,7 +484,58 @@ impl Actions {
             })?;
             services.push(json!({ "service": target.label, "ok": true, "body": body }));
         }
-        Ok(json!({ "resetSequences": reset_sequences, "services": services }))
+        let portal_auth = self.reset_portal_auth().await?;
+        Ok(json!({
+            "resetSequences": reset_sequences,
+            "services": services,
+            "portalAuth": portal_auth,
+        }))
+    }
+
+    /// Clear the portal's login state as part of the same reset.
+    ///
+    /// `portal_auth` belongs to the portals, which are public web apps and
+    /// deliberately expose no admin surface — so this goes through the same
+    /// scenario-only `BSS_DB_URL` seam as the other `portal.*` verbs rather than
+    /// putting a "delete every login" endpoint on a customer-facing port.
+    ///
+    /// Skipping it is not an option: `identity.customer_id` points into
+    /// `crm.customer`, which the fan-out above truncates. Leaving logins behind
+    /// produced identities bound to customers that no longer existed, which
+    /// bricked signup for those accounts until v2.1.1 taught it to self-heal
+    /// (see DECISIONS 2026-07-23). A partial wipe is a broken state, not a
+    /// conservative one.
+    ///
+    /// `portal_action` is deliberately kept — it is the portal's audit trail, and
+    /// audit history survives a reset by the same rule that spares
+    /// `audit.domain_event` (callers filter on `occurred_at >= resetAt`).
+    async fn reset_portal_auth(&self) -> Result<Value, String> {
+        let pool = db_pool()
+            .await
+            .map_err(|e| format!("admin.reset_operational_data cannot clear portal_auth: {e}"))?;
+        // One statement so FK order is Postgres's problem; CASCADE stays inside
+        // portal_auth (every FK into these tables is a sibling).
+        let truncated = [
+            "step_up_pending_action",
+            "email_change_pending",
+            "login_token",
+            "login_attempt",
+            "session",
+            "identity",
+        ];
+        let sql = format!(
+            "TRUNCATE TABLE {} RESTART IDENTITY CASCADE",
+            truncated
+                .iter()
+                .map(|t| format!("portal_auth.\"{t}\""))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        sqlx::query(&sql)
+            .execute(&pool)
+            .await
+            .map_err(|e| format!("admin.reset_operational_data failed on portal_auth: {e}"))?;
+        Ok(json!({ "schema": "portal_auth", "truncated": truncated, "kept": ["portal_action"] }))
     }
 
     /// POST `/admin-api/v1{path}` to every clock-equipped service. Hard-fails on any
