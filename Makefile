@@ -26,7 +26,7 @@ help:
 #   `up`     = full app stack, BYOI  → your EXTERNAL infra (BSS_DB_URL / BSS_MQ_URL / OTLP in .env).
 #   `up-all` = full app stack + BUNDLED LOCAL infra (adds docker-compose.infra.yml).
 # The "-all" means "+ bundled infra", NOT "more app containers" — both start all 11.
-COMPOSE := docker compose -f docker-compose.yml -f docker-compose.rust.yml
+COMPOSE := docker compose -f docker-compose.yml
 
 up: dev-mailbox-dir
 	$(COMPOSE) up -d

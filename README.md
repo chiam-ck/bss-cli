@@ -61,7 +61,7 @@ sed -i "s/^BSS_API_TOKEN=changeme$/BSS_API_TOKEN=$(openssl rand -hex 32)/" .env
 # Then edit .env: set BSS_LLM_API_KEY
 
 # Bring up the all-Rust service plane + portals + infra (Postgres/RabbitMQ/Jaeger)
-docker compose -f docker-compose.yml -f docker-compose.rust.yml -f docker-compose.infra.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.infra.yml up -d
 
 cargo build --release -p bss-cli && export PATH="$PWD/target/release:$PATH"
 bss admin migrate            # apply the schema (sqlx baseline); --baseline on an existing DB
