@@ -1,5 +1,5 @@
 //! Live smoke + golden diff — Phase-3 analogue of the conformance harness.
-//! `#[ignore]` so CI skips it; run with the stack up (Python com on :8004):
+//! `#[ignore]` so CI skips it; run with the stack up (deployed com on :8004):
 //!
 //! ```bash
 //! set -a; source ../../.env; set +a          # from rust/services/com
@@ -7,7 +7,7 @@
 //! cargo test -p com --test live_smoke -- --ignored --nocapture
 //! ```
 //!
-//! The read surface (order get/list) is golden-diffed against the Python oracle
+//! The read surface (order get/list) is golden-diffed against the deployed image
 //! (`Value ==`, order-sensitive). The write/event pipeline (create → submit →
 //! completed → subscription + promo consume) is exercised by the hero scenarios
 //! after cutover. Everything here is read-only.
@@ -32,7 +32,10 @@ fn token() -> String {
     env("BSS_API_TOKEN").expect("BSS_API_TOKEN must be set")
 }
 
-fn oracle_url() -> String {
+/// The DEPLOYED container's base URL. Pre-2.0 this was the Python oracle;
+/// since v2.0.0 retired it, this is the running Rust image — so the diff
+/// below checks working-tree-vs-deployed, not Rust-vs-Python.
+fn deployed_url() -> String {
     env("BSS_COM_URL").unwrap_or_else(|| "http://localhost:8004".to_string())
 }
 
@@ -75,21 +78,25 @@ async fn get_json(http: &reqwest::Client, base: &str, path: &str) -> (u16, Value
     )
 }
 
-async fn golden(http: &reqwest::Client, rust: &str, oracle: &str, path: &str) {
+/// Assert the working-tree build's surface is byte-identical (semantic) to the
+/// deployed container's on `path`. A failure means EITHER a real wire regression
+/// in the working tree OR a stale deployed image — check `docker images` /
+/// rebuild before assuming a regression.
+async fn golden(http: &reqwest::Client, rust: &str, deployed: &str, path: &str) {
     let (rs, rb) = get_json(http, rust, path).await;
-    let (ps, pb) = get_json(http, oracle, path).await;
-    assert_eq!(rs, ps, "status mismatch on {path}");
+    let (ds, db) = get_json(http, deployed, path).await;
+    assert_eq!(rs, ds, "status mismatch on {path}");
     assert_eq!(
-        rb, pb,
-        "golden diff on {path}:\n  rust  = {rb}\n  python= {pb}"
+        rb, db,
+        "wire drift on {path}:\n  working-tree = {rb}\n  deployed     = {db}"
     );
 }
 
 #[tokio::test]
 #[ignore = "hits the live stack; run with --ignored"]
-async fn golden_diff_vs_python_oracle() {
+async fn wire_matches_deployed_image() {
     let rust = spawn_app().await;
-    let oracle = oracle_url();
+    let deployed = deployed_url();
     let http = reqwest::Client::new();
 
     let (s, b) = get_json(&http, &rust, "/health").await;
@@ -103,7 +110,7 @@ async fn golden_diff_vs_python_oracle() {
     // Pick a real order id from the live list to golden-diff the single-get.
     let (_, list) = get_json(
         &http,
-        &oracle,
+        &deployed,
         "/tmf-api/productOrderingManagement/v4/productOrder?limit=1",
     )
     .await;
@@ -119,20 +126,20 @@ async fn golden_diff_vs_python_oracle() {
         "/tmf-api/productOrderingManagement/v4/productOrder?state=completed&limit=3".to_string(),
         "/tmf-api/productOrderingManagement/v4/productOrder/ORD-999999".to_string(),
     ] {
-        golden(&http, &rust, &oracle, &path).await;
+        golden(&http, &rust, &deployed, &path).await;
     }
     if let Some(oid) = order_id {
         golden(
             &http,
             &rust,
-            &oracle,
+            &deployed,
             &format!("/tmf-api/productOrderingManagement/v4/productOrder/{oid}"),
         )
         .await;
         // list filtered by that order's customer.
         let (_, one) = get_json(
             &http,
-            &oracle,
+            &deployed,
             &format!("/tmf-api/productOrderingManagement/v4/productOrder/{oid}"),
         )
         .await;
@@ -140,12 +147,12 @@ async fn golden_diff_vs_python_oracle() {
             golden(
                 &http,
                 &rust,
-                &oracle,
+                &deployed,
                 &format!("/tmf-api/productOrderingManagement/v4/productOrder?customerId={cust}"),
             )
             .await;
         }
     }
 
-    println!("com golden diff: read surface matches the Python oracle");
+    println!("com: read surface matches the deployed image");
 }

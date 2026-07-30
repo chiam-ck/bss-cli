@@ -23,11 +23,22 @@ fn repo_root() -> std::path::PathBuf {
 
 /// Regenerate `golden/chunker.json` from the current docs. Run when an indexed
 /// doc legitimately changes (e.g. a Phase 0 amendment to CLAUDE.md):
-/// `cargo test -p bss-knowledge --test chunker_golden regen_chunker_golden -- --ignored`
+///
+/// ```bash
+/// BSS_REGEN_GOLDEN=1 cargo test -p bss-knowledge --test chunker_golden \
+///     regen_chunker_golden -- --ignored --nocapture
+/// ```
+///
 /// then re-run the parity test (a fresh cargo invocation re-embeds the file).
+/// Env-guarded so a blanket `cargo test --workspace -- --ignored` sweep can't
+/// silently rewrite the committed fixture.
 #[test]
-#[ignore]
+#[ignore = "rewrites a committed fixture; needs BSS_REGEN_GOLDEN=1"]
 fn regen_chunker_golden() {
+    if std::env::var("BSS_REGEN_GOLDEN").ok().as_deref() != Some("1") {
+        eprintln!("refusing to regenerate: set BSS_REGEN_GOLDEN=1 to confirm");
+        return;
+    }
     let root = repo_root();
     let old: Value =
         serde_json::from_str(include_str!("golden/chunker.json")).expect("parse golden");

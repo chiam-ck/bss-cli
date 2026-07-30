@@ -1,17 +1,24 @@
 //! Live smoke + golden diff — the Phase-3 analogue of the conformance harness.
-//! `#[ignore]` so CI skips it; run with the stack up (Python catalog on :8001):
+//! `#[ignore]` so CI skips it; run with the stack up (deployed catalog on :8001):
 //!
 //! ```bash
-//! set -a; source ../../.env; set +a          # from rust/services/catalog
+//! set -a; source ../../.env; set +a          # from services/catalog
 //! export BSS_CATALOG_URL=http://localhost:8001
 //! cargo test -p catalog --test live_smoke -- --ignored --nocapture
 //! ```
 //!
-//! The core check is a **golden diff**: boot the Rust catalog in-process against
-//! the same live Postgres + loyalty-cli, then assert each scenario-touched
-//! endpoint's JSON is byte-equal (semantic `Value ==`, which is order-sensitive
-//! for arrays — so allowance ordering and float rendering are covered) to the
-//! live Python oracle's. Everything read-only; nothing mutated.
+//! The core check is a **golden diff**: boot the catalog from the working tree
+//! in-process against the same live Postgres + loyalty-cli, then assert each
+//! scenario-touched endpoint's JSON is byte-equal (semantic `Value ==`, which is
+//! order-sensitive for arrays — so allowance ordering and float rendering are
+//! covered) to the deployed container's. Everything read-only; nothing mutated.
+//!
+//! **What this pins post-2.0.** Pre-v2.0.0 the other side was the Python oracle,
+//! so this was a migration-parity diff. The oracle was retired at v2.0.0, so
+//! `BSS_CATALOG_URL` now points at the deployed Rust image and the diff pins
+//! **working-tree vs deployed** instead — a drift check, not a parity check. A
+//! failure means either a real wire regression or a stale image (see the
+//! image-tag split in `docs/`), so check which before chasing a bug.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::sync::Arc;
@@ -31,7 +38,10 @@ fn token() -> String {
     env("BSS_API_TOKEN").expect("BSS_API_TOKEN must be set")
 }
 
-fn oracle_url() -> String {
+/// The DEPLOYED container's base URL. Pre-2.0 this was the Python oracle;
+/// since v2.0.0 retired it, this is the running Rust image — so the diff
+/// below checks working-tree-vs-deployed, not Rust-vs-Python.
+fn deployed_url() -> String {
     env("BSS_CATALOG_URL").unwrap_or_else(|| "http://localhost:8001".to_string())
 }
 
@@ -71,25 +81,28 @@ async fn get_json(http: &reqwest::Client, base: &str, path: &str) -> (u16, Value
     (status, body)
 }
 
-/// Assert the Rust surface matches the Python oracle byte-for-byte (semantic).
-async fn golden(http: &reqwest::Client, rust: &str, oracle: &str, path: &str) {
+/// Assert the working-tree build's surface is byte-identical (semantic) to the
+/// deployed container's on `path`. A failure means EITHER a real wire regression
+/// in the working tree OR a stale deployed image — check `docker images` /
+/// rebuild before assuming a regression.
+async fn golden(http: &reqwest::Client, rust: &str, deployed: &str, path: &str) {
     let (rs, rb) = get_json(http, rust, path).await;
-    let (ps, pb) = get_json(http, oracle, path).await;
-    assert_eq!(rs, ps, "status mismatch on {path}");
+    let (ds, db) = get_json(http, deployed, path).await;
+    assert_eq!(rs, ds, "status mismatch on {path}");
     assert_eq!(
-        rb, pb,
-        "golden diff on {path}:\n  rust  = {rb}\n  python= {pb}"
+        rb, db,
+        "wire drift on {path}:\n  working-tree = {rb}\n  deployed     = {db}"
     );
 }
 
 #[tokio::test]
 #[ignore = "hits the live stack; run with --ignored"]
-async fn golden_diff_vs_python_oracle() {
+async fn wire_matches_deployed_image() {
     let rust = spawn_app().await;
-    let oracle = oracle_url();
+    let deployed = deployed_url();
     let http = reqwest::Client::new();
 
-    // health shape (independent of oracle).
+    // health shape (local only — not diffed).
     let (s, b) = get_json(&http, &rust, "/health").await;
     assert_eq!(s, 200);
     assert_eq!(b["service"], "catalog");
@@ -116,7 +129,7 @@ async fn golden_diff_vs_python_oracle() {
         "/vas/offering",
         "/vas/offering/VAS_DATA_1GB",
     ] {
-        golden(&http, &rust, &oracle, path).await;
+        golden(&http, &rust, &deployed, path).await;
     }
 
     // no-active-price 422 — checked apart from the golden loop because its
@@ -147,8 +160,8 @@ async fn golden_diff_vs_python_oracle() {
         "/promo/preview?code=DEMO_WELCOME10&offering=PLAN_M",
         "/promo/customer-offers?customerId=CUST-001",
     ] {
-        golden(&http, &rust, &oracle, path).await;
+        golden(&http, &rust, &deployed, path).await;
     }
 
-    println!("catalog golden diff: all endpoints match the Python oracle");
+    println!("catalog: all endpoints match the deployed image");
 }

@@ -1,5 +1,5 @@
 //! Live smoke + golden diff — the Phase-4 analogue of the conformance harness.
-//! `#[ignore]` so CI skips it; run with the stack up (Python payment on :8003):
+//! `#[ignore]` so CI skips it; run with the stack up (deployed payment on :8003):
 //!
 //! ```bash
 //! set -a; source ../../../.env; set +a        # repo-root .env, from rust/
@@ -10,8 +10,8 @@
 //! The core check is a **golden diff**: boot the Rust payment surface in-process
 //! against the same live Postgres, then assert each read endpoint's JSON is
 //! byte-equal (semantic `Value ==`, order-sensitive for arrays — so list ordering,
-//! the `amount` string, and `Z` datetime rendering are covered) to the live Python
-//! oracle's. Everything read-only; the sample ids are discovered from the live DB
+//! the `amount` string, and `Z` datetime rendering are covered) to the deployed
+//! image's. Everything read-only; the sample ids are discovered from the live DB
 //! so the test needs no fixed seed. The tokenizer is `Mock` (reads never touch it).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -34,7 +34,10 @@ fn token() -> String {
     env("BSS_API_TOKEN").expect("BSS_API_TOKEN must be set")
 }
 
-fn oracle_url() -> String {
+/// The DEPLOYED container's base URL. Pre-2.0 this was the Python oracle;
+/// since v2.0.0 retired it, this is the running Rust image — so the diff
+/// below checks working-tree-vs-deployed, not Rust-vs-Python.
+fn deployed_url() -> String {
     env("BSS_PAYMENT_URL").unwrap_or_else(|| "http://localhost:8003".to_string())
 }
 
@@ -101,38 +104,42 @@ async fn get_json(http: &reqwest::Client, base: &str, path: &str) -> (u16, Value
     (status, body)
 }
 
-async fn golden(http: &reqwest::Client, rust: &str, oracle: &str, path: &str) {
+/// Assert the working-tree build's surface is byte-identical (semantic) to the
+/// deployed container's on `path`. A failure means EITHER a real wire regression
+/// in the working tree OR a stale deployed image — check `docker images` /
+/// rebuild before assuming a regression.
+async fn golden(http: &reqwest::Client, rust: &str, deployed: &str, path: &str) {
     let (rs, rb) = get_json(http, rust, path).await;
-    let (ps, pb) = get_json(http, oracle, path).await;
-    assert_eq!(rs, ps, "status mismatch on {path}");
+    let (ds, db) = get_json(http, deployed, path).await;
+    assert_eq!(rs, ds, "status mismatch on {path}");
     assert_eq!(
-        rb, pb,
-        "golden diff on {path}:\n  rust  = {rb}\n  python= {pb}"
+        rb, db,
+        "wire drift on {path}:\n  working-tree = {rb}\n  deployed     = {db}"
     );
 }
 
 #[tokio::test]
 #[ignore = "hits the live stack; run with --ignored"]
-async fn golden_diff_vs_python_oracle() {
+async fn wire_matches_deployed_image() {
     let db = normalize_db_url(&env("BSS_DB_URL").expect("BSS_DB_URL must be set"));
     let pool = bss_db::connect(&db).await.expect("connect live Postgres");
     let s = discover(&pool).await;
     let rust = spawn_app(pool).await;
-    let oracle = oracle_url();
+    let deployed = deployed_url();
     let http = reqwest::Client::new();
 
     // Payment attempt: single, list, filtered list, count.
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         &format!("/tmf-api/paymentManagement/v4/payment/{}", s.attempt_id),
     )
     .await;
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         &format!(
             "/tmf-api/paymentManagement/v4/payment?customerId={}",
             s.attempt_customer
@@ -142,7 +149,7 @@ async fn golden_diff_vs_python_oracle() {
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         &format!(
             "/tmf-api/paymentManagement/v4/payment?customerId={}&limit=1",
             s.attempt_customer
@@ -152,7 +159,7 @@ async fn golden_diff_vs_python_oracle() {
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         &format!(
             "/tmf-api/paymentManagement/v4/payment/count?customerId={}",
             s.attempt_customer
@@ -164,7 +171,7 @@ async fn golden_diff_vs_python_oracle() {
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         &format!(
             "/tmf-api/paymentMethodManagement/v4/paymentMethod/{}",
             s.method_id
@@ -174,7 +181,7 @@ async fn golden_diff_vs_python_oracle() {
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         &format!(
             "/tmf-api/paymentMethodManagement/v4/paymentMethod?customerId={}",
             s.method_customer
@@ -186,26 +193,26 @@ async fn golden_diff_vs_python_oracle() {
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         "/tmf-api/paymentManagement/v4/payment/PAY-000000",
     )
     .await;
     golden(
         &http,
         &rust,
-        &oracle,
+        &deployed,
         "/tmf-api/paymentMethodManagement/v4/paymentMethod/PM-0000",
     )
     .await;
 
-    println!("payment golden diff: all endpoints byte-identical to the oracle");
+    println!("payment: all endpoints byte-identical to the deployed image");
 }
 
 /// The token perimeter: `/health` is exempt (200 without a token); a real API
 /// route 401s without one; the live token passes.
 #[tokio::test]
 #[ignore = "hits the live stack; run with --ignored"]
-async fn token_perimeter_matches_oracle() {
+async fn token_perimeter_matches_deployed_image() {
     let db = normalize_db_url(&env("BSS_DB_URL").expect("BSS_DB_URL must be set"));
     let pool = bss_db::connect(&db).await.expect("connect live Postgres");
     let rust = spawn_app(pool).await;
