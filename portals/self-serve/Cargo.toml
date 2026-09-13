@@ -50,5 +50,6 @@ bss-telemetry = { workspace = true }
 bss-webhooks = { workspace = true }
 
 [dev-dependencies]
+hmac = { workspace = true }
 tower = { workspace = true }
 http-body-util = "0.1"

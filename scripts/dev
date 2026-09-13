@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+export BSS_DEV_UID="$(id -u)" BSS_DEV_GID="$(id -g)"
+compose=(docker compose -p bss-cli-dev -f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.dev.yml)
+
+bss() {
+    # .env contains container DNS names. The host CLI uses published ports.
+    BSS_DB_URL=postgresql://bss:bss@127.0.0.1:5432/bss \
+    BSS_MQ_URL=amqp://guest:guest@127.0.0.1:5672/ \
+    BSS_OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+    BSS_JAEGER_UI_URL=http://127.0.0.1:16686 \
+    ./target/release/bss "$@"
+}
+
+action="${1:-help}"
+if (( $# )); then shift; fi
+case "$action" in
+    setup)
+        cargo build --locked --release -p bss-cli
+        mkdir -p .dev-mailbox .bss-cli
+        chmod 0777 .dev-mailbox
+        "${compose[@]}" up -d --wait postgres rabbitmq jaeger
+        bss admin migrate
+        bss admin seed
+        bss admin knowledge reindex
+        "${compose[@]}" up -d --build --wait --wait-timeout 180
+        ;;
+    up) "${compose[@]}" up -d --wait --wait-timeout 180 ;;
+    down) "${compose[@]}" down ;;
+    status) "${compose[@]}" ps ;;
+    logs) "${compose[@]}" logs --tail 100 "$@" ;;
+    build) "${compose[@]}" build "$@" ;;
+    bss) bss "$@" ;;
+    compose) "${compose[@]}" "$@" ;;
+    *) printf '%s\n' 'Usage: scripts/dev {setup|up|down|status|logs|build|bss|compose}' ;;
+esac

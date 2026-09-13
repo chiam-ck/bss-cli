@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+# Same services/data as scripts/dev, plus the public customer gateway/tunnel.
+# Use this wrapper for Compose operations once public mode is enabled.
+exec scripts/dev compose -f docker-compose.public.yml "$@"

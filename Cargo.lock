@@ -2809,6 +2809,7 @@ dependencies = [
  "chrono",
  "fancy-regex",
  "futures-util",
+ "hmac",
  "http-body-util",
  "image",
  "minijinja",

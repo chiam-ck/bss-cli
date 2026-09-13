@@ -22,6 +22,7 @@ build/
 .env.bak
 .env.backup-*
 *.env.local
+/.secrets/
 
 # IDE
 .vscode/

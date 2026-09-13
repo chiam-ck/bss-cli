@@ -8,8 +8,8 @@
 //!   carries space-separated `v1,<base64>` entries (rotation), any match wins.
 //! * `stripe` — header `Stripe-Signature`, comma fields `t=<ts>` + `v1=<hex>`;
 //!   signed `"{timestamp}.{body}"`.
-//! * `didit_hmac` — header `X-Signature-V2` (or `X-Signature`) = `<hex>` over
-//!   the **body alone**; `X-Timestamp` checked separately for freshness.
+//! * `didit_hmac` — header `X-Signature-V2` signs canonical JSON; `X-Signature`
+//!   signs the raw body; `X-Timestamp` checked separately for freshness.
 //!
 //! All validate timestamp freshness against `max_skew_seconds` (default 300) and
 //! compare timing-safe. Any failure → [`WebhookSignatureError`] with a stable
@@ -258,41 +258,78 @@ fn verify_didit_hmac(
     max_skew_seconds: i64,
     now: Option<f64>,
 ) -> Result0 {
-    let sig_hex = headers
-        .get("x-signature-v2")
-        .or_else(|| headers.get("x-signature"))
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            WebhookSignatureError::new(
-                "missing_header",
-                "X-Signature-V2 (or X-Signature) header required",
-            )
-        })?;
-
+    let v2 = headers.get("x-signature-v2").filter(|s| !s.is_empty());
+    let raw = headers.get("x-signature").filter(|s| !s.is_empty());
+    if v2.is_none() && raw.is_none() {
+        return Err(WebhookSignatureError::new(
+            "missing_header",
+            "Didit signature required",
+        ));
+    }
     let timestamp = headers
         .get("x-timestamp")
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            WebhookSignatureError::new("missing_header", "X-Timestamp header required")
-        })?;
-
-    if !sig_hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        .ok_or_else(|| WebhookSignatureError::new("missing_header", "X-Timestamp required"))?;
+    if v2
+        .iter()
+        .chain(raw.iter())
+        .any(|s| !s.chars().all(|c| c.is_ascii_hexdigit()))
+    {
         return Err(WebhookSignatureError::new(
             "malformed_header",
-            "X-Signature-V2 must be hex",
+            "Didit signature must be hex",
         ));
     }
-
     check_timestamp(timestamp, max_skew_seconds, now)?;
-
-    let expected_hex = hex_lower(&hmac_sha256(secret.as_bytes(), body));
-    if !ct_eq_str(&sig_hex.to_lowercase(), &expected_hex) {
+    let mut matched = false;
+    if let Some(sig) = v2 {
+        if let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(body) {
+            canonicalize_didit(&mut value);
+            if let Ok(canonical) = serde_json::to_vec(&value) {
+                matched |= ct_eq_str(
+                    &sig.to_lowercase(),
+                    &hex_lower(&hmac_sha256(secret.as_bytes(), &canonical)),
+                );
+            }
+        }
+    }
+    // Full-body fallback supported by Didit, including legacy V2 destinations.
+    // Never accept X-Signature-Simple: it does not authenticate the decision.
+    if let Some(sig) = raw {
+        matched |= ct_eq_str(
+            &sig.to_lowercase(),
+            &hex_lower(&hmac_sha256(secret.as_bytes(), body)),
+        );
+    }
+    if !matched {
         return Err(WebhookSignatureError::new(
             "signature_mismatch",
             "didit_hmac signature did not match",
         ));
     }
     Ok(())
+}
+
+// Sort recursively even when another workspace crate enables preserve_order.
+fn canonicalize_didit(value: &mut serde_json::Value) {
+    use serde_json::Value;
+    match value {
+        Value::Object(map) => {
+            for v in map.values_mut() {
+                canonicalize_didit(v);
+            }
+            map.sort_keys();
+        }
+        Value::Array(values) => values.iter_mut().for_each(canonicalize_didit),
+        Value::Number(n) if n.is_f64() => {
+            if let Some(f) = n.as_f64() {
+                if f.fract() == 0.0 && f >= i64::MIN as f64 && f < i64::MAX as f64 {
+                    *value = Value::from(f as i64);
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────────
@@ -386,6 +423,55 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.code, "replay_window");
+    }
+
+    #[test]
+    fn didit_v3_unicode_canonical_and_raw_fallback() {
+        let canonical = r#"{"decision":{"name":"José","score":1},"timestamp":1000}"#;
+        let wire = br#"{ "timestamp":1000, "decision":{"score":1.0,"name":"Jos\u00e9"}}"#;
+        let sig = hex_lower(&hmac_sha256(b"sec", canonical.as_bytes()));
+        let mut headers = h(&[("X-Signature-V2", &sig), ("X-Timestamp", "1000")]);
+        assert!(verify_signature(
+            "sec",
+            wire,
+            &headers,
+            SignatureScheme::DiditHmac,
+            300,
+            Some(1000.0)
+        )
+        .is_ok());
+        assert!(verify_signature(
+            "sec",
+            b"{}",
+            &headers,
+            SignatureScheme::DiditHmac,
+            300,
+            Some(1000.0)
+        )
+        .is_err());
+        headers.insert("X-Signature-V2".into(), "00".repeat(32));
+        headers.insert("X-Signature".into(), hex_lower(&hmac_sha256(b"sec", wire)));
+        assert!(verify_signature(
+            "sec",
+            wire,
+            &headers,
+            SignatureScheme::DiditHmac,
+            300,
+            Some(1000.0)
+        )
+        .is_ok());
+        headers.remove("X-Signature-V2");
+        headers.remove("X-Signature");
+        headers.insert("X-Signature-Simple".into(), sig);
+        assert!(verify_signature(
+            "sec",
+            wire,
+            &headers,
+            SignatureScheme::DiditHmac,
+            300,
+            Some(1000.0)
+        )
+        .is_err());
     }
 
     #[test]

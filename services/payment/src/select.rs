@@ -44,13 +44,16 @@ fn build_stripe(settings: &Settings, pool: &PgPool) -> Result<Tokenizer, String>
         );
     }
 
-    let is_test_secret = api_key.starts_with("sk_test_");
-    let is_live_secret = api_key.starts_with("sk_live_");
+    let is_test_secret = api_key.starts_with("sk_test_") || api_key.starts_with("rk_test_");
+    let is_live_secret = api_key.starts_with("sk_live_") || api_key.starts_with("rk_live_");
     let is_test_pub = publishable.starts_with("pk_test_");
     let is_live_pub = publishable.starts_with("pk_live_");
 
     if !(is_test_secret || is_live_secret) {
-        return Err("BSS_PAYMENT_STRIPE_API_KEY must start with sk_test_ or sk_live_".into());
+        return Err(
+            "BSS_PAYMENT_STRIPE_API_KEY must start with rk_test_, sk_test_, rk_live_ or sk_live_"
+                .into(),
+        );
     }
     if !(is_test_pub || is_live_pub) {
         return Err(
@@ -136,7 +139,7 @@ mod tests {
         if webhook_secret.is_empty() {
             return Err("whsec".into());
         }
-        let is_test_secret = api_key.starts_with("sk_test_");
+        let is_test_secret = api_key.starts_with("sk_test_") || api_key.starts_with("rk_test_");
         let is_test_pub = publishable.starts_with("pk_test_");
         if is_test_secret != is_test_pub {
             return Err("mode_mismatch".into());
@@ -144,7 +147,9 @@ mod tests {
         if s.env == "production" && is_test_secret {
             return Err("prod_test".into());
         }
-        if s.payment_allow_test_card_reuse && api_key.starts_with("sk_live_") {
+        if s.payment_allow_test_card_reuse
+            && (api_key.starts_with("sk_live_") || api_key.starts_with("rk_live_"))
+        {
             return Err("reuse_live".into());
         }
         Ok(())
@@ -191,5 +196,25 @@ mod tests {
         s.payment_stripe_publishable_key = "pk_test_x".into();
         s.payment_stripe_webhook_secret = "whsec_x".into();
         assert!(check(&s).is_ok());
+    }
+    #[tokio::test]
+    async fn restricted_keys_use_real_startup_guards() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgresql://unused:unused@127.0.0.1/unused")
+            .unwrap();
+        let mut s = base();
+        s.payment_stripe_api_key = "rk_test_fixture".into();
+        s.payment_stripe_publishable_key = "pk_test_fixture".into();
+        s.payment_stripe_webhook_secret = "whsec_fixture".into();
+        assert!(build_stripe(&s, &pool).is_ok());
+        s.env = "production".into();
+        assert!(build_stripe(&s, &pool).is_err());
+        s.env = "development".into();
+        s.payment_stripe_publishable_key = "pk_live_fixture".into();
+        assert!(build_stripe(&s, &pool).is_err());
+        s.payment_stripe_api_key = "rk_live_fixture".into();
+        assert!(build_stripe(&s, &pool).is_ok());
+        s.payment_allow_test_card_reuse = true;
+        assert!(build_stripe(&s, &pool).is_err());
     }
 }

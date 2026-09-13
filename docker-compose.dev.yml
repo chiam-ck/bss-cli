@@ -1,0 +1,40 @@
+# Local development: bundle infra and bind published ports to this machine.
+# Used by scripts/dev together with the two upstream Compose files.
+services:
+  catalog:
+    ports: !override ["127.0.0.1:8001:8000"]
+  crm:
+    ports: !override ["127.0.0.1:8002:8000"]
+  payment:
+    ports: !override ["127.0.0.1:8003:8000"]
+  com:
+    ports: !override ["127.0.0.1:8004:8000"]
+  som:
+    ports: !override ["127.0.0.1:8005:8000"]
+  subscription:
+    ports: !override ["127.0.0.1:8006:8000"]
+  mediation:
+    ports: !override ["127.0.0.1:8007:8000"]
+  rating:
+    ports: !override ["127.0.0.1:8008:8000"]
+  provisioning-sim:
+    ports: !override ["127.0.0.1:8010:8000"]
+  portal-self-serve:
+    ports: !override ["127.0.0.1:9001:8000"]
+    environment:
+      BSS_JAEGER_UI_URL: http://jaeger:16686
+  portal-csr:
+    ports: !override ["127.0.0.1:9002:8000"]
+    environment:
+      BSS_JAEGER_UI_URL: http://jaeger:16686
+    # Match the host owner of the writable operator settings bind mount.
+    user: "${BSS_DEV_UID:-1000}:${BSS_DEV_GID:-1000}"
+  postgres:
+    restart: unless-stopped
+    ports: !override ["127.0.0.1:5432:5432"]
+  rabbitmq:
+    restart: unless-stopped
+    ports: !override ["127.0.0.1:5672:5672", "127.0.0.1:15672:15672"]
+  jaeger:
+    restart: unless-stopped
+    ports: !override ["127.0.0.1:4317:4317", "127.0.0.1:4318:4318", "127.0.0.1:16686:16686"]

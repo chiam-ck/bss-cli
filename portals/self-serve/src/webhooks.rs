@@ -39,6 +39,99 @@ fn json_response(status: StatusCode, body: &str) -> Response {
         .into_response()
 }
 
+/// Receive Resend delivery events using the raw-body Svix signature. Acknowledge
+/// only after persistence succeeds so provider retries survive database outages.
+pub async fn webhook_resend(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let secret = &state.settings.email_resend_webhook_secret;
+    if secret.is_empty() {
+        return json_response(
+            StatusCode::UNAUTHORIZED,
+            r#"{"code":"webhook_secret_unset"}"#,
+        );
+    }
+    let signature_headers: HashMap<String, String> = headers
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (key.as_str().to_owned(), value.to_owned()))
+        })
+        .collect();
+    if let Err(error) =
+        verify_signature_default(secret, &body, &signature_headers, SignatureScheme::Svix)
+    {
+        tracing::warn!(provider = "resend", reason = %error.code, "portal_auth.webhook.signature_invalid");
+        return json_response(StatusCode::UNAUTHORIZED, r#"{"code":"signature_invalid"}"#);
+    }
+    // svix-id is covered by the signature and identifies retries of one event.
+    let event_id = headers
+        .get("svix-id")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let payload: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(payload) => payload,
+        Err(_) => return json_response(StatusCode::BAD_REQUEST, r#"{"code":"malformed_body"}"#),
+    };
+    let Some(event_type) = payload
+        .get("type")
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+    else {
+        return json_response(StatusCode::BAD_REQUEST, r#"{"code":"missing_event_type"}"#);
+    };
+    if event_id.is_empty() {
+        return json_response(StatusCode::BAD_REQUEST, r#"{"code":"missing_event_id"}"#);
+    }
+    let Some(pool) = &state.db else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"code":"storage_unavailable"}"#,
+        );
+    };
+    let redacted = bss_webhooks::redact_provider_payload("resend", &payload);
+    let result = sqlx::query(
+        "INSERT INTO integrations.webhook_event (provider, event_id, event_type, body, signature_valid) \
+         VALUES ('resend',$1,$2,$3,true) ON CONFLICT (provider, event_id) DO NOTHING",
+    )
+    .bind(event_id)
+    .bind(event_type)
+    .bind(redacted)
+    .execute(pool)
+    .await;
+    match result {
+        Ok(result) => {
+            tracing::info!(
+                provider = "resend",
+                event_id,
+                event_type,
+                deduped = result.rows_affected() == 0,
+                "portal_auth.webhook.received"
+            );
+            if result.rows_affected() == 0 {
+                json_response(StatusCode::OK, r#"{"received":true,"deduped":true}"#)
+            } else {
+                json_response(StatusCode::OK, r#"{"received":true}"#)
+            }
+        }
+        Err(_) => {
+            tracing::error!(
+                provider = "resend",
+                event_id,
+                "portal_auth.webhook.storage_failed"
+            );
+            json_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                r#"{"code":"storage_unavailable"}"#,
+            )
+        }
+    }
+}
+
 /// `POST /webhooks/didit` — receive Didit HMAC-signed verification webhooks.
 pub async fn webhook_didit(
     State(state): State<AppState>,
@@ -125,18 +218,19 @@ pub async fn webhook_didit(
         .or_else(|| payload.get("id"))
         .and_then(|v| v.as_str())
         .map(String::from)
-        .or_else(|| {
-            headers
-                .get("x-didit-event-id")
-                .and_then(|v| v.to_str().ok())
-                .map(String::from)
-        })
+        .filter(|id| !id.is_empty())
         .unwrap_or_else(|| {
-            let ts = payload
-                .get("timestamp")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            format!("{session_id}:{event_type}:{ts}")
+            // Older deliveries and console samples omit event_id. Hash the
+            // authenticated content, excluding the dispatch timestamp refreshed
+            // on retries. Different decisions remain distinct events.
+            let mut stable = payload.clone();
+            if let Some(object) = stable.as_object_mut() {
+                object.remove("timestamp");
+            }
+            sort_json_keys(&mut stable);
+            let digest = Sha256::digest(stable.to_string().as_bytes());
+            let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+            format!("{session_id}:{event_type}:{hex}")
         });
 
     let body_digest = {
@@ -157,9 +251,24 @@ pub async fn webhook_didit(
             event_type = %event_type,
             "portal_auth.webhook.no_db"
         );
-        return json_response(StatusCode::OK, r#"{"received":true,"persisted":false}"#);
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"code":"database_unavailable"}"#,
+        );
     };
 
+    let Ok(mut tx) = pool.begin().await else {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"code":"database_unavailable"}"#,
+        );
+    };
+    // Retain only the authenticated envelope, never identity documents or images.
+    let stored = serde_json::json!({
+        "session_id": session_id, "event_id": event_id,
+        "webhook_type": event_type, "status": decision_status,
+        "timestamp": payload.get("timestamp"), "body_digest": body_digest,
+    });
     // Idempotent insert into webhook_event (forensic + dedupe).
     let inserted = sqlx::query(
         "INSERT INTO integrations.webhook_event (provider, event_id, event_type, body, signature_valid) \
@@ -168,23 +277,35 @@ pub async fn webhook_didit(
     .bind(PROVIDER_DIDIT)
     .bind(&event_id)
     .bind(&event_type)
-    .bind(&payload)
-    .execute(pool)
+    .bind(&stored)
+    .execute(&mut *tx)
     .await
-    .map(|r| r.rows_affected() > 0)
-    .unwrap_or(false);
+    .map(|r| r.rows_affected() > 0);
+    let inserted = match inserted {
+        Ok(inserted) => inserted,
+        Err(_) => {
+            return json_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                r#"{"code":"database_unavailable"}"#,
+            )
+        }
+    };
+    if !inserted {
+        return json_response(StatusCode::OK, r#"{"received":true,"deduped":true}"#);
+    }
 
     // Upsert the corroboration row so the LATEST decision_status lands (the state
     // progresses Not Started → In Progress → Approved across webhooks). Keyed on
     // (provider, provider_session_id).
     if !decision_status.is_empty() {
-        let _ = sqlx::query(
+        let result = sqlx::query(
             "INSERT INTO integrations.kyc_webhook_corroboration \
              (provider, provider_session_id, webhook_event_provider, webhook_event_id, \
               decision_status, decision_body_digest) \
              VALUES ($1,$2,$1,$3,$4,$5) \
              ON CONFLICT (provider, provider_session_id) DO UPDATE \
              SET decision_status = EXCLUDED.decision_status, \
+                 webhook_event_id = EXCLUDED.webhook_event_id, \
                  decision_body_digest = EXCLUDED.decision_body_digest, \
                  received_at = now()",
         )
@@ -193,18 +314,21 @@ pub async fn webhook_didit(
         .bind(&event_id)
         .bind(&decision_status)
         .bind(&body_digest)
-        .execute(pool)
+        .execute(&mut *tx)
         .await;
+        if result.is_err() {
+            return json_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                r#"{"code":"database_unavailable"}"#,
+            );
+        }
     }
 
-    if !inserted {
-        tracing::info!(
-            provider = PROVIDER_DIDIT,
-            event_id = %event_id,
-            event_type = %event_type,
-            "portal_auth.webhook.duplicate"
+    if tx.commit().await.is_err() {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            r#"{"code":"database_unavailable"}"#,
         );
-        return json_response(StatusCode::OK, r#"{"received":true,"deduped":true}"#);
     }
 
     tracing::info!(
@@ -216,4 +340,18 @@ pub async fn webhook_didit(
         "portal_auth.webhook.received"
     );
     json_response(StatusCode::OK, r#"{"received":true}"#)
+}
+
+// Canonicalize object order for content-based legacy event IDs.
+fn sort_json_keys(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for value in object.values_mut() {
+                sort_json_keys(value);
+            }
+            object.sort_keys();
+        }
+        serde_json::Value::Array(values) => values.iter_mut().for_each(sort_json_keys),
+        _ => {}
+    }
 }

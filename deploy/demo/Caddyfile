@@ -1,0 +1,15 @@
+{
+	admin off
+	auto_https off
+}
+
+:8000 {
+	# Only the signed Stripe webhook reaches the Payment service.
+	handle /webhooks/stripe {
+		reverse_proxy payment:8000
+	}
+	# Customer routes and Didit/Resend webhooks belong to self-serve.
+	handle {
+		reverse_proxy portal-self-serve:8000
+	}
+}

@@ -232,6 +232,7 @@ pub fn build_router(state: AppState) -> Router {
         // Didit KYC webhook — HMAC-authed inside the handler, on the public
         // allowlist (no perimeter token / session). Trust anchor for v0.15 KYC.
         .route("/webhooks/didit", post(webhooks::webhook_didit))
+        .route("/webhooks/resend", post(webhooks::webhook_resend))
         .route("/signup/:plan_id", get(signup::signup_form))
         .route("/signup/:plan_id/msisdn", get(signup::msisdn_picker))
         .route("/signup/:plan_id/progress", get(signup::signup_progress))

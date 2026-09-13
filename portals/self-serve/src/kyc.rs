@@ -242,7 +242,7 @@ impl DiditKycAdapter {
         let start = Instant::now();
         let result = self
             .http
-            .post(format!("{DIDIT_BASE_URL}/v2/session/"))
+            .post(format!("{DIDIT_BASE_URL}/v3/session/"))
             .header("x-api-key", &self.api_key)
             .header("content-type", "application/json")
             .json(&body)
@@ -284,19 +284,25 @@ impl DiditKycAdapter {
     async fn fetch_attestation(&self, session_id: &str) -> Result<KycAttestation, KycError> {
         // 1. Wait for the corroborating HMAC-verified webhook row.
         let corroboration = self.wait_for_corroboration(session_id).await;
-        let Some((corroboration_id, _status)) = corroboration else {
+        let Some((corroboration_id, status)) = corroboration else {
             return Err(KycError::CorroborationTimeout(format!(
                 "No verified webhook delivery for Didit session {session_id} within {}s",
                 self.poll_timeout.as_secs()
             )));
         };
 
+        if status != "Approved" {
+            return Err(KycError::Http(
+                "Didit verification is not approved".to_string(),
+            ));
+        }
+
         // 2. Fetch the (unsigned) decision body for the supplementary fields.
         let start = Instant::now();
         let result = self
             .http
             .get(format!(
-                "{DIDIT_BASE_URL}/v2/session/{session_id}/decision/"
+                "{DIDIT_BASE_URL}/v3/session/{session_id}/decision/"
             ))
             .header("x-api-key", &self.api_key)
             .send()
@@ -323,6 +329,39 @@ impl DiditKycAdapter {
             None,
         )
         .await;
+
+        if decision.get("status").and_then(|v| v.as_str()) != Some("Approved") {
+            return Err(KycError::Http("Didit decision is not approved".to_string()));
+        }
+        let approved_documents = decision
+            .get("id_verifications")
+            .and_then(|v| v.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter(|v| v.get("status").and_then(|s| s.as_str()) == Some("Approved"))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if approved_documents.len() != 1
+            || [
+                "document_number",
+                "issuing_state",
+                "date_of_birth",
+                "document_type",
+            ]
+            .iter()
+            .any(|key| {
+                approved_documents[0]
+                    .get(key)
+                    .and_then(|v| v.as_str())
+                    .map_or(true, |v| v.trim().is_empty())
+            })
+        {
+            return Err(KycError::Http(
+                "Didit decision must contain one complete approved identity document".to_string(),
+            ));
+        }
 
         // 3. PII reduction. After this, raw doc number / name / address are gone.
         Ok(build_attestation(&decision, Some(corroboration_id)))
@@ -390,7 +429,12 @@ impl DiditKycAdapter {
             .ok()
             .flatten();
             if let Some((id, status)) = row {
-                return Some((id.to_string(), status));
+                if matches!(
+                    status.as_str(),
+                    "Approved" | "Declined" | "Expired" | "Abandoned" | "Kyc Expired"
+                ) {
+                    return Some((id.to_string(), status));
+                }
             }
             if Instant::now() >= deadline {
                 return None;
@@ -431,7 +475,15 @@ fn build_attestation(
     decision: &serde_json::Value,
     corroboration_id: Option<String>,
 ) -> KycAttestation {
-    let idv = decision.get("id_verification");
+    let idv = decision
+        .get("id_verifications")
+        .and_then(|v| v.as_array())
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|v| v.get("status").and_then(|s| s.as_str()) == Some("Approved"))
+        })
+        .or_else(|| decision.get("id_verification"));
     let get_str = |k: &str| -> String {
         idv.and_then(|v| v.get(k))
             .and_then(|v| v.as_str())
@@ -588,6 +640,21 @@ mod tests {
             assert_eq!(att.date_of_birth, "1990-01-01");
             assert!(att.corroboration_id.is_none());
         }
+    }
+
+    #[test]
+    fn didit_v3_selects_approved_document_and_reduces_pii() {
+        let decision = serde_json::json!({"session_id":"v3-test", "id_verifications":[
+            {"status":"Declined", "document_number":"WRONG"},
+            {"status":"Approved", "document_number":"S1234567D", "issuing_state":"SGP",
+             "date_of_birth":"1985-03-02", "document_type":"Identity Card", "full_name":"José"}
+        ]});
+        let att = build_attestation(&decision, Some("corr-v3".into()));
+        assert_eq!(att.document_number_last4, "567D");
+        assert_eq!(att.document_country, "SGP");
+        let serialized = format!("{att:?}");
+        assert!(!serialized.contains("S1234567D"));
+        assert!(!serialized.contains("José"));
     }
 
     #[test]

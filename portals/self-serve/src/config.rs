@@ -48,6 +48,7 @@ pub struct Settings {
     pub kyc_didit_workflow_id: String,
     pub kyc_didit_webhook_secret: String,
     pub public_url: String,
+    pub email_resend_webhook_secret: String,
 
     // Payment (v0.16) — carried for later slices.
     pub payment_provider: String,
@@ -83,6 +84,7 @@ impl Settings {
             kyc_didit_workflow_id: env_or("BSS_PORTAL_KYC_DIDIT_WORKFLOW_ID", ""),
             kyc_didit_webhook_secret: env_or("BSS_PORTAL_KYC_DIDIT_WEBHOOK_SECRET", ""),
             public_url: env_or("BSS_PORTAL_PUBLIC_URL", "http://localhost:9001"),
+            email_resend_webhook_secret: env_or("BSS_PORTAL_EMAIL_RESEND_WEBHOOK_SECRET", ""),
             payment_provider: env_or("BSS_PAYMENT_PROVIDER", "mock"),
             payment_stripe_api_key: env_or("BSS_PAYMENT_STRIPE_API_KEY", ""),
             env: env_or("BSS_ENV", "development"),

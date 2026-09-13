@@ -4117,3 +4117,28 @@ guard pins both.
 **Decision:** The operator's framing is the fix: *if the wipe clears customers it must also clear logins* — a half-wipe is a broken state, not a conservative one, and that half-ness is precisely what produced the orphaned identities that bricked signup. `admin.reset_operational_data` now also truncates `portal_auth` (`identity`, `session`, `login_token`, `login_attempt`, `email_change_pending`, `step_up_pending_action`). `portal_action` is deliberately **kept** — it is the portal's audit trail, spared by the same rule that spares `audit.domain_event` (callers filter on `occurred_at >= resetAt`). The wipe runs through the scenario runner's existing scenario-only `BSS_DB_URL` seam (`cli/src/scenarios/actions.rs`, alongside `portal.link_identity_to_customer`), **not** as a new admin endpoint: `portal_auth` is owned by the portals, which are public customer-facing web apps with no API-token middleware, and a "delete every login" route on port 9001 would be a far worse hazard than the one being fixed.
 **Alternatives:** (a) Give the self-serve portal an `admin_reset_router` like the services have — rejected, see above; it puts a destructive endpoint on the internet-facing surface. (b) Have CRM's reset plan reach into `portal_auth` — rejected, it breaks schema-per-service ownership, the boundary that exists so services can later split to separate Postgres instances. (c) Leave the wipe half-done and rely on the v2.1.1 self-heal — rejected: the self-heal is a safety net for an inconsistent state, not a licence to keep creating one. (d) Scope the truncate to rows the scenario created, or refuse when non-scenario data is present — **not rejected, still open**; it is the answer to a different question ("should the suite touch real data at all"), which the operator has not yet ruled on. The consistency fix lands first because a half-wipe is wrong under either answer.
 **Consequences:** Running the hero suite is now *more* destructive in the literal sense — it takes logins too — but it no longer leaves a corrupt half-state behind, and re-runs start genuinely clean (identity rows no longer accumulate across runs). The underlying hazard is unchanged and **still live**: `make scenarios-hero` against a database holding real customers destroys them, and nothing yet stops that. Recorded in Claude's project memory so a future session checks the reset markers *first* when a customer "vanishes". Validated by executing the exact TRUNCATE inside a `BEGIN … ROLLBACK` against the live DB — identities 11→0 and sessions 17→0 inside the transaction, `portal_action` untouched at 51, everything restored on rollback; the real reset was deliberately **not** run, since doing so would have repeated the harm under investigation.
+
+
+## 2026-09-13 — v2.2 — Signed provider callbacks and bundled demo deployment
+**Context:** Fresh-machine setup and real Resend/Didit/Stripe signup exposed a
+missing Resend receiver, Didit V3 incompatibilities, restricted Stripe key
+rejection, and missing infrastructure restart policies.
+**Decision:** Add an idempotent signed Resend receiver. Move Didit session and
+decision calls to V3; verify canonical Unicode JSON or the full raw body, require
+approved document evidence, and atomically persist only the callback envelope,
+digest, and corroboration. Use stable content-derived IDs when older samples
+omit event IDs. Accept Stripe restricted keys under the existing mode guards.
+Provide explicit development/public Compose overlays, loopback management ports,
+a scoped Cloudflare/Caddy gateway, and persistent restart policies. Exclude
+credentials, local mailboxes, and operator state from image build contexts.
+**Alternatives:** Keeping the V2 session API does not exercise the configured V3
+workflow. Envelope-only signatures cannot authenticate identity evidence.
+Storing raw identity payloads is unnecessary for corroboration. Exposing the
+operator or infrastructure through the demo tunnel is outside the customer
+portal's scope.
+**Consequences:** No database migration or new BSS business verb. Didit stored
+callback bodies are intentionally reduced, and hosted verification now requires
+one complete approved identity document. The single-host demo still needs a
+reboot recovery test and off-host backup/restore validation before unattended
+operation. Existing mock payment methods must be replaced through Stripe-hosted
+card setup when changing payment providers.
