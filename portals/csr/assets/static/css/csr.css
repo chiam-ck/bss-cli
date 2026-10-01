@@ -33,7 +33,7 @@
 }
 .login-form input:focus { border-color: var(--accent); }
 .login-form button {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 10px 14px;
   font-family: var(--mono); font-weight: 600;
   border-radius: 4px; cursor: pointer; font-size: 14px;
@@ -64,7 +64,7 @@
 }
 .search-form input:focus { border-color: var(--accent); }
 .search-form button {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 10px 18px;
   font-family: var(--mono); font-weight: 600;
   border-radius: 4px; cursor: pointer;
@@ -141,7 +141,7 @@
 }
 .ask-row input:focus { border-color: var(--accent); }
 .ask-row button {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 10px 22px;
   font-family: var(--mono); font-weight: 600;
   border-radius: 4px; cursor: pointer;
@@ -262,7 +262,7 @@
 }
 .channel-portal_csr { color: var(--accent); }
 .channel-portal_self_serve { color: var(--accent-alt); }
-.channel-llm { color: #cbb6e8; }
+.channel-llm { color: var(--accent-alt); }
 .channel-cli { color: var(--fg-muted); }
 
 /* ─── Case thread ────────────────────────────────────────── */
@@ -349,6 +349,8 @@ body {
 .cockpit-header-nav {
   flex: 1;
   display: flex; align-items: center; gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .cockpit-header-right { flex: 0 0 auto; color: var(--fg-muted); font-family: var(--mono); font-size: 12px; }
 
@@ -372,7 +374,7 @@ body {
 .cockpit-nav-link.is-active { color: var(--accent); background: var(--bg-inset); }
 .cockpit-nav-form { margin-left: 8px; display: inline-flex; }
 .cockpit-nav-cta {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 6px 14px; border-radius: 4px;
   font-family: var(--mono); font-weight: 600; font-size: 13px; cursor: pointer;
 }
@@ -466,7 +468,7 @@ body {
 }
 .cockpit-hero-search input:focus { border-color: var(--accent); }
 .cockpit-hero-search button {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 12px 20px; border-radius: 6px;
   font-family: var(--mono); font-weight: 600; font-size: 14px; cursor: pointer;
 }
@@ -617,7 +619,7 @@ body {
    only weight changes. The visual hierarchy is now: tool-row block
    (framed, monospace, accented) > assistant bubble (plain prose). */
 .chat-bubble code {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--bg-inset);
   padding: 1px 5px; border-radius: 3px;
   font-family: var(--mono); font-size: 12px;
   color: var(--fg);  /* override global accent-amber so inline code
@@ -647,18 +649,18 @@ body {
   border-collapse: collapse;
   margin: 6px 0;
   font-size: 13px;
-  background: rgba(0,0,0,0.15);
+  background: var(--bg-inset);
   border-radius: 6px;
   overflow: hidden;
 }
 .chat-table th, .chat-table td {
   text-align: left;
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid var(--border);
 }
 .chat-table th {
   font-weight: 600;
-  background: rgba(0,0,0,0.2);
+  background: var(--bg-code);
   text-transform: none;
   letter-spacing: 0;
   font-size: 12px;
@@ -667,8 +669,8 @@ body {
 
 .chat-bubble-user {
   align-self: flex-end;
-  background: var(--accent-dim);
-  color: #fff;
+  background: var(--chat-user-bg);
+  color: var(--chat-user-fg);
 }
 .chat-bubble-user code { background: rgba(0, 0, 0, 0.2); }
 
@@ -779,7 +781,7 @@ body {
 }
 .thread-compose textarea:focus { border-color: var(--accent); }
 .thread-send-btn {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 0 24px; border-radius: 8px;
   font-family: var(--mono); font-weight: 600; font-size: 14px; cursor: pointer;
   align-self: stretch;
@@ -801,7 +803,7 @@ body {
 }
 .cockpit-search-form input:focus { border-color: var(--accent); }
 .cockpit-search-form button {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 10px 18px; border-radius: 6px;
   font-family: var(--mono); font-weight: 600; cursor: pointer;
 }
@@ -827,7 +829,7 @@ body {
 }
 .search-card-cta { margin: 0; }
 .cockpit-cta-btn {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: none; padding: 8px 16px; border-radius: 6px;
   font-family: var(--mono); font-weight: 600; font-size: 13px; cursor: pointer;
 }
@@ -1103,7 +1105,7 @@ body {
 /* ── Buttons: three weights + danger ──────────────────────── */
 
 .btn-primary, .crm-filter-form button {
-  background: var(--accent); color: var(--bg);
+  background: var(--accent); color: var(--on-accent);
   border: 1px solid var(--accent);
   border-radius: 6px;
   font-family: var(--mono); font-weight: 600; font-size: 13px;
@@ -1124,7 +1126,7 @@ body {
 }
 .crm-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn-danger {
-  background: var(--accent-error); color: var(--bg);
+  background: var(--error-fg); color: var(--error-bg);
   border: 1px solid var(--accent-error);
   border-radius: 6px;
   font-family: var(--mono); font-weight: 600; font-size: 12px;
@@ -1324,7 +1326,7 @@ body {
   grid-template-columns: 1fr;
   background: var(--bg-elev);
   border: 1px solid var(--border-strong);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--shadow);
 }
 
 .crm-priority-form {

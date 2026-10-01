@@ -185,6 +185,51 @@ pub static THEMES: LazyLock<IndexMap<&'static str, ThemePalette>> = LazyLock::ne
         .collect::<IndexMap<_, _>>()
 });
 
+/// Semantic browser surfaces live beside the curated palettes.
+pub const LIGHT_SURFACES: &str = "--warning-bg:#fff3d6;--warning-fg:#713f12;--error-bg:#fff0ee;--error-fg:#912018;--shadow:rgba(15,23,42,0.18);";
+pub const DARK_SURFACES: &str = "--warning-bg:#302416;--warning-fg:#ffd29a;--error-bg:#321c20;--error-fg:#ffb4b4;--shadow:rgba(0,0,0,0.45);";
+
+/// Deployment default. Invalid values safely follow the OS.
+pub fn portal_appearance_default() -> String {
+    match std::env::var("BSS_PORTAL_APPEARANCE").as_deref() {
+        Ok("light") => "light",
+        Ok("dark") => "dark",
+        _ => "system",
+    }
+    .to_string()
+}
+
+/// Browser light counterpart. Dark palettes remain the email/CLI contract.
+/// IDs stay stable so existing branding settings need no migration.
+pub fn light_palette(dark: &ThemePalette) -> ThemePalette {
+    let mut light = dark.clone();
+    light.bg = "#f8fafc";
+    light.bg_elev = "#ffffff";
+    light.bg_inset = "#edf1f5";
+    light.bg_code = "#e5eaf0";
+    light.fg = "#17212b";
+    light.fg_muted = "#475569";
+    light.fg_dim = "#596579";
+    light.border = "#c4cdd8";
+    light.border_strong = "#8996a8";
+    light.accent_amber = "#854600";
+    light.accent_error = "#b42318";
+    light.on_accent = "#ffffff";
+    let (accent, hover, alt) = match dark.id {
+        "amber-crt" => ("#805500", "#654200", "#904000"),
+        "ice" => ("#006898", "#005176", "#4354a0"),
+        "magenta" => ("#9e247f", "#7e1965", "#6843a0"),
+        "paper" => ("#303030", "#171717", "#535353"),
+        "solarized-dark" => ("#006d65", "#00564f", "#805500"),
+        _ => ("#326b16", "#265310", "#854600"),
+    };
+    light.accent = accent;
+    light.accent_bright = hover;
+    light.accent_dim = accent;
+    light.accent_alt = alt;
+    light
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -206,5 +251,55 @@ mod tests {
         );
         assert_eq!(DEFAULT_THEME_ID, "phosphor");
         assert!(THEMES.contains_key(DEFAULT_THEME_ID));
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    fn luminance(hex: &str) -> f64 {
+        let n = u32::from_str_radix(&hex[1..], 16).unwrap_or(0);
+        let component = |shift: u32| {
+            let c = ((n >> shift) & 255u32) as f64 / 255.0;
+            if c <= 0.04045 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * component(16) + 0.7152 * component(8) + 0.0722 * component(0)
+    }
+    fn contrast(a: &str, b: &str) -> f64 {
+        let a = luminance(a);
+        let b = luminance(b);
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+    #[test]
+    fn every_light_palette_has_readable_text_and_controls() {
+        for dark in THEMES.values() {
+            let t = light_palette(dark);
+            assert_eq!(t.id, dark.id);
+            for surface in [t.bg, t.bg_elev, t.bg_inset, t.bg_code] {
+                for text in [
+                    t.fg,
+                    t.fg_muted,
+                    t.fg_dim,
+                    t.accent,
+                    t.accent_bright,
+                    t.accent_alt,
+                    t.accent_error,
+                    t.accent_amber,
+                ] {
+                    assert!(
+                        contrast(text, surface) >= 4.5,
+                        "{}: {text} on {surface}",
+                        t.id
+                    );
+                }
+            }
+            for fill in [t.accent, t.accent_bright] {
+                assert!(contrast(t.on_accent, fill) >= 4.5, "{} button", t.id);
+            }
+        }
     }
 }

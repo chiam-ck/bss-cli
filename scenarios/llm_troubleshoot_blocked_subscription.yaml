@@ -116,6 +116,10 @@ steps:
       The customer with email {{ customer_email }} (customer id {{ customer_id }})
       called support. They say their data stopped working on their phone.
 
+      Start by listing the subscriptions belonging to this customer using
+      their customer ID. Identify their blocked subscription before choosing
+      a top-up; do not infer it from a general subscription listing.
+
       You are NOT done until BOTH of these are true:
         1. The subscription is back to ``active`` (or you've explicitly
            stopped because the only fix is destructive — see below).

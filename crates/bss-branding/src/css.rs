@@ -40,6 +40,28 @@ pub fn branding_css_block(theme: &ThemePalette) -> String {
     format!(":root{{{decls}}}")
 }
 
+/// Browser-only appearance rules; unselected/system mode follows the OS even
+/// without JavaScript. Explicit selectors override the media-query branch.
+pub fn portal_branding_css(theme: &ThemePalette) -> String {
+    fn scoped(theme: &ThemePalette, selector: &str, mode: &str) -> String {
+        let block = branding_css_block(theme).replacen(":root", selector, 1);
+        let semantic = if mode == "light" {
+            crate::themes::LIGHT_SURFACES
+        } else {
+            crate::themes::DARK_SURFACES
+        };
+        format!("{block}{selector}{{color-scheme:{mode};{semantic}--chat-user-bg:var(--accent);--chat-user-fg:var(--on-accent);}}")
+    }
+    let light = crate::themes::light_palette(theme);
+    format!(
+        "{}@media(prefers-color-scheme:light){{{}}}{}{}",
+        scoped(theme, ":root", "dark"),
+        scoped(&light, ":root:not([data-appearance])", "light"),
+        scoped(theme, ":root[data-appearance=dark]", "dark"),
+        scoped(&light, ":root[data-appearance=light]", "light"),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -101,5 +123,24 @@ mod tests {
              --accent-amber:#ffb454;--accent-alt:#ffb454;--accent-error:#ff6b6b;\
              --border:#2a2e38;--border-strong:#3a3f4a;--on-accent:#0e1014}"
         );
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    #[test]
+    fn browser_rules_support_os_and_explicit_modes_without_changing_email_css() {
+        for dark in crate::themes::THEMES.values() {
+            let css = portal_branding_css(dark);
+            assert!(css.contains("@media(prefers-color-scheme:light)"));
+            assert!(css.contains(":root:not([data-appearance])"));
+            assert!(css.contains(":root[data-appearance=dark]"));
+            assert!(css.contains(":root[data-appearance=light]"));
+            assert!(css.contains("color-scheme:light"));
+            assert!(css.contains("--chat-user-fg:var(--on-accent)"));
+            assert!(css.contains(&branding_css_block(dark)));
+            assert!(!branding_css_block(dark).contains("color-scheme"));
+        }
     }
 }

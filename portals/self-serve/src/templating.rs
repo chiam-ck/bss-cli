@@ -72,7 +72,7 @@ fn branding_value() -> Value {
 
 fn branding_style_value() -> Value {
     let view = bss_branding::current(None);
-    let block = bss_branding::branding_css_block(&view.theme);
+    let block = bss_branding::portal_branding_css(&view.theme);
     Value::from_safe_string(format!("<style>{block}</style>"))
 }
 
@@ -109,6 +109,10 @@ pub fn build_environment() -> Arc<Environment<'static>> {
 
     env.add_global("bss_release", Value::from(BSS_RELEASE));
     env.add_global("asset_v", Value::from(asset_v));
+    env.add_function(
+        "appearance_default",
+        bss_branding::themes::portal_appearance_default,
+    );
     env.add_function("branding", branding_value);
     env.add_function("branding_style", branding_style_value);
 

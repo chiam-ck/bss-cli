@@ -28,7 +28,7 @@ pub use config::{
     branding_dir, current, file_settings, reset_cache, BrandingSettings, BrandingView,
     DEFAULT_BRAND_NAME, LOGO_SUBDIR,
 };
-pub use css::branding_css_block;
+pub use css::{branding_css_block, portal_branding_css};
 pub use logo::{logo_http, LogoHttp};
 pub use marks::{validate_mark, LOGO_MARKS};
 pub use themes::{ThemePalette, DEFAULT_THEME_ID, THEMES};

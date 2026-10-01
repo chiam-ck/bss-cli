@@ -69,6 +69,7 @@ fn context(
         "max_logo_kb": MAX_LOGO_BYTES / 1024,
         // The initial (non-HTMX) render of the preview partial.
         "t": theme_or_default(&theme),
+        "light_t": light_theme_or_default(&theme),
         "name": brand_name,
         "mark": mark,
         "flash": flash,
@@ -81,6 +82,11 @@ fn context(
 pub struct FlashQuery {
     #[serde(default)]
     flash: String,
+}
+
+fn light_theme_or_default(theme: &str) -> Value {
+    let dark = THEMES.get(theme).unwrap_or(&THEMES[DEFAULT_THEME_ID]);
+    serde_json::to_value(bss_branding::themes::light_palette(dark)).unwrap_or_else(|_| json!({}))
 }
 
 /// `GET /settings/branding`.
@@ -233,6 +239,7 @@ pub async fn branding_preview(
         "partials/branding_preview.html",
         minijinja::Value::from_serialize(json!({
             "t": theme_or_default(&q.theme),
+            "light_t": light_theme_or_default(&q.theme),
             "name": name,
             "mark": mark,
         })),
