@@ -126,3 +126,9 @@ make e2e                          # Playwright suite with screenshot/video galle
 ## License
 
 Apache-2.0
+
+Both browser portals offer **System / Light / Dark** in the header. System follows
+OS appearance, and a choice persists per browser origin. Operators can set
+`BSS_PORTAL_APPEARANCE=dark` (or `light`; default `system`) as the deployment
+fallback. Explicit browser choices take precedence. The Branding page previews
+both portal appearances; email and CLI retain the selected dark brand palette.

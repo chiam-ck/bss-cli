@@ -119,6 +119,7 @@ services:
       dockerfile: portals/self-serve/Dockerfile
     ports: ["9001:8000"]
     environment:
+      BSS_PORTAL_APPEARANCE: ${BSS_PORTAL_APPEARANCE:-system}
       BSS_SERVICE_NAME: portal-self-serve
       # OpenRouter direct (liteLLM decommissioned 2026-08-18).
       BSS_LLM_BASE_URL: https://openrouter.ai/api/v1
@@ -173,6 +174,7 @@ services:
       dockerfile: portals/csr/Dockerfile
     ports: ["9002:8000"]
     environment:
+      BSS_PORTAL_APPEARANCE: ${BSS_PORTAL_APPEARANCE:-system}
       BSS_SERVICE_NAME: portal-csr
       # OpenRouter direct (liteLLM decommissioned 2026-08-18).
       BSS_LLM_BASE_URL: https://openrouter.ai/api/v1

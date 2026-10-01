@@ -4142,3 +4142,9 @@ one complete approved identity document. The single-host demo still needs a
 reboot recovery test and off-host backup/restore validation before unattended
 operation. Existing mock payment methods must be replaced through Stripe-hosted
 card setup when changing payment providers.
+
+## 2026-10-01 — v2.3.0 — Browser appearance independent of brand palette
+**Context:** Both portals shared six dark branding palettes but lacked OS-aware light/dark appearance. The user authorized implementation, branch, merge and release.
+**Decision:** Extend the historical v1.8 dark-only browser scope with light counterparts for each unchanged theme ID. Keep existing dark palettes for email/CLI. Resolve System / Light / Dark through scoped CSS and a shared synchronous head controller; persist only a non-sensitive browser preference. A deployment default is available via `BSS_PORTAL_APPEARANCE`.
+**Alternatives:** CSS inversion distorts logos/status colors; separate per-portal implementations drift; cross-origin/account persistence would introduce identity and backend scope unrelated to appearance.
+**Consequences:** No database migration or production JS dependency. Same-origin tabs synchronize, but separate portal origins store independent preferences. Without JavaScript, OS/deployment-default CSS still renders correctly. Existing dark palette values and email CSS remain unchanged.

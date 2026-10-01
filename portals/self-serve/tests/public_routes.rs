@@ -86,3 +86,15 @@ async fn branding_logo_404_when_unconfigured() {
     // No operator logo configured in the workspace default → 404.
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn appearance_is_available_on_public_pages_and_static_route() {
+    let (status, body) = get("/welcome").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("data-appearance-picker"));
+    assert!(body.contains("prefers-color-scheme:light"));
+    assert!(body.find("appearance.js").unwrap() < body.find("<body").unwrap());
+    let (status, js) = get("/portal-ui/static/js/appearance.js").await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(js.contains("bss.appearance"));
+}

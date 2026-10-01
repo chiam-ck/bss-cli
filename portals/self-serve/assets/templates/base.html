@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 {% set brand = branding() %}
-<html lang="en">
+<html lang="en" data-appearance-default="{{ appearance_default() }}"{% if appearance_default() != "system" %} data-appearance="{{ appearance_default() }}"{% endif %}>
 <head>
   <meta charset="utf-8" />
   {# Blocks don't see parent-scope {% set %} vars — child overrides
@@ -22,10 +22,9 @@
   <meta name="format-detection" content="telephone=no, address=no, email=no" />
   <link rel="stylesheet" href="/portal-ui/static/css/portal_base.css?v={{ asset_v }}" />
   <link rel="stylesheet" href="/static/css/portal.css?v={{ asset_v }}" />
-  {# v1.8 — active theme wins over the phosphor fallback in
-     portal_base.css by document order. Re-emitted per render, so a
-     settings.toml theme change shows on the next refresh. #}
+  {# Browser palettes are resolved per render; appearance follows the OS or user preference. #}
   {{ branding_style() }}
+  <script src="/portal-ui/static/js/appearance.js?v={{ asset_v }}"></script>
   <script src="/portal-ui/static/js/htmx.min.js?v={{ asset_v }}" defer></script>
   {# The htmx-sse extension only matters on the chat surface (when it
      lands). v0.11 retired SSE from signup; the script stays vendored
@@ -63,6 +62,7 @@
       <span class="brand-tag">/ self-serve</span>
     </div>
     <nav class="portal-nav">
+      {% include "partials/appearance_picker.html" %}
       <a href="/plans">plans</a>
       {% if request.state.identity %}
         <a href="/">my account</a>
