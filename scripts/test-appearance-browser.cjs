@@ -62,5 +62,23 @@ const picker = fs.readFileSync('crates/bss-portal-ui/assets/templates/partials/a
         console.log(`PASS ${app}/${id}: OS, override, reload, fragments, mobile`);
       }
     }
+    // Optional running-stack verification exercises the complete real headers.
+    for (const [app, url] of [['customer', process.env.BSS_THEME_CUSTOMER_URL], ['cockpit', process.env.BSS_THEME_COCKPIT_URL]]) {
+      if (!url) continue;
+      const page = await browser.newPage({ colorScheme: 'light' });
+      await page.goto(url);
+      for (const mode of ['light', 'dark']) {
+        await page.selectOption('[data-appearance-picker]', mode);
+        await page.reload();
+        assert.equal(await page.locator('[data-appearance-picker]').inputValue(), mode);
+      }
+      for (const width of [390, 768, 1024, 1280]) {
+        await page.setViewportSize({ width, height: 844 });
+        assert.ok(await page.locator('[data-appearance-picker]').isVisible());
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${app} overflow at ${width}`);
+      }
+      await page.close();
+      console.log(`PASS ${app}: actual header, modes, reload, phone/tablet/desktop widths`);
+    }
   } finally { await browser.close(); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

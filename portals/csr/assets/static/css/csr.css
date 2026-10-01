@@ -349,6 +349,8 @@ body {
 .cockpit-header-nav {
   flex: 1;
   display: flex; align-items: center; gap: 4px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .cockpit-header-right { flex: 0 0 auto; color: var(--fg-muted); font-family: var(--mono); font-size: 12px; }
 
