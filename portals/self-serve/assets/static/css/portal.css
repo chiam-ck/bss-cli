@@ -137,8 +137,8 @@
   color: var(--on-accent);
 }
 .line-card-state--blocked {
-  background: var(--accent-error);
-  color: #ffffff;
+  background: var(--error-fg);
+  color: var(--error-bg);
 }
 .line-card-state--terminated {
   background: var(--bg-inset);
@@ -613,9 +613,9 @@
   margin-top: 8px;
 }
 .cancel-confirm-button {
-  background: var(--accent-error);
-  border-color: var(--accent-error);
-  color: white;
+  background: var(--error-fg);
+  border-color: var(--error-fg);
+  color: var(--error-bg);
 }
 
 /* ─── eSIM view (v0.10) ──────────────────────────────────────── */

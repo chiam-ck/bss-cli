@@ -17,7 +17,7 @@ const picker = fs.readFileSync('crates/bss-portal-ui/assets/templates/partials/a
         const page = await context.newPage();
         const errors = [];
         page.on('pageerror', e => errors.push(e.message));
-        await page.route('http://theme.test/**', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-appearance-default="system"><head><style>${shared}${css}${palette}</style><script>${controller}</script></head><body>${app === "csr" ? `<header class="cockpit-header"><div class="cockpit-header-left">Brand</div><nav class="cockpit-header-nav"><a class="cockpit-nav-link">Sessions</a>${picker}</nav><div class="cockpit-header-right">Model</div></header>` : `<header class="portal-header"><div class="brand">Brand</div><nav class="portal-nav">${picker}</nav></header>`}<section class="line-card"><h1>${app} ${id}</h1><input placeholder="Example input"><a href="/">Example link</a><p class="chat-bubble chat-bubble-user">User message</p><p class="chat-bubble chat-bubble-assistant">Assistant message</p><div class="line-card-pending-banner">Pending activation</div><div class="line-card--blocked">Service blocked</div><div id="fragment"></div></section></body></html>` }));
+        await page.route('http://theme.test/**', route => route.fulfill({ contentType: 'text/html', body: `<!doctype html><html data-appearance-default="system"><head><style>${shared}${css}${palette}</style><script>${controller}</script></head><body>${app === "csr" ? `<header class="cockpit-header"><div class="cockpit-header-left">Brand</div><nav class="cockpit-header-nav"><a class="cockpit-nav-link">Sessions</a>${picker}</nav><div class="cockpit-header-right">Model</div></header>` : `<header class="portal-header"><div class="brand">Brand</div><nav class="portal-nav">${picker}</nav></header>`}<section class="line-card"><h1>${app} ${id}</h1><input placeholder="Example input"><span class="line-card-state line-card-state--blocked">Blocked</span><button class="btn-danger cancel-confirm-button">Cancel</button><a href="/">Example link</a><p class="chat-bubble chat-bubble-user">User message</p><p class="chat-bubble chat-bubble-assistant">Assistant message</p><div class="line-card-pending-banner">Pending activation</div><div class="line-card--blocked">Service blocked</div><div id="fragment"></div></section></body></html>` }));
         await page.goto('http://theme.test/');
         const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
         assert.equal(await background(), 'rgb(248, 250, 252)');
@@ -29,6 +29,22 @@ const picker = fs.readFileSync('crates/bss-portal-ui/assets/templates/partials/a
         assert.equal(await page.locator('[data-appearance-picker]').inputValue(), 'light');
         await page.evaluate(() => { document.querySelector('#fragment').innerHTML = '<div class="chat-bubble chat-bubble-assistant">Streamed fragment</div>'; });
         assert.equal(await page.locator('#fragment > div').evaluate(el => getComputedStyle(el).color), 'rgb(23, 33, 43)');
+        for (const mode of ['light', 'dark']) {
+          await page.selectOption('[data-appearance-picker]', mode);
+          const ratio = await page.locator('.cancel-confirm-button').evaluate(el => {
+            const style = getComputedStyle(el);
+            function luminance(rgb) {
+              const values = rgb.match(/[\d.]+/g).slice(0, 3).map(n => {
+                const c = Number(n) / 255;
+                return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+              });
+              return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+            }
+            const fg = luminance(style.color), bg = luminance(style.backgroundColor);
+            return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+          });
+          assert.ok(ratio >= 4.5, `${app}/${id}/${mode} danger contrast: ${ratio}`);
+        }
         await page.selectOption('[data-appearance-picker]', 'dark');
         await page.emulateMedia({ colorScheme: 'light' });
         assert.notEqual(await background(), 'rgb(248, 250, 252)');

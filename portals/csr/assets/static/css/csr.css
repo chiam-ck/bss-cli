@@ -1124,7 +1124,7 @@ body {
 }
 .crm-mini-btn:hover { border-color: var(--accent); color: var(--accent); }
 .btn-danger {
-  background: var(--accent-error); color: var(--on-accent);
+  background: var(--error-fg); color: var(--error-bg);
   border: 1px solid var(--accent-error);
   border-radius: 6px;
   font-family: var(--mono); font-weight: 600; font-size: 12px;
